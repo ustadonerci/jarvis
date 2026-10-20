@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  clearErrorLog, getErrors, type ErrorView,
+  clearErrorLog, getErrors, type ErrorView, addWebhook, deleteWebhook, getWebhooks, type WebhookView,
   addServer, addSkill, deleteServer, deleteSkill, getExtensions, getKeys, installGitHub, removeRepo, retryServer, saveKeys, toggleServer, toggleSkill,
   type ExtensionsData, type KeysData, type KeyView,
 } from '../lib/api';
@@ -99,7 +99,11 @@ export function ExtensionSettings({ flash }: { flash(t: string): void }) {
   const [data, setData] = useState<ExtensionsData | null>(null);
   const [repo, setRepo] = useState('');
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState<null | 'beceri' | 'mcp'>(null);
+  const [form, setForm] = useState<null | 'beceri' | 'mcp' | 'webhook'>(null);
+  const [hooks, setHooks] = useState<WebhookView[]>([]);
+  const [hook, setHook] = useState({ ad: '', url: '', aciklama: '' });
+  const loadHooks = () => getWebhooks().then(r => setHooks(r.webhooklar)).catch(() => {});
+  useEffect(() => { loadHooks(); }, []);
   const [skill, setSkill] = useState({ ad: '', aciklama: '', icerik: '', tur: 'beceri' as 'beceri' | 'is_akisi' });
   const [mcp, setMcp] = useState({ ad: '', hedef: '', env: '' });
   const [error, setError] = useState('');
@@ -207,7 +211,33 @@ export function ExtensionSettings({ flash }: { flash(t: string): void }) {
       <div className="seg">
         <button className={form === 'beceri' ? 'on' : ''} onClick={() => setForm(f => (f === 'beceri' ? null : 'beceri'))}>+ Beceri / iş akışı yaz</button>
         <button className={form === 'mcp' ? 'on' : ''} onClick={() => setForm(f => (f === 'mcp' ? null : 'mcp'))}>+ MCP sunucusu</button>
+        <button className={form === 'webhook' ? 'on' : ''} onClick={() => setForm(f => (f === 'webhook' ? null : 'webhook'))}>+ n8n / webhook</button>
       </div>
+
+      {hooks.length > 0 && (
+        <ul className="memory ext-list">
+          {hooks.map(h => (
+            <li key={h.id}>
+              <span>
+                <div className="ext-title"><b>{h.ad}</b><i className="tag">webhook</i></div>
+                <small>{h.aciklama || 'açıklama yok'}</small>
+                <small className="mono">{h.url}</small>
+              </span>
+              <button aria-label="Sil" onClick={() => deleteWebhook(h.id).then(loadHooks).catch(e => flash(e.message))}>✕</button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {form === 'webhook' && (
+        <div className="keys">
+          <input className="ext-input" value={hook.ad} onChange={e => setHook(h => ({ ...h, ad: e.target.value }))} placeholder="Ad (ör. Instagram paylaş)" maxLength={60} />
+          <input className="ext-input mono" value={hook.url} onChange={e => setHook(h => ({ ...h, url: e.target.value }))} placeholder="https://n8n.siteniz.com/webhook/…" />
+          <input className="ext-input" value={hook.aciklama} onChange={e => setHook(h => ({ ...h, aciklama: e.target.value }))} placeholder="Ne yapar, hangi verileri bekler? (ör. platform, metin, gorsel_url alır; gönderiyi paylaşır)" maxLength={300} />
+          <p className="muted small">n8n'de "Webhook" düğümüyle başlayan bir iş akışı kurun ve adresini buraya yapıştırın. Jarvis içeriği hazırlar ve her tetiklemede onay kartı açar.</p>
+          <div className="seg"><button className="on" disabled={!hook.ad.trim() || !/^https?:\/\//.test(hook.url)} onClick={() => addWebhook(hook).then(() => { setHook({ ad: '', url: '', aciklama: '' }); setForm(null); loadHooks(); flash('Webhook eklendi'); }).catch(e => flash(e.message))}>Ekle</button></div>
+        </div>
+      )}
 
       {form === 'beceri' && (
         <div className="keys">

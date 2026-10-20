@@ -809,3 +809,18 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .pf-add button { padding: 0 14px; border-radius: 8px; border: 1px solid var(--line); background: none; color: var(--accent); }
 .pf-add button:disabled { opacity: 0.4; }
 @media (max-width: 560px) { .pf-add { grid-template-columns: 1fr 1fr; } }
+/* Onay kartları */
+.approvals { position: fixed; z-index: 60; right: 16px; bottom: 96px; width: min(460px, calc(100vw - 32px)); max-height: calc(100dvh - 140px); overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+.approval { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--accent); border-radius: 12px; background: rgba(4, 7, 12, 0.94); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); backdrop-filter: blur(8px); }
+.approval.tamam, .approval.reddedildi, .approval.dustu { border-color: var(--line); }
+.approval.hata { border-color: var(--danger); }
+.approval p { margin: 0; }
+.approval-head { display: flex; align-items: center; gap: 8px; }
+.approval-head b { flex: 1; font-size: 14px; }
+.approval-head .close { border: 0; background: none; color: var(--muted); }
+.approval .tag { font-style: normal; font-family: var(--mono); font-size: 10px; color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 0 4px; white-space: nowrap; }
+.approval pre { margin: 0; max-height: 220px; overflow: auto; padding: 8px 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.04); font-family: var(--mono); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+.approval pre.result { color: var(--muted); }
+.approval pre.diff .add { color: var(--ok); }
+.approval pre.diff .del { color: var(--danger); }
+@media (max-width: 560px) { .approvals { right: 16px; left: 16px; width: auto; bottom: 88px; } }

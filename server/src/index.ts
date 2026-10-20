@@ -25,6 +25,8 @@ import { extensionsRouter, initExtensions } from './extensions.js';
 import { initMessaging, messagingRouter } from './messaging.js';
 import { financeRouter, initFinance } from './finance.js';
 import { clearErrors, errorList, initErrors, logError } from './errors.js';
+import { approvalsRouter, initApprovals } from './approvals.js';
+import { automationRouter } from './automation.js';
 import { adminOnly, listKeys, restartServer, saveKeys } from './keys.js';
 import { PERSONAS, isPersona, setPersona, type PersonaId } from './persona.js';
 import { THEMES, isTheme, voiceGender, type ThemeId } from './look.js';
@@ -125,6 +127,7 @@ initExtensions(broadcast);
 initMessaging(broadcast);
 initFinance(broadcast);
 initErrors();
+initApprovals(broadcast);
 
 const app = express();
 app.use(express.json({ limit: '12mb' })); // kamera fotoğrafı (istemci ~1280 px JPEG'e küçültür)
@@ -288,6 +291,10 @@ app.use(messagingRouter());
 
 // ---------- Finans: portföy ve fiyat alarmları ----------
 app.use(financeRouter());
+
+// ---------- Onay kartları ve otomasyon (webhook) ----------
+app.use(approvalsRouter());
+app.use(automationRouter());
 
 // ---------- Hata günlüğü ----------
 app.get('/api/hatalar', adminOnly, (_req, res) => res.json({ hatalar: errorList() }));

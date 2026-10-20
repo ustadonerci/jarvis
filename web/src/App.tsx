@@ -17,6 +17,7 @@ import { LibrarySettings } from './components/LibrarySettings';
 import { ErrorLog, ExtensionSettings, KeySettings } from './components/Extensions';
 import { MessagingSettings } from './components/Messaging';
 import { PortfolioSettings } from './components/Portfolio';
+import { ApprovalCards } from './components/Approvals';
 import { addNote, patchBook, type Kitap } from './lib/library';
 import { VideoPanel, type VideoInfo } from './components/VideoPanel';
 import { CameraPanel } from './camera/CameraPanel';
@@ -133,6 +134,8 @@ export default function App() {
   const [theme, setTheme] = useState('jarvis');
   const [themes, setThemes] = useState<ThemeOption[]>([]);
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
+  // Onay kartları: SSE "onay" olayıyla yenilenir
+  const [approvalKey, setApprovalKey] = useState(0);
   const [sfxOn, setSfxOn] = useState(true);
   const [voices, setVoices] = useState<VoiceOption[] | null>(null);
   const [elevenUse, setElevenUse] = useState<ElevenUsage | null>(null);
@@ -572,6 +575,7 @@ export default function App() {
         case 'cleared': setMessages([]); setReply(null); setSceneIdx(-1); break;
         // Ayarlar'dan anahtar kaydedildi: sunucu yeni değerlerle açılınca sayfa da baştan yüklensin (demo modu vb.)
         case 'restarting': setTimeout(() => location.reload(), 4000); break;
+        case 'onay': setApprovalKey(k => k + 1); if (e.yeni) flash(`Onay bekliyor: ${e.yeni.baslik}`); break;
         case 'alarm': flash(`🔔 ${e.ad}: ${e.fiyat.toLocaleString('tr-TR')} · hedef ${e.kosul === 'ust' ? '≥' : '≤'} ${e.hedef.toLocaleString('tr-TR')}`); break;
         case 'mesaj': flash(`${e.platform === 'whatsapp' ? 'WhatsApp' : 'Telegram'} · ${e.arama ? `${e.kisi} aradı` : `${e.kisi}: ${e.metin}`}`); break;
       }
@@ -1144,6 +1148,7 @@ export default function App() {
         </>
       )}
 
+      <ApprovalCards version={approvalKey} />
       <AnimatePresence>
         {drawer && (
           <motion.aside className="drawer" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 28, stiffness: 260 }}>

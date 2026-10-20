@@ -17,6 +17,7 @@ export const KEY_FIELDS: KeyField[] = [
   { name: 'CHAT_MODEL', label: 'Sohbet modeli', hint: 'Varsayılan: route-llm (her soruyu uygun modele yönlendirir).', secret: false },
   { name: 'USER_NAME', label: 'Size nasıl hitap etsin', hint: 'Ör. Ramazan', secret: false },
   { name: 'TELEGRAM_BOT_TOKEN', label: 'Telegram bot anahtarı', hint: "Telegram'da @BotFather → /newbot → verilen anahtar. Mesajlarınızı bu bota yazdırın ya da botu gruplara ekleyin.", secret: true },
+  { name: 'TELEGRAM_KANAL', label: 'Telegram kanalı (paylaşım için)', hint: 'İsteğe bağlı. Ör. @kanaladi. Botu kanala yönetici olarak ekleyin; Jarvis onayınızla gönderi paylaşır.', secret: false },
   { name: 'BRAVE_SEARCH_API_KEY', label: 'Brave Search (internette arama)', hint: 'İsteğe bağlı. Boşsa anahtarsız DuckDuckGo kullanılır. api.search.brave.com', secret: true },
   { name: 'EMAIL_ADDRESS', label: 'E-posta adresi', hint: 'Gmail, Outlook, Yandex, iCloud… Jarvis gelen kutusunu okur, taslak yazar; e-posta göndermez.', secret: false },
   { name: 'EMAIL_APP_PASSWORD', label: 'E-posta uygulama şifresi', hint: 'Gmail: Google Hesabı → Güvenlik → 2 adımlı doğrulama → Uygulama şifreleri (16 hane). Normal şifreniz çalışmaz.', secret: true },

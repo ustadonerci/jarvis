@@ -11,6 +11,9 @@ import { EMAIL_TOOLS } from './email.js';
 import { GITHUB_TOOLS } from './github.js';
 import { AGENT_TOOLS } from './agents.js';
 import { ERROR_TOOLS, openErrorCount } from './errors.js';
+import { APPROVAL_TOOLS } from './approvals.js';
+import { SYSTEM_TOOLS } from './system.js';
+import { AUTOMATION_TOOLS, webhooksForPrompt } from './automation.js';
 import { findNewsById } from './news.js';
 import { resolveFastPhoto, resolveSlowPhoto, type PhotoMode } from './photos.js';
 import { findWiki } from './wiki.js';
@@ -48,6 +51,7 @@ function contextVars(device: Device, prevDevice: Device | null) {
     mesajlasma: messagingForPrompt(),
     ton: personaForPrompt(),
     hata_sayisi: String(openErrorCount()),
+    webhooklar: webhooksForPrompt(),
   };
 }
 
@@ -346,7 +350,7 @@ export async function runJarvis(opts: RunOptions): Promise<JarvisReply> {
 
   // Komut yoksa haber aracı hiç sunulmaz: Jarvis kendiliğinden gündem anlatamaz. Diğer araçlar her zaman açık.
   // Her aracın çıktısı toolText'e eklenir; verifyVisual sayı/grafik/harita/alıntı görsellerini bu gerçek veriyle doğrular.
-  const tools = [...(isBrief ? TOOLS : TOOLS.filter(t => t.function.name !== 'get_news')), ...SEARCH_TOOLS, ...FINANCE_TOOLS, ...MSG_TOOLS, ...EMAIL_TOOLS, ...GITHUB_TOOLS, ...AGENT_TOOLS, ...ERROR_TOOLS, ...EXT_TOOLS, ...mcpTools()];
+  const tools = [...(isBrief ? TOOLS : TOOLS.filter(t => t.function.name !== 'get_news')), ...SEARCH_TOOLS, ...FINANCE_TOOLS, ...MSG_TOOLS, ...EMAIL_TOOLS, ...GITHUB_TOOLS, ...AGENT_TOOLS, ...ERROR_TOOLS, ...APPROVAL_TOOLS, ...SYSTEM_TOOLS, ...AUTOMATION_TOOLS, ...EXT_TOOLS, ...mcpTools()];
   let forceNews = isBrief;
   let retriedJson = false;
 

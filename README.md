@@ -57,6 +57,41 @@ npm run models         # RouteLLM'de kullanılabilen modelleri listeler (ses mod
 
 MCP sunucuları bilgisayarınızda program çalıştırır. Bu yüzden GitHub'dan gelenler **kapalı** eklenir ve siz Ayarlar'dan açana kadar çalışmaz. Yalnızca güvendiğiniz repoları açın. Anahtarları, bağlantıları ve yetenekleri yalnızca Jarvis'in çalıştığı bilgisayar değiştirebilir (`ACCESS_TOKEN` tanımlıysa tokenı bilen cihazlar da değiştirebilir).
 
+## Ton, ses ve tema
+
+*Ayarlar* bölümünden 8 konuşma tonundan birini seçebilirsiniz: Profesyonel (varsayılan), Espirili, Heyecanlı, Sıcak, Duygusal, Korkulu, Agresif, Sert/Argo. Argo ton onay ister. Ton hem konuşmayı hem de seslendirmeyi değiştirir. Aynı yerden **Erkek / Kadın ses** seçebilir ve 6 renk teması arasında geçiş yapabilirsiniz.
+
+## Finans
+
+"Bitcoin ne olur", "THYAO alınır mı", "gram altın kaç", "portföyüm nasıl", "bitcoin 100 bini geçerse haber ver" gibi sorular sorabilirsiniz.
+
+- **Veri:** Canlı fiyatlar Yahoo Finance'ten gelir, anahtar gerekmez. Kripto için Binance yedektir.
+- **Göstergeler:** RSI, MACD, SMA 20/50/200, Bollinger, oynaklık.
+- **Sinyaller:** AL / SAT / KÂR AL / TUT, her biri gerekçesiyle.
+- **Portföy:** TL bazında kâr-zarar ve risk raporu.
+- **Fiyat alarmları.**
+
+Sinyaller teknik göstergelerden hesaplanır, yatırım tavsiyesi değildir. Jarvis alım-satım yapmaz.
+
+## E-posta ve GitHub
+
+- **E-posta:** API anahtarlarına e-posta adresinizi ve **uygulama şifrenizi** girin. Gmail için: Google Hesabı → Güvenlik → 2 adımlı doğrulama → Uygulama şifreleri. Jarvis gelen kutusunu özetler, cevap **taslağı** yazar (göndermez) ve onayınızla e-postaları Çöp kutusuna taşır.
+- **GitHub:** "GitHub'da yeni ne var", "bana yeni yetenek öner" dediğinizde trend repoları bulur. Jarvis'e kurulabilecek olanları inceler ve onayınızla kurar.
+
+## Uzman ajanlar ve kendini onarma
+
+- **Uzman ajanlar:** Karmaşık işler Finans, Araştırma, İçerik, Sosyal Medya ve Sistem uzmanlarına bölünür ve paralel çalışır. Uzmanlar yalnızca okuma yapan araçlar kullanır.
+- **Kendini onarma:** Hatalar *Ayarlar → Sistem günlüğü*'ne kaydedilir ve geçici ağ hataları bir kez otomatik yeniden denenir. "Jarvis, kendini kontrol et" dediğinizde kök nedeni açıklar ve çözüm önerir.
+
+## Onay kartları: bilgisayar kontrolü, paylaşım, kendi kodu
+
+Değişiklik yapan her işlem ekranda bir **onay kartı** açar. Kartta tam olarak ne çalışacağı yazar ve siz **Çalıştır** demeden hiçbir şey olmaz. Onay yalnızca Jarvis'in çalıştığı bilgisayardan verilebilir.
+
+- **Uygulamalar** (Windows, winget): ara, kur, güncelle, kaldır.
+- **Komut:** Bilgisayarda PowerShell komutu çalıştırma. Dosyaları listeleme ve okuma onaysızdır ve kullanıcı klasörüyle sınırlıdır.
+- **Paylaşım:** Telegram kanalına gönderi (`TELEGRAM_KANAL`). Diğer sosyal medya platformları için *Ayarlar → Yetenekler → + n8n / webhook* ile bir n8n iş akışı bağlayın.
+- **Kendi kodu:** Jarvis kendi kodunu okuyup düzeltme önerebilir. Kartta değişikliği görürsünüz; onaylarsanız önce `server/data/kod-yedek` klasörüne yedek alınır.
+
 ## Telefon ve tablette kullanmak
 
 Mikrofon yalnızca HTTPS'te çalıştığı için bilgisayarındaki Jarvis'e bir tünelle bağlan:

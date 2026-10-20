@@ -13,6 +13,9 @@ import { isEmailTool, runEmailTool } from './email.js';
 import { isGithubTool, runGithubTool } from './github.js';
 import { isAgentTool, runAgent } from './agents.js';
 import { ERROR_TOOLS, isTransient, logError, runErrorTool } from './errors.js';
+import { APPROVAL_TOOLS, runApprovalTool } from './approvals.js';
+import { isSystemTool, runSystemTool } from './system.js';
+import { isAutomationTool, runAutomationTool } from './automation.js';
 import { addBook, addBookNote, fillInBackground, findBook, setBookStatus } from './library.js';
 
 // Not: `strict` alanı bilerek yok (RouteLLM 400 döndürebiliyor).
@@ -287,6 +290,9 @@ async function runToolOnce(name: string, rawArgs: string, progress: ToolProgress
   if (isGithubTool(name)) return runGithubTool(name, args, progress);
   if (isAgentTool(name)) return runAgent(String(args.uzman ?? ''), String(args.gorev ?? ''), progress);
   if (name === ERROR_TOOLS[0].function.name) return runErrorTool(args);
+  if (name === APPROVAL_TOOLS[0].function.name) return runApprovalTool(args);
+  if (isSystemTool(name)) return runSystemTool(name, args, progress);
+  if (isAutomationTool(name)) return runAutomationTool(name, args, progress);
   if (name === 'get_news') {
     progress('haber kaynakları taranıyor');
     const res = await getNews(args as GetNewsArgs);

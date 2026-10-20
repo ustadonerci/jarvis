@@ -81,6 +81,7 @@ export type ServerEvent =
   | { type: 'mesaj'; platform: 'telegram' | 'whatsapp'; kisi: string; metin: string; arama?: boolean }
   | { type: 'whatsapp' }
   | { type: 'portfoy' }
+  | { type: 'onay'; yeni?: { baslik: string }; bitti?: { baslik: string; durum: string } }
   | { type: 'alarm'; sembol: string; ad: string; fiyat: number; hedef: number; kosul: 'ust' | 'alt' };
 
 /** Ekran: mark1 sade, mark2 yoğun HUD (tüm cihazlarda ortak) */

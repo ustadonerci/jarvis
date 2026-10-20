@@ -157,6 +157,17 @@ export interface ErrorView { kaynak: string; mesaj: string; adet: number; ilk: s
 export const getErrors = () => fetch('/api/hatalar', { headers: headers() }).then(r => json<{ hatalar: ErrorView[] }>(r));
 export const clearErrorLog = () => fetch('/api/hatalar', { method: 'DELETE', headers: headers() }).then(r => json<{ ok: true }>(r));
 
+// ---------- Onay kartları ve webhook'lar ----------
+export interface ActionView { id: string; tur: 'komut' | 'uygulama' | 'paylasim' | 'webhook' | 'kod'; baslik: string; ayrinti: string; aciklama: string; durum: 'bekliyor' | 'calisiyor' | 'tamam' | 'hata' | 'reddedildi' | 'dustu'; sonuc?: string; at: string; bitti?: string }
+export const getActions = () => fetch('/api/islemler', { headers: headers() }).then(r => json<{ islemler: ActionView[] }>(r));
+export const decideAction = (id: string, onay: boolean) =>
+  fetch(`/api/islemler/${encodeURIComponent(id)}`, { method: 'POST', headers: headers(), body: JSON.stringify({ onay }) }).then(r => json<ActionView>(r));
+export interface WebhookView { id: string; ad: string; url: string; aciklama: string }
+export const getWebhooks = () => fetch('/api/webhook', { headers: headers() }).then(r => json<{ webhooklar: WebhookView[] }>(r));
+export const addWebhook = (w: { ad: string; url: string; aciklama: string }) =>
+  fetch('/api/webhook', { method: 'POST', headers: headers(), body: JSON.stringify(w) }).then(r => json<{ ok: true }>(r));
+export const deleteWebhook = (id: string) => fetch(`/api/webhook/${encodeURIComponent(id)}`, { method: 'DELETE', headers: headers() }).then(r => json<{ ok: true }>(r));
+
 /** Oynatıcı "sahibi bu sitede oynatılmasını engelledi" dedi: sunucu bir daha Jarvis içinde önermesin */
 export const reportVideoBlocked = (id: string, code: number) => post('/api/video-blocked', { id, code });
 
