@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   clearErrorLog, getErrors, type ErrorView, addWebhook, deleteWebhook, getWebhooks, type WebhookView,
-  addServer, addSkill, deleteServer, deleteSkill, getExtensions, getKeys, installGitHub, removeRepo, retryServer, saveKeys, toggleServer, toggleSkill,
+  addServer, addSkill, deleteServer, deleteSkill, getExtensions, getKeys, installGitHub, removeRepo, retryServer, logoutServer, saveKeys, toggleServer, toggleSkill,
   type ExtensionsData, type KeysData, type KeyView,
 } from '../lib/api';
 
@@ -111,7 +111,7 @@ export function ExtensionSettings({ flash }: { flash(t: string): void }) {
   const load = () => getExtensions().then(setData).catch(e => setError(e.message));
   useEffect(() => { load(); }, []);
   // Kurulan ya da bağlanan sunucu varken durumu tazele
-  const pending = data?.servers.some(s => s.durum === 'kuruluyor' || s.durum === 'bağlanıyor');
+  const pending = data?.servers.some(s => s.durum === 'kuruluyor' || s.durum === 'bağlanıyor' || s.durum === 'giriş gerekli');
   useEffect(() => {
     if (!pending) return;
     const t = setInterval(load, 2000);
@@ -193,10 +193,13 @@ export function ExtensionSettings({ flash }: { flash(t: string): void }) {
                 <div className="ext-title"><b>{s.ad}</b><i className={`tag ${s.durum === 'bağlı' ? 'ok' : s.durum === 'hata' ? 'bad' : ''}`}>MCP · {s.durum}</i></div>
                 <small className="mono">{s.hedef}</small>
                 {s.durum === 'bağlı' && <small>{s.araclar.length} araç: {s.araclar.slice(0, 8).join(', ')}{s.araclar.length > 8 ? '…' : ''}</small>}
-                {s.hata && <small className="warn">{s.hata}</small>}
+                {s.hata && s.durum !== 'giriş gerekli' && <small className="warn">{s.hata}</small>}
+                {s.durum === 'giriş gerekli' && <small>Bu sunucu hesabınızla giriş istiyor. "Giriş yap"a basın, açılan sayfada izin verin; sonra bu ekrana dönün.</small>}
                 {!s.aktif && s.repo && <small>{repoName(s.repo)} reposundan · açınca bu bilgisayarda program çalıştırır{s.kurulum ? ' (önce npm install)' : ''}</small>}
               </span>
-              {s.durum === 'hata' && <button className="toggle" onClick={() => act(retryServer(s.id))}>tekrar</button>}
+              {s.durum === 'giriş gerekli' && s.girisAdresi && <a className="toggle login" href={s.girisAdresi} target="_blank" rel="noopener noreferrer">Giriş yap</a>}
+              {s.durum === 'bağlı' && s.tur === 'http' && <button className="toggle" title="Hesaptan çıkış" onClick={() => confirm(`${s.ad} hesabından çıkılsın mı?`) && act(logoutServer(s.id))}>çıkış</button>}
+              {(s.durum === 'hata' || s.durum === 'giriş gerekli') && <button className="toggle" onClick={() => act(retryServer(s.id))}>tekrar</button>}
               <button
                 className="toggle"
                 disabled={s.durum === 'kuruluyor'}

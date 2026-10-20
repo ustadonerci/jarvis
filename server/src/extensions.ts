@@ -15,6 +15,8 @@ import express, { type Router } from 'express';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { UnauthorizedError, type OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
+import type { OAuthClientInformationMixed, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
 import { adminOnly } from './keys.js';
 import { logError } from './errors.js';
 
@@ -29,12 +31,16 @@ export interface Skill {
   id: string; ad: string; aciklama: string; tur: SkillKind; icerik: string; aktif: boolean; repo?: string; dosya?: string;
   /** 'jarvis': Jarvis'in kendi yazdığı (yetenek_olustur) */
   kaynak?: 'jarvis';
+  /** Becerinin repo içindeki klasörü (references/ gibi ek dosyaları yetenek_kullan ile okunabilir) */
+  klasor?: string;
 }
 export interface McpServer {
   id: string; ad: string; aktif: boolean; repo?: string;
   tur: 'stdio' | 'http';
   komut?: string; argumanlar?: string[]; cwd?: string; env?: Record<string, string>;
   url?: string; basliklar?: Record<string, string>;
+  /** OAuth kapsamları (ör. ["mcp:tools"]) */
+  kapsam?: string[];
   /** Açılmadan önce repoda çalıştırılacak kurulum (Node paketi: npm install [+ build]) */
   kurulum?: 'npm';
 }
@@ -103,12 +109,73 @@ function skillFrom(md: string, fallbackName: string, tur: SkillKind, extra: Part
 
 // ---------------------------------------------------------------- MCP bağlantıları
 
-interface Live { client: Client; tools: { name: string; description?: string; inputSchema: any }[]; error?: undefined }
-interface Dead { error: string; client?: undefined; tools?: undefined }
+interface Live { client: Client; tools: { name: string; description?: string; inputSchema: any }[]; error?: undefined; girisGerekli?: undefined }
+interface Dead { error: string; client?: undefined; tools?: undefined; girisGerekli?: boolean }
 const live = new Map<string, Live | Dead>();
 /** Modelin gördüğü araç adı → (sunucu, araç) */
 const toolIndex = new Map<string, { server: string; tool: string }>();
 const installing = new Set<string>();
+
+// ---------------------------------------------------------------- MCP OAuth (uzak sunucularda giriş)
+// Tarayıcıda yetki verildikten sonra sağlayıcı http://localhost:<PORT>/api/extensions/oauth/callback adresine döner.
+// İstemci kaydı, anahtarlar ve PKCE doğrulayıcısı server/data/mcp-oauth/<id>.json'da (git'e girmez).
+const OAUTH_DIR = path.join(DATA, 'mcp-oauth');
+const pendingAuth = new Map<string, string>();
+const authTransports = new Map<string, StreamableHTTPClientTransport>();
+const oauthState = new Map<string, string>();
+interface OAuthStore { client?: OAuthClientInformationMixed; tokens?: OAuthTokens; verifier?: string }
+const oauthFile = (id: string) => path.join(OAUTH_DIR, `${id.replace(/[^\w-]/g, '')}.json`);
+const readOAuth = (id: string): OAuthStore => { try { return JSON.parse(fs.readFileSync(oauthFile(id), 'utf8')); } catch { return {}; } };
+const writeOAuth = (id: string, patch: Partial<OAuthStore>) => {
+  fs.mkdirSync(OAUTH_DIR, { recursive: true });
+  fs.writeFileSync(oauthFile(id), JSON.stringify({ ...readOAuth(id), ...patch }, null, 2));
+};
+const redirectUrl = () => `http://localhost:${process.env.PORT || 8787}/api/extensions/oauth/callback`;
+
+function oauthProvider(s: McpServer): OAuthClientProvider {
+  return {
+    get redirectUrl() { return redirectUrl(); },
+    get clientMetadata() {
+      return { client_name: 'Jarvis', redirect_uris: [redirectUrl()], grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], token_endpoint_auth_method: 'none', ...(s.kapsam?.length ? { scope: s.kapsam.join(' ') } : {}) };
+    },
+    state: () => {
+      const st = randomUUID();
+      oauthState.set(st, s.id);
+      return st;
+    },
+    clientInformation: () => readOAuth(s.id).client,
+    saveClientInformation: client => writeOAuth(s.id, { client }),
+    tokens: () => readOAuth(s.id).tokens,
+    saveTokens: tokens => writeOAuth(s.id, { tokens }),
+    redirectToAuthorization: url => { pendingAuth.set(s.id, url.href); },
+    saveCodeVerifier: verifier => writeOAuth(s.id, { verifier }),
+    codeVerifier: () => {
+      const v = readOAuth(s.id).verifier;
+      if (!v) throw new Error('PKCE doğrulayıcısı yok; girişi baştan başlatın');
+      return v;
+    },
+    invalidateCredentials: scope => {
+      const cur = readOAuth(s.id);
+      if (scope === 'all') fs.rmSync(oauthFile(s.id), { force: true });
+      else if (scope === 'tokens') writeOAuth(s.id, { ...cur, tokens: undefined });
+      else if (scope === 'client') writeOAuth(s.id, { ...cur, client: undefined });
+      else if (scope === 'verifier') writeOAuth(s.id, { ...cur, verifier: undefined });
+    },
+  };
+}
+
+async function finishOAuth(state: string, code: string): Promise<McpServer> {
+  const id = oauthState.get(state);
+  const s = store.servers.find(x => x.id === id);
+  const t = id ? authTransports.get(id) : undefined;
+  if (!s || !t) throw new Error('Giriş oturumu bulunamadı ya da süresi doldu; Ayarlar\'dan yeniden "Giriş yap"a basın.');
+  oauthState.delete(state);
+  await t.finishAuth(code);
+  pendingAuth.delete(s.id);
+  await connect(s);
+  changed();
+  return s;
+}
 
 /** ${VAR} ve ${CLAUDE_PLUGIN_ROOT} yer tutucuları (.mcp.json'larda yaygın) */
 function expand(v: string, root?: string): string {
@@ -155,8 +222,22 @@ async function connect(s: McpServer) {
     const client = new Client({ name: 'jarvis', version: '1.0.0' });
     if (s.tur === 'http') {
       if (!s.url) throw new Error('adres yok');
-      const headers = Object.fromEntries(Object.entries(s.basliklar ?? {}).map(([k, v]) => [k, expand(v)]));
-      await client.connect(new StreamableHTTPClientTransport(new URL(expand(s.url)), { requestInit: { headers } }));
+      const headers = Object.fromEntries(Object.entries(s.basliklar ?? {}).map(([k, v]) => [k, expand(String(v))]));
+      // Sunucu giriş isterse (OAuth) yetki adresi kaydedilir; kullanıcı Ayarlar'dan "Giriş yap" ile tamamlar
+      const transport = new StreamableHTTPClientTransport(new URL(expand(s.url)), { requestInit: { headers }, authProvider: oauthProvider(s) });
+      authTransports.set(s.id, transport);
+      try {
+        await client.connect(transport);
+      } catch (e) {
+        if (e instanceof UnauthorizedError || pendingAuth.has(s.id)) {
+          live.set(s.id, { error: 'Giriş gerekli: Ayarlar → Yetenekler → "Giriş yap"', girisGerekli: true });
+          console.log(`[yetenek] MCP giriş bekliyor: ${s.ad}`);
+          changed();
+          return;
+        }
+        throw e;
+      }
+      pendingAuth.delete(s.id);
     } else {
       if (!s.komut) throw new Error('komut yok');
       const env = { ...getDefaultEnvironment(), ...netEnv(), ...Object.fromEntries(Object.entries(s.env ?? {}).map(([k, v]) => [k, expand(v, s.cwd)])) };
@@ -243,7 +324,10 @@ export const YETENEK_TOOL = {
     description: 'Yüklü bir becerinin ya da iş akışının tam talimatlarını getirir. İstek "Yetenekler" listesindeki bir yeteneğe uyuyorsa önce bunu çağır, sonra talimatlara göre çalış.',
     parameters: {
       type: 'object',
-      properties: { ad: { type: 'string', description: 'Yeteneğin listedeki adı' } },
+      properties: {
+        ad: { type: 'string', description: 'Yeteneğin listedeki adı' },
+        dosya: { type: 'string', description: 'İsteğe bağlı: becerinin ek dosyası (ek_dosyalar listesindeki yol, ör. references/catalog.md)' },
+      },
       required: ['ad'],
     },
   },
@@ -297,8 +381,17 @@ export async function runExtensionTool(name: string, args: any, progress: (l: st
     const q = String(args.ad ?? '').toLocaleLowerCase('tr').trim();
     const s = active().find(x => x.ad.toLocaleLowerCase('tr') === q) ?? active().find(x => x.ad.toLocaleLowerCase('tr').includes(q));
     if (!s) return JSON.stringify({ hata: `"${args.ad}" adında aktif yetenek yok.`, mevcut: active().map(x => x.ad) });
+    // Beceri klasöründeki ek dosyalar (references/ vb.): talimatlar bunlara atıf yapıyorsa dosya ile okunur
+    const dir = s.repo && s.klasor !== undefined ? path.join(REPOS, s.repo, s.klasor) : null;
+    if (dir && args.dosya) {
+      const f = path.resolve(dir, String(args.dosya));
+      if (!f.startsWith(dir + path.sep) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) return JSON.stringify({ hata: `"${args.dosya}" bu becerinin klasöründe yok` });
+      progress(`yetenek: ${s.ad} · ${args.dosya}`);
+      return JSON.stringify({ ad: s.ad, dosya: args.dosya, icerik: fs.readFileSync(f, 'utf8').slice(0, MAX_SKILL) });
+    }
+    const ekler = dir && fs.existsSync(dir) ? walk(dir).map(f => path.relative(dir, f).split(path.sep).join('/')).filter(f => f !== 'SKILL.md' && /\.(md|txt|json|ya?ml)$/i.test(f)).slice(0, 60) : [];
     progress(`yetenek: ${s.ad}`);
-    return JSON.stringify({ ad: s.ad, tur: s.tur, talimatlar: s.icerik, not: 'Talimatları uygula; cevabı yine sahne JSON şemasında ver.' });
+    return JSON.stringify({ ad: s.ad, tur: s.tur, talimatlar: s.icerik, ek_dosyalar: ekler.length ? ekler : undefined, not: `Talimatları uygula; cevabı yine sahne JSON şemasında ver.${ekler.length ? ' Talimat bir ek dosyaya atıf yaparsa yetenek_kullan\'ı aynı adla ve dosya ile çağır.' : ''}` });
   }
   if (name === 'yetenek_olustur') {
     const icerik = String(args.icerik ?? '').trim().slice(0, MAX_SKILL);
@@ -361,28 +454,38 @@ function scan(root: string, slug: string) {
   const skills: Skill[] = [];
   const servers: McpServer[] = [];
 
+  // Beceri klasörleri: içlerindeki references/, workflows/ gibi .md'ler becerinin parçasıdır, ayrı iş akışı sayılmaz
+  const skillDirs = files.filter(f => path.basename(f) === 'SKILL.md').map(f => path.dirname(f));
+  const inSkill = (f: string) => skillDirs.some(d => f !== path.join(d, 'SKILL.md') && f.startsWith(d + path.sep));
   for (const f of files) {
     const r = rel(f);
     const base = path.basename(f);
     if (base === 'SKILL.md') {
-      skills.push(skillFrom(fs.readFileSync(f, 'utf8'), path.basename(path.dirname(f)) || slug, 'beceri', { repo: slug, dosya: r }));
-    } else if (/(^|\/)(commands|workflows)\/[^/]+\.md$/i.test(r) || /\.workflow\.md$/i.test(base)) {
+      skills.push(skillFrom(fs.readFileSync(f, 'utf8'), path.basename(path.dirname(f)) || slug, 'beceri', { repo: slug, dosya: r, klasor: rel(path.dirname(f)) }));
+    } else if (!inSkill(f) && (/(^|\/)(commands|workflows)\/[^/]+\.md$/i.test(r) || /\.workflow\.md$/i.test(base))) {
       skills.push(skillFrom(fs.readFileSync(f, 'utf8'), base.replace(/(\.workflow)?\.md$/i, ''), 'is_akisi', { repo: slug, dosya: r }));
     }
   }
 
-  // Claude/Cursor tarzı MCP tanımı
-  for (const name of ['.mcp.json', 'mcp.json', '.claude-plugin/mcp.json']) {
-    const f = path.join(root, name);
-    if (!fs.existsSync(f)) continue;
+  // MCP tanımları (Claude / Cursor / Codex eklentileri): repo içinde herhangi bir yerde. Aynı sunucu birden çok
+  // dosyada olabilir; Claude biçimi önce gelir. İki biçim var: {"mcpServers": {...}} ve doğrudan {"ad": {...}}.
+  const cfgRank = (f: string) => ['.mcp.claude.json', '.mcp.json', 'mcp.json'].indexOf(path.basename(f));
+  const cfgFiles = files.filter(f => cfgRank(f) >= 0).sort((a, b) => cfgRank(a) - cfgRank(b));
+  for (const f of cfgFiles) {
     try {
       const j = JSON.parse(fs.readFileSync(f, 'utf8'));
-      for (const [ad, c] of Object.entries<any>(j.mcpServers ?? j.servers ?? {})) {
+      const map = j.mcpServers ?? j.servers ?? (Object.values(j).every((v: any) => v && typeof v === 'object' && (v.url || v.command)) ? j : {});
+      for (const [ad, c] of Object.entries<any>(map)) {
+        const ex = servers.find(x => x.ad === ad);
+        // Aynı sunucunun başka dosyadaki tanımında OAuth kapsamı varsa (Codex biçimi) onu da al
+        if (ex) { if (Array.isArray(c?.scopes) && !ex.kapsam) ex.kapsam = c.scopes.map(String); continue; }
+        if (!c?.url && !c?.command) continue;
         const http = typeof c.url === 'string';
+        const dir = path.dirname(f);
         servers.push({
           id: randomUUID().slice(0, 8), ad, aktif: false, repo: slug,
           tur: http ? 'http' : 'stdio',
-          ...(http ? { url: c.url, basliklar: c.headers } : { komut: c.command, argumanlar: c.args ?? [], env: c.env, cwd: root }),
+          ...(http ? { url: c.url, basliklar: c.headers ?? c.http_headers, kapsam: Array.isArray(c.scopes) ? c.scopes.map(String) : undefined } : { komut: c.command, argumanlar: c.args ?? [], env: c.env, cwd: dir }),
         });
       }
     } catch { /* bozuk dosya: atla */ }
@@ -467,7 +570,8 @@ function view() {
       return {
         id: s.id, ad: s.ad, aktif: s.aktif, repo: s.repo, tur: s.tur,
         hedef: s.tur === 'http' ? s.url : [s.komut, ...(s.argumanlar ?? [])].join(' '),
-        durum: installing.has(s.id) ? 'kuruluyor' : !s.aktif ? 'kapalı' : l?.tools ? 'bağlı' : l?.error ? 'hata' : 'bağlanıyor',
+        durum: installing.has(s.id) ? 'kuruluyor' : !s.aktif ? 'kapalı' : l?.tools ? 'bağlı' : l?.girisGerekli ? 'giriş gerekli' : l?.error ? 'hata' : 'bağlanıyor',
+        girisAdresi: l?.girisGerekli ? pendingAuth.get(s.id) : undefined,
         hata: l?.error, araclar: l?.tools?.map(t => t.name) ?? [],
         kurulum: s.kurulum,
       };
@@ -495,6 +599,26 @@ export function extensionsRouter(): Router {
   r.use('/api/extensions', adminOnly);
 
   r.get('/api/extensions', (_req, res) => res.json(view()));
+
+  r.get('/api/extensions/oauth/callback', async (req, res) => {
+    const page = (title: string, msg: string) => res.type('html').send(`<!doctype html><meta charset="utf-8"><title>${title}</title><body style="font:16px system-ui;background:#04070c;color:#e8f6ff;display:grid;place-items:center;height:100vh;margin:0"><div style="text-align:center"><h2>${title}</h2><p>${msg}</p></div></body>`);
+    const esc = (v: unknown) => String(v ?? '').replace(/[<>&"]/g, '');
+    if (req.query.error) return page('Giriş yapılamadı', esc(req.query.error_description || req.query.error));
+    try {
+      const s = await finishOAuth(String(req.query.state ?? ''), String(req.query.code ?? ''));
+      page('Giriş tamamlandı', `${esc(s.ad)} Jarvis'e bağlandı. Bu sekmeyi kapatabilirsiniz.`);
+    } catch (e: any) {
+      page('Giriş tamamlanamadı', esc(e?.message || e));
+    }
+  });
+  r.post('/api/extensions/server/:id/cikis', async (req, res) => {
+    const s = store.servers.find(x => x.id === req.params.id);
+    if (!s) return res.status(404).json({ error: 'bulunamadı' });
+    fs.rmSync(oauthFile(s.id), { force: true });
+    await disconnect(s.id);
+    if (s.aktif) enableServer(s);
+    res.json(view());
+  });
 
   r.post('/api/extensions/github', async (req, res) => {
     try {

@@ -111,7 +111,7 @@ export const saveKeys = (values: Record<string, string>) =>
   fetch('/api/keys', { method: 'POST', headers: headers(), body: JSON.stringify({ values }) }).then(r => json<KeysData & { changed: number; restarting: boolean }>(r));
 
 export interface SkillView { id: string; ad: string; aciklama: string; tur: 'beceri' | 'is_akisi'; aktif: boolean; repo?: string; dosya?: string; kaynak?: 'jarvis'; uzunluk: number }
-export interface ServerView { id: string; ad: string; aktif: boolean; repo?: string; tur: 'stdio' | 'http'; hedef: string; durum: 'kapalı' | 'kuruluyor' | 'bağlanıyor' | 'bağlı' | 'hata'; hata?: string; araclar: string[]; kurulum?: 'npm' }
+export interface ServerView { id: string; ad: string; aktif: boolean; repo?: string; tur: 'stdio' | 'http'; hedef: string; durum: 'kapalı' | 'kuruluyor' | 'bağlanıyor' | 'bağlı' | 'giriş gerekli' | 'hata'; hata?: string; girisAdresi?: string; araclar: string[]; kurulum?: 'npm' }
 export interface ExtensionsData { repos: { slug: string; url: string; at: string }[]; skills: SkillView[]; servers: ServerView[] }
 const ext = (path: string, method = 'GET', body?: object) =>
   fetch(`/api/extensions${path}`, { method, headers: headers(), body: body ? JSON.stringify(body) : undefined }).then(r => json<ExtensionsData>(r));
@@ -125,6 +125,7 @@ export const addServer = (s: { ad: string; komut?: string; url?: string; env?: s
 export const toggleServer = (id: string, aktif: boolean) => ext(`/server/${id}`, 'POST', { aktif });
 export const retryServer = (id: string) => ext(`/server/${id}`, 'POST', { yenile: true });
 export const deleteServer = (id: string) => ext(`/server/${id}`, 'DELETE');
+export const logoutServer = (id: string) => ext(`/server/${id}/cikis`, 'POST', {});
 
 // ---------- Ayarlar → Bağlantılar (Telegram, WhatsApp) ----------
 export interface MessagingCfg { telegramOto: boolean; whatsappOto: boolean; aramaMesaji: boolean; aramaMetni: string; talimat: string }
