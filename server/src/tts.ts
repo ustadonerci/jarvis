@@ -7,6 +7,7 @@ import { API_KEY, BASE_URL, MOCK, routellm, type ChatResponse } from './routellm
 import { BRIEF_OPENING } from './brief.js';
 import { isMp3, isWav, normalizeSpeech, pcmToWav, wavSeconds } from './audio.js';
 import { elevenReady, elevenSpeak, isEleven, type ElevenCtx } from './eleven.js';
+import { azureReady, azureSpeak, isAzure } from './azure.js';
 import { SCRIPTED_LINES } from './scripted.js';
 
 /**
@@ -97,7 +98,7 @@ export function envVoice(): { sel: VoiceSel; warning?: string } {
   return { sel: { model, voice, speed: DEFAULT_RATE } };
 }
 
-export const ttsEnabled = (sel: VoiceSel) => sel.model !== BROWSER && (isEleven(sel.model) ? elevenReady() : !MOCK && !!API_KEY);
+export const ttsEnabled = (sel: VoiceSel) => sel.model !== BROWSER && (isEleven(sel.model) ? elevenReady() : isAzure(sel.model) ? azureReady() : !MOCK && !!API_KEY);
 
 // ---------------------------------------------------------------- Üretim
 
@@ -144,7 +145,11 @@ function plausible(s: Speech, text: string) {
   return sec >= expected * 0.4 && sec <= expected * 2.2 + 1.5;
 }
 
-async function generateOnce(text: string, sel: VoiceSel, ctx: ElevenCtx): Promise<{ speech: Speech; method: 'speech' | 'chat' | 'elevenlabs' } | { error: string }> {
+async function generateOnce(text: string, sel: VoiceSel, ctx: ElevenCtx): Promise<{ speech: Speech; method: 'speech' | 'chat' | 'elevenlabs' | 'azure' } | { error: string }> {
+  if (isAzure(sel.model)) {
+    const buf = await azureSpeak(text, sel.voice, sel.speed);
+    return { speech: { buf, mime: 'audio/mpeg' }, method: 'azure' };
+  }
   if (isEleven(sel.model)) {
     const buf = await elevenSpeak(text, sel.voice, sel.model, sel.speed, ctx);
     return { speech: { buf, mime: 'audio/mpeg' }, method: 'elevenlabs' };
@@ -172,7 +177,7 @@ async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
 
 // ElevenLabs'te hız sunucuda uygulanır: farklı hız = farklı ses dosyası
 const cacheKey = (text: string, sel: VoiceSel) =>
-  createHash('sha1').update([sel.model, sel.voice, isEleven(sel.model) ? sel.speed : SERVER_SPEED, style(), text].join('\u0000')).digest('hex');
+  createHash('sha1').update([sel.model, sel.voice, isEleven(sel.model) || isAzure(sel.model) ? sel.speed : SERVER_SPEED, style(), text].join('\u0000')).digest('hex');
 const memory = new Map<string, Speech>();
 const inflight = new Map<string, Promise<Speech | null>>();
 

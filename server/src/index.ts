@@ -31,6 +31,7 @@ import { adminOnly, listKeys, restartServer, saveKeys } from './keys.js';
 import { PERSONAS, isPersona, setPersona, type PersonaId } from './persona.js';
 import { THEMES, isTheme, voiceGender, type ThemeId } from './look.js';
 import { ELEVEN_MODEL, ELEVEN_MODEL_LABEL, elevenReady, elevenUsage, elevenVoices, isEleven } from './eleven.js';
+import { AZURE_MODEL, AZURE_VOICES, azureReady, isAzure } from './azure.js';
 import type { Device, StoredMessage } from './types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -81,6 +82,7 @@ function validVoice(v: VoiceSel | undefined): v is VoiceSel {
   if (v.model === BROWSER) return true;
   // ElevenLabs: anahtar varsa ve ses kimliği biçimi doğruysa (sesler hesaptan gelir, npm run voices'tan değil)
   if (isEleven(v.model)) return elevenReady() && /^[A-Za-z0-9]{8,40}$/.test(v.voice);
+  if (isAzure(v.model)) return azureReady() && AZURE_VOICES.some(a => a.voice === v.voice);
   if (isRoutedModel(v.model)) return false;
   const catalog = usableVoices();
   return !catalog.length || catalog.some(c => c.model === v.model && c.voice === v.voice);
@@ -228,7 +230,8 @@ app.get('/api/voices', async (_req, res) => {
     f0: null,
     gender: voiceGender(v.name, null, v.labels?.gender),
   }));
-  res.json({ voices: [...elevenList, ...list], current: currentVoice(), tested: loadCatalog().length, eleven: usage });
+  const azureList = azureReady() ? AZURE_VOICES.map(a => ({ id: `${AZURE_MODEL}:${a.voice}`, model: AZURE_MODEL, voice: a.voice, label: a.label, provider: 'Azure', wpm: null, f0: null, gender: a.gender })) : [];
+  res.json({ voices: [...elevenList, ...azureList, ...list], current: currentVoice(), tested: loadCatalog().length, eleven: usage });
 });
 
 app.get('/api/voices/preview', async (req, res) => {

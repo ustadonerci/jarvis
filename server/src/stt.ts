@@ -17,10 +17,53 @@ export function audioFormat(mime: string): string | null {
   return null;
 }
 
+/**
+ * Ayrı ses tanıma sağlayıcıları (isteğe bağlı, anahtar girildiyse sırayla denenir; olmazsa RouteLLM):
+ * - Deepgram (DEEPGRAM_API_KEY): hızlı; Türkçe için nova-2 (DEEPGRAM_MODEL ile değiştirilebilir).
+ * - OpenAI Whisper (OPENAI_API_KEY): OPENAI_STT_MODEL, varsayılan whisper-1 (gpt-4o-transcribe de olur).
+ */
+async function viaDeepgram(audio: Buffer, mime: string): Promise<{ text: string; model: string }> {
+  const model = process.env.DEEPGRAM_MODEL || 'nova-2';
+  const r = await fetch(`https://api.deepgram.com/v1/listen?model=${encodeURIComponent(model)}&language=tr&smart_format=true&punctuate=true`, {
+    method: 'POST',
+    headers: { Authorization: `Token ${process.env.DEEPGRAM_API_KEY}`, 'Content-Type': mime.split(';')[0] || 'audio/webm' },
+    body: new Uint8Array(audio),
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!r.ok) throw new Error(`Deepgram ${r.status}: ${(await r.text()).slice(0, 120)}`);
+  const j: any = await r.json();
+  return { text: String(j.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? '').trim(), model: `deepgram/${model}` };
+}
+async function viaWhisper(audio: Buffer, mime: string, format: string): Promise<{ text: string; model: string }> {
+  const model = process.env.OPENAI_STT_MODEL || 'whisper-1';
+  const form = new FormData();
+  form.append('file', new Blob([new Uint8Array(audio)], { type: mime }), `kayit.${format}`);
+  form.append('model', model);
+  form.append('language', 'tr');
+  const r = await fetch('https://api.openai.com/v1/audio/transcriptions', { method: 'POST', headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, body: form, signal: AbortSignal.timeout(30_000) });
+  if (!r.ok) throw new Error(`OpenAI ${r.status}: ${(await r.text()).slice(0, 120)}`);
+  const j: any = await r.json();
+  return { text: String(j.text ?? '').trim(), model: `openai/${model}` };
+}
+
 export async function transcribe(audio: Buffer, mime: string): Promise<{ text: string; model: string; ms: number }> {
   const t0 = Date.now();
   const format = audioFormat(mime);
   if (!format) throw new Error(`desteklenmeyen ses biçimi: ${mime}`);
+
+  const providers: [boolean, () => Promise<{ text: string; model: string }>][] = [
+    [!!process.env.DEEPGRAM_API_KEY, () => viaDeepgram(audio, mime)],
+    [!!process.env.OPENAI_API_KEY, () => viaWhisper(audio, mime, format)],
+  ];
+  for (const [ready, run] of providers) {
+    if (!ready) continue;
+    try {
+      const r = await run();
+      return { ...r, ms: Date.now() - t0 };
+    } catch (e: any) {
+      console.warn(`[stt] ${String(e?.message || e).slice(0, 140)} · sıradaki sağlayıcı deneniyor`);
+    }
+  }
 
   if (transcriptionsEndpoint !== false) {
     const form = new FormData();
