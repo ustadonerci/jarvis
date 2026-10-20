@@ -16,6 +16,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { adminOnly } from './keys.js';
+import { logError } from './errors.js';
 
 const run = promisify(execFile);
 const DATA = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
@@ -180,6 +181,7 @@ async function connect(s: McpServer) {
     const tail = stderr.trim().split(/\r?\n/).slice(-3).join(' · ');
     live.set(s.id, { error: `${String(e?.message || e).slice(0, 200)}${tail ? ` — ${tail}` : ''}` });
     console.warn(`[yetenek] MCP bağlanamadı: ${s.ad} · ${String(e?.message || e).slice(0, 160)}`);
+    logError(`mcp:${s.ad}`, live.get(s.id)?.error ?? e);
   }
   rebuildIndex();
 }

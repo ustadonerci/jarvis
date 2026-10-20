@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  clearErrorLog, getErrors, type ErrorView,
   addServer, addSkill, deleteServer, deleteSkill, getExtensions, getKeys, installGitHub, removeRepo, retryServer, saveKeys, toggleServer, toggleSkill,
   type ExtensionsData, type KeysData, type KeyView,
 } from '../lib/api';
@@ -243,6 +244,46 @@ export function ExtensionSettings({ flash }: { flash(t: string): void }) {
           <p className="muted small">{'${AD}'} yazarsanız değer API anahtarlarından alınır; anahtarı buraya açık yazmanız gerekmez.</p>
           <div className="seg"><button className="on" disabled={!mcp.hedef.trim()} onClick={submitMcp}>Ekle ve bağlan</button></div>
         </div>
+      )}
+    </>
+  );
+}
+
+/** Ayarlar → Sistem günlüğü: Jarvis'in kaydettiği hatalar ve olası nedenleri. "Jarvis, kendini kontrol et" de aynı listeyi okur. */
+export function ErrorLog({ flash }: { flash(t: string): void }) {
+  const [list, setList] = useState<ErrorView[] | null>(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => { getErrors().then(r => setList(r.hatalar)).catch(() => setList([])); }, [open]);
+  const active = list?.filter(e => !e.cozuldu) ?? [];
+  return (
+    <>
+      <label>Sistem günlüğü{active.length ? ` · ${active.length} hata` : ''}</label>
+      {!open ? (
+        <button className="profile-peek" onClick={() => setOpen(true)}>
+          <span>{list === null ? 'yükleniyor…' : active.length ? `Son hata: ${active[0].kaynak} · ${active[0].mesaj}` : 'Kayıtlı hata yok, sistem sağlıklı'}</span>
+          <em>aç</em>
+        </button>
+      ) : (
+        <>
+          {active.length === 0 ? <p className="muted small">Kayıtlı hata yok.</p> : (
+            <ul className="memory ext-list">
+              {active.map((e, i) => (
+                <li key={i}>
+                  <span>
+                    <div className="ext-title"><b>{e.kaynak}</b><i className="tag bad">{e.adet}×</i><i className="tag">{new Date(e.son).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</i></div>
+                    <small className="mono">{e.mesaj}</small>
+                    {e.olasi_neden && <small>→ {e.olasi_neden}</small>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="muted small">"Jarvis, kendini kontrol et" derseniz bu hataları inceleyip çözüm önerir. Geçici ağ hataları bir kez otomatik yeniden denenir.</p>
+          <div className="seg">
+            {active.length > 0 && <button onClick={() => clearErrorLog().then(() => { setList([]); flash('Günlük temizlendi'); }).catch(e => flash(e.message))}>Temizle</button>}
+            <button onClick={() => setOpen(false)}>Kapat</button>
+          </div>
+        </>
       )}
     </>
   );

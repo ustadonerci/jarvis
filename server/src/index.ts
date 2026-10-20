@@ -24,6 +24,7 @@ import { initLibrary, libraryRouter } from './library.js';
 import { extensionsRouter, initExtensions } from './extensions.js';
 import { initMessaging, messagingRouter } from './messaging.js';
 import { financeRouter, initFinance } from './finance.js';
+import { clearErrors, errorList, initErrors, logError } from './errors.js';
 import { adminOnly, listKeys, restartServer, saveKeys } from './keys.js';
 import { PERSONAS, isPersona, setPersona, type PersonaId } from './persona.js';
 import { THEMES, isTheme, voiceGender, type ThemeId } from './look.js';
@@ -123,6 +124,7 @@ initLibrary(broadcast);
 initExtensions(broadcast);
 initMessaging(broadcast);
 initFinance(broadcast);
+initErrors();
 
 const app = express();
 app.use(express.json({ limit: '12mb' })); // kamera fotoğrafı (istemci ~1280 px JPEG'e küçültür)
@@ -287,6 +289,10 @@ app.use(messagingRouter());
 // ---------- Finans: portföy ve fiyat alarmları ----------
 app.use(financeRouter());
 
+// ---------- Hata günlüğü ----------
+app.get('/api/hatalar', adminOnly, (_req, res) => res.json({ hatalar: errorList() }));
+app.delete('/api/hatalar', adminOnly, (_req, res) => { clearErrors(); res.json({ ok: true }); });
+
 // ---------- API anahtarları (server/.env) ----------
 app.get('/api/keys', adminOnly, (_req, res) => res.json(listKeys()));
 app.post('/api/keys', adminOnly, (req, res) => {
@@ -440,6 +446,7 @@ app.post('/api/chat', async (req, res) => {
     res.json({ ok: true, scenes: total });
   } catch (e: any) {
     console.error(e);
+    logError('sohbet', e);
     broadcast({ type: 'error', error: String(e?.message || e), origin: client });
     res.status(500).json({ error: String(e?.message || e) });
   } finally {

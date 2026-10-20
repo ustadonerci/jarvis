@@ -11,6 +11,8 @@ import { isSearchTool, runSearchTool } from './search.js';
 import { isFinanceTool, runFinanceTool } from './finance.js';
 import { isEmailTool, runEmailTool } from './email.js';
 import { isGithubTool, runGithubTool } from './github.js';
+import { isAgentTool, runAgent } from './agents.js';
+import { ERROR_TOOLS, isTransient, logError, runErrorTool } from './errors.js';
 import { addBook, addBookNote, fillInBackground, findBook, setBookStatus } from './library.js';
 
 // Not: `strict` alanı bilerek yok (RouteLLM 400 döndürebiliyor).
@@ -240,7 +242,37 @@ export const TOOLS = [
 
 export type ToolProgress = (line: string) => void;
 
+/** Teknik hata gibi görünen araç çıktıları (kullanıcı kaynaklı "bulunamadı" sonuçları değil) günlüğe yazılır */
+const TECHNICAL = /\b[45]\d\d\b|ENOT|ECONN|ETIMEDOUT|EAI_AGAIN|fetch failed|timeout|zaman aşımı|unauthori|bağlanılamadı|başarısız|alınamadı|sınırı doldu/i;
+
+/**
+ * Aracı çalıştırır; fırlatılan hatayı modele okunur bir hataya çevirir, geçici ağ hatalarında bir kez yeniden dener
+ * ve teknik hataları hata günlüğüne yazar (Jarvis hata_gunlugu ile kök nedeni analiz eder).
+ */
 export async function runTool(name: string, rawArgs: string, progress: ToolProgress): Promise<string> {
+  const once = () => runToolOnce(name, rawArgs, progress).catch((e: any) => JSON.stringify({ hata: String(e?.message || e).slice(0, 300) }));
+  let out = await once();
+  let err = toolError(out);
+  if (err && isTransient(err)) {
+    progress(`${name}: geçici hata, yeniden deneniyor`);
+    await new Promise(r => setTimeout(r, 1500));
+    out = await once();
+    err = toolError(out);
+  }
+  if (err && TECHNICAL.test(err)) logError(name, err);
+  return out;
+}
+function toolError(out: string): string | null {
+  try {
+    const j = JSON.parse(out);
+    const e = j?.hata ?? j?.error;
+    return typeof e === 'string' ? e : null;
+  } catch {
+    return null;
+  }
+}
+
+async function runToolOnce(name: string, rawArgs: string, progress: ToolProgress): Promise<string> {
   let args: any = {};
   try {
     args = rawArgs ? JSON.parse(rawArgs) : {};
@@ -253,6 +285,8 @@ export async function runTool(name: string, rawArgs: string, progress: ToolProgr
   if (isFinanceTool(name)) return runFinanceTool(name, args, progress);
   if (isEmailTool(name)) return runEmailTool(name, args, progress);
   if (isGithubTool(name)) return runGithubTool(name, args, progress);
+  if (isAgentTool(name)) return runAgent(String(args.uzman ?? ''), String(args.gorev ?? ''), progress);
+  if (name === ERROR_TOOLS[0].function.name) return runErrorTool(args);
   if (name === 'get_news') {
     progress('haber kaynakları taranıyor');
     const res = await getNews(args as GetNewsArgs);

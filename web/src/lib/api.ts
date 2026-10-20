@@ -152,6 +152,11 @@ export const deletePortfolio = (id: string) => fetch(`/api/finans/portfoy/${enco
 export const getAlarms = () => fetch('/api/finans/alarm', { headers: headers() }).then(r => json<{ alarmlar: AlarmView[] }>(r));
 export const deleteAlarm = (id: string) => fetch(`/api/finans/alarm/${encodeURIComponent(id)}`, { method: 'DELETE', headers: headers() }).then(r => json<{ ok: true }>(r));
 
+// ---------- Ayarlar → Sistem günlüğü ----------
+export interface ErrorView { kaynak: string; mesaj: string; adet: number; ilk: string; son: string; cozuldu?: boolean; olasi_neden: string | null }
+export const getErrors = () => fetch('/api/hatalar', { headers: headers() }).then(r => json<{ hatalar: ErrorView[] }>(r));
+export const clearErrorLog = () => fetch('/api/hatalar', { method: 'DELETE', headers: headers() }).then(r => json<{ ok: true }>(r));
+
 /** Oynatıcı "sahibi bu sitede oynatılmasını engelledi" dedi: sunucu bir daha Jarvis içinde önermesin */
 export const reportVideoBlocked = (id: string, code: number) => post('/api/video-blocked', { id, code });
 
