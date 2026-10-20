@@ -9,6 +9,8 @@ import { isExtensionTool, runExtensionTool } from './extensions.js';
 import { isMsgTool, runMsgTool } from './messaging.js';
 import { isSearchTool, runSearchTool } from './search.js';
 import { isFinanceTool, runFinanceTool } from './finance.js';
+import { isEmailTool, runEmailTool } from './email.js';
+import { isGithubTool, runGithubTool } from './github.js';
 import { addBook, addBookNote, fillInBackground, findBook, setBookStatus } from './library.js';
 
 // Not: `strict` alanı bilerek yok (RouteLLM 400 döndürebiliyor).
@@ -249,6 +251,8 @@ export async function runTool(name: string, rawArgs: string, progress: ToolProgr
   if (isMsgTool(name)) return runMsgTool(name, args, progress);
   if (isSearchTool(name)) return runSearchTool(name, args, progress);
   if (isFinanceTool(name)) return runFinanceTool(name, args, progress);
+  if (isEmailTool(name)) return runEmailTool(name, args, progress);
+  if (isGithubTool(name)) return runGithubTool(name, args, progress);
   if (name === 'get_news') {
     progress('haber kaynakları taranıyor');
     const res = await getNews(args as GetNewsArgs);

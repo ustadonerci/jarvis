@@ -7,6 +7,8 @@ import { MSG_TOOLS, messagingForPrompt } from './messaging.js';
 import { SEARCH_TOOLS } from './search.js';
 import { personaForPrompt } from './persona.js';
 import { FINANCE_TOOLS } from './finance.js';
+import { EMAIL_TOOLS } from './email.js';
+import { GITHUB_TOOLS } from './github.js';
 import { findNewsById } from './news.js';
 import { resolveFastPhoto, resolveSlowPhoto, type PhotoMode } from './photos.js';
 import { findWiki } from './wiki.js';
@@ -341,7 +343,7 @@ export async function runJarvis(opts: RunOptions): Promise<JarvisReply> {
 
   // Komut yoksa haber aracı hiç sunulmaz: Jarvis kendiliğinden gündem anlatamaz. Diğer araçlar her zaman açık.
   // Her aracın çıktısı toolText'e eklenir; verifyVisual sayı/grafik/harita/alıntı görsellerini bu gerçek veriyle doğrular.
-  const tools = [...(isBrief ? TOOLS : TOOLS.filter(t => t.function.name !== 'get_news')), ...SEARCH_TOOLS, ...FINANCE_TOOLS, ...MSG_TOOLS, ...EXT_TOOLS, ...mcpTools()];
+  const tools = [...(isBrief ? TOOLS : TOOLS.filter(t => t.function.name !== 'get_news')), ...SEARCH_TOOLS, ...FINANCE_TOOLS, ...MSG_TOOLS, ...EMAIL_TOOLS, ...GITHUB_TOOLS, ...EXT_TOOLS, ...mcpTools()];
   let forceNews = isBrief;
   let retriedJson = false;
 
