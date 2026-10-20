@@ -14,6 +14,8 @@ import { WeatherPanel } from './components/dashboard/WeatherPanel';
 import { SleepLayer, WakeChecks, WakeSettings, calibBus } from './components/Wake';
 import { ProfileSettings } from './components/Profile';
 import { LibrarySettings } from './components/LibrarySettings';
+import { ExtensionSettings, KeySettings } from './components/Extensions';
+import { MessagingSettings } from './components/Messaging';
 import { addNote, patchBook, type Kitap } from './lib/library';
 import { VideoPanel, type VideoInfo } from './components/VideoPanel';
 import { CameraPanel } from './camera/CameraPanel';
@@ -555,6 +557,9 @@ export default function App() {
           break;
         case 'dashboard': setDash(e.data); setDashTried(true); break;
         case 'cleared': setMessages([]); setReply(null); setSceneIdx(-1); break;
+        // Ayarlar'dan anahtar kaydedildi: sunucu yeni değerlerle açılınca sayfa da baştan yüklensin (demo modu vb.)
+        case 'restarting': setTimeout(() => location.reload(), 4000); break;
+        case 'mesaj': flash(`${e.platform === 'whatsapp' ? 'WhatsApp' : 'Telegram'} · ${e.arama ? `${e.kisi} aradı` : `${e.kisi}: ${e.metin}`}`); break;
       }
     }, setConnected);
   }, [device, play, playOpening, runPlayer, mock]);
@@ -1156,6 +1161,9 @@ export default function App() {
                     <button className={ui === 'mark2' ? 'on' : ''} onClick={() => saveSettings({ ui: 'mark2' }).catch(e => flash(e.message))}>Mark 2 · yoğun HUD</button>
                   </div>
                   <p className="muted small">Mark 2 geniş ekran için tasarlandı; telefonda sade bir düzene geçer.</p>
+                  <KeySettings flash={flash} />
+                  <MessagingSettings flash={flash} />
+                  <ExtensionSettings flash={flash} />
                   <ProfileSettings flash={flash} />
                   <LibrarySettings flash={flash} version={libKey} />
                   <label>Bu cihazın rolü</label>

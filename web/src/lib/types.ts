@@ -72,7 +72,11 @@ export type ServerEvent =
   | { type: 'sleep' }
   | { type: 'dashboard'; data: Dashboard }
   | { type: 'cleared' }
-  | { type: 'kitaplik' };
+  | { type: 'kitaplik' }
+  | { type: 'extensions' }
+  | { type: 'restarting' }
+  | { type: 'mesaj'; platform: 'telegram' | 'whatsapp'; kisi: string; metin: string; arama?: boolean }
+  | { type: 'whatsapp' };
 
 /** Ekran: mark1 sade, mark2 yoğun HUD (tüm cihazlarda ortak) */
 export type UiMode = 'mark1' | 'mark2';

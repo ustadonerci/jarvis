@@ -1,0 +1,107 @@
+import { useEffect, useState } from 'react';
+import { connectWhatsApp, getMessaging, logoutWhatsApp, saveMessaging, type MessagingCfg, type MessagingData } from '../lib/api';
+
+/**
+ * Ayarlar → Bağlantılar: Telegram botu ve WhatsApp (QR ile). Jarvis gelen mesajları okur, özetler, onayınızla
+ * cevap yazar; isterseniz siz bakamıyorken otomatik cevap verir ve WhatsApp aramalarına mesajla döner.
+ */
+export function MessagingSettings({ flash }: { flash(t: string): void }) {
+  const [data, setData] = useState<MessagingData | null>(null);
+  const [error, setError] = useState('');
+  const [aramaMetni, setAramaMetni] = useState('');
+  const [talimat, setTalimat] = useState('');
+
+  const load = () => getMessaging().then(d => {
+    setData(d);
+    setAramaMetni(t => t || d.ayar.aramaMetni);
+    setTalimat(t => t || d.ayar.talimat);
+  }).catch(e => setError(e.message));
+  useEffect(() => { load(); }, []);
+  // QR beklerken ve bağlanırken durumu tazele (QR ~20 sn'de bir yenilenir)
+  const waiting = data?.whatsapp.durum === 'qr' || data?.whatsapp.durum === 'bağlanıyor';
+  useEffect(() => {
+    if (!waiting) return;
+    const t = setInterval(load, 2000);
+    return () => clearInterval(t);
+  }, [waiting]);
+
+  const set = (patch: Partial<MessagingCfg>, ok?: string) => saveMessaging(patch).then(d => { setData(d); if (ok) flash(ok); }).catch(e => flash(e.message));
+
+  if (!data) return (<><label>Bağlantılar</label><p className="muted small">{error || 'yükleniyor…'}</p></>);
+  const { telegram: tg, whatsapp: wa, ayar } = data;
+  const onOff = (on: boolean, fn: (v: boolean) => void) => (
+    <div className="seg">
+      <button className={on ? 'on' : ''} onClick={() => fn(true)}>Açık</button>
+      <button className={!on ? 'on' : ''} onClick={() => fn(false)}>Kapalı</button>
+    </div>
+  );
+
+  return (
+    <>
+      <label>Bağlantılar{data.okunmamis ? ` · ${data.okunmamis} okunmamış mesaj` : ''}</label>
+      <p className="muted small">Bağladıktan sonra "Jarvis, mesajlarımı özetle", "kim aradı", "Ahmet'e yarın gelirim yaz" diyebilirsiniz. Jarvis mesaj göndermeden önce her zaman onay ister.</p>
+
+      <div className="conn">
+        <div className="conn-head">
+          <b>Telegram</b>
+          <i className={`tag ${tg.durum === 'bağlı' ? 'ok' : tg.durum === 'hata' ? 'bad' : ''}`}>{tg.durum === 'bağlı' ? `bağlı · @${tg.bot}` : tg.durum}</i>
+        </div>
+        {tg.durum === 'anahtar yok' && (
+          <p className="muted small">Telegram'da <b>@BotFather</b>'a yazın → <code>/newbot</code> → bota bir ad verin → size verdiği anahtarı yukarıdaki <b>API anahtarları → Telegram bot anahtarı</b> alanına yapıştırın. Sonra mesajlarınızı bu bota iletin ya da botu gruplarınıza ekleyin.</p>
+        )}
+        {tg.hata && <p className="small warn">{tg.hata}</p>}
+        {tg.durum === 'bağlı' && (
+          <>
+            <p className="muted small">Bot yalnızca kendisine yazılan mesajları ve eklendiği grupları görür (Telegram kişisel sohbetlerinizi botlara açmıyor).</p>
+            <div className="conn-row"><span>Otomatik cevap</span>{onOff(ayar.telegramOto, v => set({ telegramOto: v }))}</div>
+          </>
+        )}
+      </div>
+
+      <div className="conn">
+        <div className="conn-head">
+          <b>WhatsApp</b>
+          <i className={`tag ${wa.durum === 'bağlı' ? 'ok' : wa.durum === 'hata' ? 'bad' : ''}`}>{wa.durum === 'bağlı' ? `bağlı · +${wa.numara}` : wa.durum === 'qr' ? 'QR bekleniyor' : wa.durum}</i>
+        </div>
+        {wa.durum === 'kapalı' || wa.durum === 'hata' ? (
+          <>
+            <p className="muted small">WhatsApp Web gibi bağlanır: telefonunuzda <b>WhatsApp → Ayarlar → Bağlı cihazlar → Cihaz bağla</b> ile çıkan QR kodu okutun.</p>
+            <p className="small warn">Bu bağlantı WhatsApp'ın resmî bir hizmeti değildir. Çok sayıda otomatik mesaj göndermek hesabın kısıtlanmasına yol açabilir; otomatik cevabı ölçülü kullanın.</p>
+            {wa.hata && <p className="small warn">{wa.hata}</p>}
+            <div className="seg"><button className="on" onClick={() => connectWhatsApp().then(setData).catch(e => flash(e.message))}>Bağlan (QR göster)</button></div>
+          </>
+        ) : wa.durum === 'qr' ? (
+          <div className="qr">
+            <img src={wa.qr} alt="WhatsApp QR kodu" width={240} height={240} />
+            <p className="muted small">Telefonunuzda WhatsApp → Ayarlar → Bağlı cihazlar → Cihaz bağla → bu kodu okutun.</p>
+          </div>
+        ) : wa.durum === 'bağlanıyor' ? (
+          <p className="muted small">bağlanıyor…</p>
+        ) : (
+          <>
+            <div className="conn-row"><span>Otomatik cevap</span>{onOff(ayar.whatsappOto, v => set({ whatsappOto: v }))}</div>
+            <div className="conn-row"><span>Gelen aramaya mesajla dön</span>{onOff(ayar.aramaMesaji, v => set({ aramaMesaji: v }))}</div>
+            {ayar.aramaMesaji && (
+              <form className="memory-add" onSubmit={e => { e.preventDefault(); set({ aramaMetni }, 'Arama mesajı kaydedildi'); }}>
+                <input value={aramaMetni} onChange={e => setAramaMetni(e.target.value)} maxLength={500} />
+                <button type="submit" disabled={!aramaMetni.trim() || aramaMetni === ayar.aramaMetni}>Kaydet</button>
+              </form>
+            )}
+            <p className="muted small">Açıkken gelen arama reddedilir ve arayana bu mesaj gider. Aramayı sesli cevaplamak mümkün değil: WhatsApp buna izin vermiyor.</p>
+            <div className="seg"><button onClick={() => confirm('WhatsApp bağlantısı kaldırılsın mı?') && logoutWhatsApp().then(setData).catch(e => flash(e.message))}>Bağlantıyı kaldır</button></div>
+          </>
+        )}
+      </div>
+
+      {(ayar.telegramOto || ayar.whatsappOto) && (
+        <>
+          <label>Otomatik cevap notu</label>
+          <textarea className="profile-text" rows={3} value={talimat} onChange={e => setTalimat(e.target.value)} maxLength={1000}
+            placeholder="Ör. Bu hafta izindeyim, acil işler için Mehmet'i arayın. Resmî ama sıcak bir dille yaz." />
+          <div className="seg"><button className={talimat !== ayar.talimat ? 'on' : ''} disabled={talimat === ayar.talimat} onClick={() => set({ talimat }, 'Not kaydedildi')}>Kaydet</button></div>
+          <p className="muted small">Otomatik cevaplar 🤖 ile başlar, kişisel bilgi paylaşmaz, söz vermez ve aynı kişiye 30 saniyede en fazla bir kez gider. Grup mesajlarına otomatik cevap verilmez.</p>
+        </>
+      )}
+    </>
+  );
+}

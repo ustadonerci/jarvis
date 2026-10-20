@@ -21,6 +21,9 @@ import { markBlocked } from './youtube.js';
 import { CAMERA_ENABLED, VISION_MODEL, cameraRouter, initCameras, onClientClosed } from './camera.js';
 import { control, homeState, initHome, type DeviceId, type HomeAction } from './home.js';
 import { initLibrary, libraryRouter } from './library.js';
+import { extensionsRouter, initExtensions } from './extensions.js';
+import { initMessaging, messagingRouter } from './messaging.js';
+import { adminOnly, listKeys, restartServer, saveKeys } from './keys.js';
 import { ELEVEN_MODEL, ELEVEN_MODEL_LABEL, elevenReady, elevenUsage, elevenVoices, isEleven } from './eleven.js';
 import type { Device, StoredMessage } from './types.js';
 
@@ -109,6 +112,8 @@ function presence() {
 initCameras({ broadcast, sendTo });
 initHome(broadcast);
 initLibrary(broadcast);
+initExtensions(broadcast);
+initMessaging(broadcast);
 
 const app = express();
 app.use(express.json({ limit: '12mb' })); // kamera fotoğrafı (istemci ~1280 px JPEG'e küçültür)
@@ -247,6 +252,25 @@ app.use(cameraRouter());
 
 // ---------- Kitaplık (El Kontrolü: raf haritası, kapak, özet, notlar) ----------
 app.use(libraryRouter());
+
+// ---------- Yetenekler (beceriler, iş akışları, MCP, GitHub'dan kurulum) ----------
+app.use(extensionsRouter());
+
+// ---------- Bağlantılar: Telegram ve WhatsApp ----------
+app.use(messagingRouter());
+
+// ---------- API anahtarları (server/.env) ----------
+app.get('/api/keys', adminOnly, (_req, res) => res.json(listKeys()));
+app.post('/api/keys', adminOnly, (req, res) => {
+  const values = req.body?.values;
+  if (!values || typeof values !== 'object') return res.status(400).json({ error: 'değer yok' });
+  const n = saveKeys(values);
+  console.log(`[ayarlar] ${n} anahtar güncellendi`);
+  // Modüller anahtarları açılışta okuyor: yeni değerler yeniden başlayınca geçerli olur.
+  const restarting = n > 0 && restartServer();
+  if (restarting) broadcast({ type: 'restarting' });
+  res.json({ ok: true, changed: n, restarting, ...listKeys() });
+});
 
 // ---------- Akıllı ev ----------
 app.get('/api/home', (_req, res) => res.json(homeState()));

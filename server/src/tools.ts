@@ -5,6 +5,9 @@ import { addMemory, removeMemory } from './profile.js';
 import { checkVideo, findHighlights, latestFromChannel, searchVideos, videoIdFrom } from './youtube.js';
 import { lookAtCamera } from './camera.js';
 import { control, homeMode, homeState, type DeviceId } from './home.js';
+import { isExtensionTool, runExtensionTool } from './extensions.js';
+import { isMsgTool, runMsgTool } from './messaging.js';
+import { isSearchTool, runSearchTool } from './search.js';
 import { addBook, addBookNote, fillInBackground, findBook, setBookStatus } from './library.js';
 
 // Not: `strict` alanı bilerek yok (RouteLLM 400 döndürebiliyor).
@@ -241,6 +244,9 @@ export async function runTool(name: string, rawArgs: string, progress: ToolProgr
   } catch {
     args = {};
   }
+  if (isExtensionTool(name)) return runExtensionTool(name, args, progress);
+  if (isMsgTool(name)) return runMsgTool(name, args, progress);
+  if (isSearchTool(name)) return runSearchTool(name, args, progress);
   if (name === 'get_news') {
     progress('haber kaynakları taranıyor');
     const res = await getNews(args as GetNewsArgs);

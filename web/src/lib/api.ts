@@ -99,6 +99,44 @@ export const saveProfile = (text: string) => fetch('/api/profile', { method: 'PO
 export const addMemory = (text: string) => fetch('/api/memory', { method: 'POST', headers: headers(), body: JSON.stringify({ text }) }).then(r => json<{ memory: MemoryItem[] }>(r));
 export const deleteMemory = (id: string) => fetch(`/api/memory/${encodeURIComponent(id)}`, { method: 'DELETE', headers: headers() }).then(r => json<{ memory: MemoryItem[] }>(r));
 
+// ---------- Ayarlar → API anahtarları ve Yetenekler ----------
+export interface KeyView { name: string; label: string; hint: string; secret: boolean; set: boolean; value: string }
+export interface KeysData { fields: KeyView[]; custom: KeyView[] }
+export const getKeys = () => fetch('/api/keys', { headers: headers() }).then(r => json<KeysData>(r));
+export const saveKeys = (values: Record<string, string>) =>
+  fetch('/api/keys', { method: 'POST', headers: headers(), body: JSON.stringify({ values }) }).then(r => json<KeysData & { changed: number; restarting: boolean }>(r));
+
+export interface SkillView { id: string; ad: string; aciklama: string; tur: 'beceri' | 'is_akisi'; aktif: boolean; repo?: string; dosya?: string; kaynak?: 'jarvis'; uzunluk: number }
+export interface ServerView { id: string; ad: string; aktif: boolean; repo?: string; tur: 'stdio' | 'http'; hedef: string; durum: 'kapalı' | 'kuruluyor' | 'bağlanıyor' | 'bağlı' | 'hata'; hata?: string; araclar: string[]; kurulum?: 'npm' }
+export interface ExtensionsData { repos: { slug: string; url: string; at: string }[]; skills: SkillView[]; servers: ServerView[] }
+const ext = (path: string, method = 'GET', body?: object) =>
+  fetch(`/api/extensions${path}`, { method, headers: headers(), body: body ? JSON.stringify(body) : undefined }).then(r => json<ExtensionsData>(r));
+export const getExtensions = () => ext('');
+export const installGitHub = (url: string) => ext('/github', 'POST', { url }) as Promise<ExtensionsData & { beceri: number; is_akisi: number; mcp: number }>;
+export const removeRepo = (slug: string) => ext(`/repo/${encodeURIComponent(slug)}`, 'DELETE');
+export const addSkill = (s: { ad: string; aciklama: string; icerik: string; tur: 'beceri' | 'is_akisi' }) => ext('/skill', 'POST', s);
+export const toggleSkill = (id: string, aktif: boolean) => ext(`/skill/${id}`, 'POST', { aktif });
+export const deleteSkill = (id: string) => ext(`/skill/${id}`, 'DELETE');
+export const addServer = (s: { ad: string; komut?: string; url?: string; env?: string; basliklar?: string }) => ext('/server', 'POST', s);
+export const toggleServer = (id: string, aktif: boolean) => ext(`/server/${id}`, 'POST', { aktif });
+export const retryServer = (id: string) => ext(`/server/${id}`, 'POST', { yenile: true });
+export const deleteServer = (id: string) => ext(`/server/${id}`, 'DELETE');
+
+// ---------- Ayarlar → Bağlantılar (Telegram, WhatsApp) ----------
+export interface MessagingCfg { telegramOto: boolean; whatsappOto: boolean; aramaMesaji: boolean; aramaMetni: string; talimat: string }
+export interface MessagingData {
+  telegram: { durum: 'anahtar yok' | 'kapalı' | 'bağlı' | 'hata'; bot: string; hata: string };
+  whatsapp: { durum: 'kapalı' | 'qr' | 'bağlanıyor' | 'bağlı' | 'hata'; qr: string; numara: string; hata: string };
+  ayar: MessagingCfg;
+  okunmamis: number;
+}
+const msgApi = (path: string, method = 'GET', body?: object) =>
+  fetch(`/api/mesaj${path}`, { method, headers: headers(), body: body ? JSON.stringify(body) : undefined }).then(r => json<MessagingData>(r));
+export const getMessaging = () => msgApi('');
+export const saveMessaging = (patch: Partial<MessagingCfg>) => msgApi('/ayar', 'POST', patch);
+export const connectWhatsApp = () => msgApi('/whatsapp/baglan', 'POST', {});
+export const logoutWhatsApp = () => msgApi('/whatsapp/cikis', 'POST', {});
+
 /** Oynatıcı "sahibi bu sitede oynatılmasını engelledi" dedi: sunucu bir daha Jarvis içinde önermesin */
 export const reportVideoBlocked = (id: string, code: number) => post('/api/video-blocked', { id, code });
 

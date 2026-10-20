@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { buildSystemPrompt } from './prompt.js';
 import { CHAT_MODEL, MOCK, RouteLLMError, routellmStream, type ChatMessage, type ContentPart } from './routellm.js';
 import { TOOLS, runTool, type ToolProgress } from './tools.js';
+import { EXT_TOOLS, extensionsForPrompt, mcpTools } from './extensions.js';
+import { MSG_TOOLS, messagingForPrompt } from './messaging.js';
+import { SEARCH_TOOLS } from './search.js';
 import { findNewsById } from './news.js';
 import { resolveFastPhoto, resolveSlowPhoto, type PhotoMode } from './photos.js';
 import { findWiki } from './wiki.js';
@@ -14,7 +17,8 @@ import { cameraList } from './camera.js';
 import { BRIEF_OPENING, BRIEF_TRIGGER } from './brief.js';
 import type { Device, Gorsel, GorselWithPhoto, JarvisReply, Photo, Sahne, StoredMessage } from './types.js';
 
-const MAX_ROUNDS = 5;
+// İş akışları birkaç aracı art arda çağırabilir (yetenek_kullan → MCP araçları → cevap)
+const MAX_ROUNDS = 8;
 /** Görsel girdi için model: boşsa CHAT_MODEL (Jarvis router'ı görsel isteği kendisi yönlendirir). */
 const VISION_MODEL = process.env.VISION_MODEL || CHAT_MODEL;
 
@@ -34,6 +38,8 @@ function contextVars(device: Device, prevDevice: Device | null) {
     profil: getProfile().text,
     hafiza: memoryForPrompt(),
     kitaplik: libraryForPrompt(),
+    yetenekler: extensionsForPrompt(),
+    mesajlasma: messagingForPrompt(),
   };
 }
 
@@ -332,7 +338,7 @@ export async function runJarvis(opts: RunOptions): Promise<JarvisReply> {
 
   // Komut yoksa haber aracı hiç sunulmaz: Jarvis kendiliğinden gündem anlatamaz. Diğer araçlar her zaman açık.
   // Her aracın çıktısı toolText'e eklenir; verifyVisual sayı/grafik/harita/alıntı görsellerini bu gerçek veriyle doğrular.
-  const tools = isBrief ? TOOLS : TOOLS.filter(t => t.function.name !== 'get_news');
+  const tools = [...(isBrief ? TOOLS : TOOLS.filter(t => t.function.name !== 'get_news')), ...SEARCH_TOOLS, ...MSG_TOOLS, ...EXT_TOOLS, ...mcpTools()];
   let forceNews = isBrief;
   let retriedJson = false;
 

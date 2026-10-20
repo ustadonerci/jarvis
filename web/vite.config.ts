@@ -57,6 +57,7 @@ export default defineConfig({
   ],
   server: {
     host: true,
-    proxy: { '/api': { target: 'http://localhost:8787', changeOrigin: true } },
+    // xfwd: sunucu isteğin gerçekten bu bilgisayardan mı geldiğini görsün (Ayarlar → anahtarlar/yetenekler)
+    proxy: { '/api': { target: 'http://localhost:8787', changeOrigin: true, xfwd: true } },
   },
 })

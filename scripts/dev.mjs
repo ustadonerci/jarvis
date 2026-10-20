@@ -1,7 +1,8 @@
 // Sunucuyu ve arayüzü birlikte başlatır: npm run dev
+// JARVIS_DEV: sunucu Ayarlar'dan anahtar kaydedilince kendini yeniden başlatabilir (tsx watch).
 import { spawn } from 'node:child_process';
 const run = (name, args) => {
-  const p = spawn('npm', args, { stdio: 'pipe', shell: process.platform === 'win32' });
+  const p = spawn('npm', args, { stdio: 'pipe', shell: process.platform === 'win32', env: { ...process.env, JARVIS_DEV: '1' } });
   const tag = name === 'server' ? '\x1b[36m[sunucu]\x1b[0m' : '\x1b[33m[arayüz]\x1b[0m';
   p.stdout.on('data', d => process.stdout.write(d.toString().split('\n').filter(Boolean).map(l => `${tag} ${l}`).join('\n') + '\n'));
   p.stderr.on('data', d => process.stderr.write(`${tag} ${d}`));

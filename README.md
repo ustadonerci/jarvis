@@ -38,6 +38,25 @@ npm run test           # RSS kaynaklarını ve RouteLLM tool calling'i test eder
 npm run models         # RouteLLM'de kullanılabilen modelleri listeler (ses modelleri dahil)
 ```
 
+## Ayarlar: API anahtarları, Bağlantılar ve Yetenekler
+
+**API anahtarları:** `server/.env` dosyasını elle açmanız gerekmez. *☰ → Ayarlar → API anahtarları* bölümünden Abacus, Telegram, ElevenLabs, YouTube, Brave Search, Home Assistant ve eklentilerin istediği anahtarları (`GITHUB_TOKEN` gibi) girip **Kaydet**'e basın. Jarvis yeniden başlar ve sayfa kendini yeniler. Anahtarlar tarayıcıya geri gönderilmez.
+
+**Bağlantılar (Telegram ve WhatsApp):** Jarvis gelen mesajları okur ve özetler ("mesajlarımı özetle", "kim aradı"). Sizin onayınızla cevap yazar ("Ahmet'e yarın gelirim yaz").
+- **Telegram:** @BotFather'dan bir bot oluşturun ve verdiği anahtarı API anahtarlarına girin. Bot yalnızca kendisine yazılan mesajları ve eklendiği grupları görür.
+- **WhatsApp:** *Bağlan* düğmesine basın ve telefonunuzda *Ayarlar → Bağlı cihazlar → Cihaz bağla* ile QR kodu okutun. Bu bağlantı WhatsApp'ın resmî bir hizmeti değildir, otomatik mesajları ölçülü kullanın.
+- **Otomatik cevap** (isteğe bağlı): Siz bakamıyorken kısa ve kibar bir cevap verir. Cevaplar 🤖 ile başlar, kişisel bilgi paylaşmaz, söz vermez.
+- **Gelen arama** (WhatsApp, isteğe bağlı): Arama reddedilir ve arayana mesaj gider. Aramayı sesli cevaplamak mümkün değil, çünkü WhatsApp ve Telegram buna izin vermiyor.
+
+**İnternette arama:** "… araştır", "internette bak" dediğinizde Jarvis arama yapar ve sayfaları okuyup özetler. Anahtar gerekmez (DuckDuckGo); isterseniz Brave Search anahtarı ekleyebilirsiniz.
+
+**Yetenekler ve kendini geliştirme:**
+- **GitHub reposu:** Ayarlar'da adresi yapıştırıp **Kur**'a basın ya da Jarvis'e "şu repoyu kur" deyin. Jarvis repodaki becerileri (`SKILL.md`), iş akışlarını (`commands/` ya da `workflows/` altındaki `.md` dosyaları) ve MCP sunucularını (`.mcp.json` ya da MCP paketi) kendisi bulur.
+- **Beceri / iş akışı:** Kendiniz yazabilirsiniz, ya da Jarvis'e "bunu öğren" / "bunu iş akışı yap" deyin, o kendine yazar. Örnek: *"Sabah rutini: hava durumu → kurlar → salon ışığı %60 → Türk kahvesi"*.
+- **MCP sunucusu:** Bir komut (`npx -y …`) ya da adres (`https://…/mcp`) girin. Sunucunun araçları Jarvis'in araçlarına eklenir.
+
+MCP sunucuları bilgisayarınızda program çalıştırır. Bu yüzden GitHub'dan gelenler **kapalı** eklenir ve siz Ayarlar'dan açana kadar çalışmaz. Yalnızca güvendiğiniz repoları açın. Anahtarları, bağlantıları ve yetenekleri yalnızca Jarvis'in çalıştığı bilgisayar değiştirebilir (`ACCESS_TOKEN` tanımlıysa tokenı bilen cihazlar da değiştirebilir).
+
 ## Telefon ve tablette kullanmak
 
 Mikrofon yalnızca HTTPS'te çalıştığı için bilgisayarındaki Jarvis'e bir tünelle bağlan:
