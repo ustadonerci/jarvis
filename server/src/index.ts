@@ -22,7 +22,8 @@ import { CAMERA_ENABLED, VISION_MODEL, cameraRouter, initCameras, onClientClosed
 import { control, homeState, initHome, type DeviceId, type HomeAction } from './home.js';
 import { initLibrary, libraryRouter } from './library.js';
 import { extensionsRouter, initExtensions } from './extensions.js';
-import { initMessaging, messagingRouter } from './messaging.js';
+import { initMessaging, messagingHooksRouter, messagingRouter } from './messaging.js';
+import { initPhone, phoneRouter } from './phone.js';
 import { financeRouter, initFinance } from './finance.js';
 import { clearErrors, errorList, initErrors, logError } from './errors.js';
 import { approvalsRouter, initApprovals } from './approvals.js';
@@ -130,8 +131,13 @@ initMessaging(broadcast);
 initFinance(broadcast);
 initErrors();
 initApprovals(broadcast);
+initPhone({ broadcast, voice: () => currentVoice() });
 
 const app = express();
+// Dış servislerin çağırdığı webhooklar (Twilio, WhatsApp Business): kendi imza doğrulamaları var ve ham gövde
+// gerektiriyor; bu yüzden JSON ayrıştırıcıdan ve /api erişim korumasından önce bağlanır.
+app.use(phoneRouter());
+app.use(messagingHooksRouter());
 app.use(express.json({ limit: '12mb' })); // kamera fotoğrafı (istemci ~1280 px JPEG'e küçültür)
 
 // İsteğe bağlı erişim koruması (tünel/deploy için önerilir)

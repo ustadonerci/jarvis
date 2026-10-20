@@ -93,6 +93,40 @@ export function MessagingSettings({ flash }: { flash(t: string): void }) {
         )}
       </div>
 
+      {data.whatsappCloud?.hazir && (
+        <div className="conn">
+          <div className="conn-head"><b>WhatsApp Business API</b><i className={`tag ${data.whatsappCloud.imza ? 'ok' : 'bad'}`}>{data.whatsappCloud.imza ? 'ayarlı' : 'uygulama gizli anahtarı eksik'}</i></div>
+          <p className="muted small">Meta → WhatsApp → Configuration → Webhook: aşağıdaki adres ve API anahtarlarına yazdığınız doğrulama anahtarı; "messages" alanına abone olun.</p>
+          {data.whatsappCloud.webhook ? <code className="copy">{data.whatsappCloud.webhook}</code> : <p className="small warn">Önce API anahtarlarına PUBLIC_URL (https tünel adresi) girin.</p>}
+          <p className="muted small">Meta kuralı: size son 24 saatte yazmamış birine serbest mesaj gönderilemez.</p>
+        </div>
+      )}
+
+      <div className="conn">
+        <div className="conn-head"><b>Telefon (Twilio)</b><i className={`tag ${data.telefon?.hazir ? 'ok' : ''}`}>{data.telefon?.hazir ? `ayarlı · ${data.telefon.numara}` : 'ayarlı değil'}</i></div>
+        {!data.telefon?.hazir ? (
+          <p className="muted small">Jarvis'in telefonla konuşması için: twilio.com'da hesap açıp bir numara alın; API anahtarlarına <b>TWILIO_ACCOUNT_SID</b>, <b>TWILIO_AUTH_TOKEN</b>, <b>TWILIO_PHONE_NUMBER</b> ve <b>PUBLIC_URL</b> (https tünel adresi) girin. Jarvis bu numaraya gelen aramaları karşılar, sizin adınıza (onayınızla) arama yapar ve görüşmeleri özetler.</p>
+        ) : (
+          <>
+            <p className="muted small">Twilio → Phone Numbers → numaranız → "A call comes in" → Webhook (POST):</p>
+            <code className="copy">{data.telefon.webhook}</code>
+            <p className="muted small">Kendi cep telefonunuza gelen aramaları da Jarvis'e bırakmak için operatörünüzün "cevap yoksa / meşgulse yönlendir" özelliğini bu numaraya ayarlayabilirsiniz (ücretli olabilir). Jarvis her görüşmede yapay zeka olduğunu ve not aldığını söyler.</p>
+            {data.telefon.son.length > 0 && (
+              <ul className="memory ext-list">
+                {data.telefon.son.map(c => (
+                  <li key={c.sid}>
+                    <span>
+                      <div className="ext-title"><b>{c.numara}</b><i className="tag">{c.yon === 'gelen' ? 'gelen' : 'giden'}</i><i className="tag">{new Date(c.basla).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</i></div>
+                      <small>{c.ozet}</small>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+      </div>
+
       {(ayar.telegramOto || ayar.whatsappOto) && (
         <>
           <label>Otomatik cevap notu</label>

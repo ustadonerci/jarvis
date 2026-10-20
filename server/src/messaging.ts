@@ -7,11 +7,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import express, { type Router } from 'express';
 import QRCode from 'qrcode';
 import pino from 'pino';
 import { CHAT_MODEL, MOCK, routellm, type ChatResponse } from './routellm.js';
 import { adminOnly } from './keys.js';
+import { phoneStatus } from './phone.js';
 
 const DATA = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
 const MSG_FILE = path.join(DATA, 'mesajlar.json');
@@ -195,7 +197,46 @@ function waText(m: any): string {
     || (x.imageMessage ? '[fotoğraf]' : x.audioMessage ? '[sesli mesaj]' : x.videoMessage ? '[video]' : x.documentMessage ? '[belge]' : x.stickerMessage ? '[çıkartma]' : '');
 }
 
+// ---------------------------------------------------------------- WhatsApp Business (resmî Cloud API)
+// Meta for Developers → WhatsApp → API Setup: geçici/kalıcı erişim anahtarı ve telefon numarası kimliği.
+// Webhook: <PUBLIC_URL>/hook/whatsapp (doğrulama anahtarı WHATSAPP_VERIFY_TOKEN, imza WHATSAPP_APP_SECRET ile).
+// Not: Kişi size son 24 saat içinde yazmadıysa serbest metin gönderilemez (Meta kuralı; şablon mesaj gerekir).
+const waCloud = () => !!process.env.WHATSAPP_CLOUD_TOKEN && !!process.env.WHATSAPP_PHONE_ID;
+const GRAPH = 'https://graph.facebook.com/v21.0';
+
+async function waCloudSend(to: string, text: string) {
+  const r = await fetch(`${GRAPH}/${process.env.WHATSAPP_PHONE_ID}/messages`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.WHATSAPP_CLOUD_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body: text } }),
+    signal: AbortSignal.timeout(20_000),
+  });
+  const j: any = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j?.error?.error_user_msg || j?.error?.message || `WhatsApp Cloud ${r.status}`);
+  record({ id: `wac-${j.messages?.[0]?.id ?? Date.now()}`, platform: 'whatsapp', chat: to, kisi: user(), metin: text, gelen: false, otomatik: text.startsWith('🤖 ') });
+}
+
+/** Meta webhook gövdesi: gelen metin mesajlarını kaydeder, gerekirse otomatik cevaplar */
+function waCloudIncoming(body: any) {
+  for (const entry of body?.entry ?? []) {
+    for (const ch of entry.changes ?? []) {
+      const v = ch.value ?? {};
+      const names = new Map<string, string>((v.contacts ?? []).map((c: any) => [c.wa_id, c.profile?.name]));
+      for (const m of v.messages ?? []) {
+        const from = String(m.from ?? '');
+        if (!/^\d{6,20}$/.test(from)) continue;
+        const metin = m.type === 'text' ? m.text?.body : m.type === 'image' ? `[fotoğraf] ${m.image?.caption ?? ''}` : m.type === 'audio' ? '[sesli mesaj]' : m.type === 'button' ? m.button?.text : m.type === 'interactive' ? (m.interactive?.button_reply?.title ?? m.interactive?.list_reply?.title) : `[${m.type}]`;
+        if (!metin) continue;
+        const saved = record({ id: `wac-${m.id}`, platform: 'whatsapp', chat: from, kisi: names.get(from) || `+${from}`, metin: String(metin), gelen: true, at: new Date(Number(m.timestamp) * 1000 || Date.now()).toISOString() });
+        if (saved && cfg.whatsappOto) autoReply('whatsapp', from, t => waCloudSend(from, t));
+      }
+    }
+  }
+}
+
 async function waSend(jid: string, text: string) {
+  // Cloud API sohbetleri yalnızca rakamdan oluşur (wa_id); WhatsApp Web sohbetleri "@" içerir
+  if (waCloud() && (!jid.includes('@') || wa.durum !== 'bağlı')) return waCloudSend(jid.split('@')[0], text);
   if (!wa.sock || wa.durum !== 'bağlı') throw new Error('WhatsApp bağlı değil');
   const r = await wa.sock.sendMessage(jid, { text });
   record({ id: `wa-${r?.key?.id ?? Date.now()}`, platform: 'whatsapp', chat: jid, kisi: user(), metin: text, gelen: false, otomatik: text.startsWith('🤖 ') });
@@ -359,7 +400,7 @@ export async function runMsgTool(name: string, args: any, progress: (l: string) 
     progress(`${list.length} mesaj okundu`);
     list.forEach(m => { if (m.gelen) m.okundu = true; });
     saveMsgs();
-    const bagli = { telegram: tg.durum === 'bağlı', whatsapp: wa.durum === 'bağlı' };
+    const bagli = { telegram: tg.durum === 'bağlı', whatsapp: wa.durum === 'bağlı' || waCloud() };
     if (!bagli.telegram && !bagli.whatsapp && !msgs.length) return JSON.stringify({ hata: 'Telegram ve WhatsApp bağlı değil. Ayarlar → Bağlantılar bölümünden bağlanabileceğini söyle.' });
     return JSON.stringify({
       bagli,
@@ -377,7 +418,7 @@ export async function runMsgTool(name: string, args: any, progress: (l: string) 
     if (!chat && platform === 'whatsapp') {
       const named = [...waNames].find(([, n]) => norm(n).includes(q))?.[0];
       const digits = q.replace(/\D/g, '');
-      chat = named ?? (digits.length >= 10 ? `${digits}@s.whatsapp.net` : undefined);
+      chat = named ?? (digits.length >= 10 ? (wa.durum === 'bağlı' ? `${digits}@s.whatsapp.net` : digits) : undefined);
     }
     if (!chat) {
       return JSON.stringify({ hata: platform === 'telegram'
@@ -399,7 +440,7 @@ export async function runMsgTool(name: string, args: any, progress: (l: string) 
 /** Sistem prompt'u için kısa durum (bağlı mı, okunmamış sayısı) */
 export function messagingForPrompt(): string {
   const unread = msgs.filter(m => m.gelen && !m.okundu).length;
-  return `Telegram: ${tg.durum === 'bağlı' ? `bağlı (@${tg.bot})` : 'bağlı değil'} · WhatsApp: ${wa.durum === 'bağlı' ? 'bağlı' : 'bağlı değil'}${unread ? ` · ${unread} okunmamış` : ''}`;
+  return `Telegram: ${tg.durum === 'bağlı' ? `bağlı (@${tg.bot})` : 'bağlı değil'} · WhatsApp: ${wa.durum === 'bağlı' ? 'bağlı' : waCloud() ? 'bağlı (Business API)' : 'bağlı değil'}${unread ? ` · ${unread} okunmamış` : ''}`;
 }
 
 // ---------------------------------------------------------------- HTTP
@@ -407,6 +448,8 @@ export function messagingForPrompt(): string {
 const status = () => ({
   telegram: { durum: TG() ? tg.durum : 'anahtar yok', bot: tg.bot, hata: tg.hata },
   whatsapp: { durum: wa.durum, qr: wa.qr, numara: wa.numara, hata: wa.hata },
+  telefon: phoneStatus(),
+  whatsappCloud: { hazir: waCloud(), webhook: process.env.PUBLIC_URL ? `${process.env.PUBLIC_URL.replace(/\/$/, '')}/hook/whatsapp` : null, imza: !!process.env.WHATSAPP_APP_SECRET },
   ayar: cfg,
   okunmamis: msgs.filter(m => m.gelen && !m.okundu).length,
 });
@@ -430,6 +473,32 @@ export function messagingRouter(): Router {
   r.post('/api/mesaj/whatsapp/cikis', async (_req, res) => {
     await waLogout();
     res.json(status());
+  });
+  return r;
+}
+
+/**
+ * Meta'nın çağırdığı herkese açık webhook (/api altında değil: ACCESS_TOKEN taşıyamaz). Güvenlik: GET'te doğrulama
+ * anahtarı, POST'ta X-Hub-Signature-256 imzası (uygulama gizli anahtarıyla). index.ts bunu JSON ayrıştırıcıdan ÖNCE
+ * bağlar; imza ham gövde üzerinden hesaplanır.
+ */
+export function messagingHooksRouter(): Router {
+  const r = express.Router();
+  r.get('/hook/whatsapp', (req, res) => {
+    const ok = req.query['hub.mode'] === 'subscribe' && !!process.env.WHATSAPP_VERIFY_TOKEN && req.query['hub.verify_token'] === process.env.WHATSAPP_VERIFY_TOKEN;
+    ok ? res.type('text').send(String(req.query['hub.challenge'] ?? '')) : res.sendStatus(403);
+  });
+  r.post('/hook/whatsapp', express.raw({ type: '*/*', limit: '2mb' }), (req, res) => {
+    const secret = process.env.WHATSAPP_APP_SECRET;
+    const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from('');
+    const sig = String(req.headers['x-hub-signature-256'] ?? '');
+    const expected = secret ? `sha256=${createHmac('sha256', secret).update(raw).digest('hex')}` : '';
+    if (!secret || sig.length !== expected.length || !timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+      console.warn('[mesaj] WhatsApp webhook imzası geçersiz ya da WHATSAPP_APP_SECRET yok');
+      return res.sendStatus(401);
+    }
+    res.sendStatus(200);
+    try { waCloudIncoming(JSON.parse(raw.toString('utf8'))); } catch (e) { console.warn('[mesaj] WhatsApp webhook çözümlenemedi', e); }
   });
   return r;
 }

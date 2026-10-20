@@ -577,7 +577,7 @@ export default function App() {
         case 'restarting': setTimeout(() => location.reload(), 4000); break;
         case 'onay': setApprovalKey(k => k + 1); if (e.yeni) flash(`Onay bekliyor: ${e.yeni.baslik}`); break;
         case 'alarm': flash(`🔔 ${e.ad}: ${e.fiyat.toLocaleString('tr-TR')} · hedef ${e.kosul === 'ust' ? '≥' : '≤'} ${e.hedef.toLocaleString('tr-TR')}`); break;
-        case 'mesaj': flash(`${e.platform === 'whatsapp' ? 'WhatsApp' : 'Telegram'} · ${e.arama ? `${e.kisi} aradı` : `${e.kisi}: ${e.metin}`}`); break;
+        case 'mesaj': flash(`${{ whatsapp: 'WhatsApp', telegram: 'Telegram', telefon: '📞 Telefon' }[e.platform]} · ${e.arama ? `${e.kisi} ${e.platform === 'telefon' ? e.metin : 'aradı'}` : `${e.kisi}: ${e.metin}`}`); break;
       }
     }, setConnected);
   }, [device, play, playOpening, runPlayer, mock]);

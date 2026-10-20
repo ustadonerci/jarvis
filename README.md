@@ -92,6 +92,27 @@ Değişiklik yapan her işlem ekranda bir **onay kartı** açar. Kartta tam olar
 - **Paylaşım:** Telegram kanalına gönderi (`TELEGRAM_KANAL`). Diğer sosyal medya platformları için *Ayarlar → Yetenekler → + n8n / webhook* ile bir n8n iş akışı bağlayın.
 - **Kendi kodu:** Jarvis kendi kodunu okuyup düzeltme önerebilir. Kartta değişikliği görürsünüz; onaylarsanız önce `server/data/kod-yedek` klasörüne yedek alınır.
 
+## Telefon görüşmeleri (Twilio), WhatsApp Business API ve ses sağlayıcıları
+
+Bu özellikler dışarıdan gelen çağrıları (webhook) kabul eder. Bunun için Jarvis'in herkese açık bir **https** adresi olmalı. Aşağıdaki "Telefon ve tablette kullanmak" bölümündeki `cloudflared` tünelini açın, verdiği adresi *API anahtarları → PUBLIC_URL* alanına girin ve `ACCESS_TOKEN` tanımlayın.
+
+- **Telefon (Twilio):**
+  - twilio.com'dan bir numara alın ve `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER` anahtarlarını girin.
+  - Twilio'da numaranın *A call comes in* webhook'unu `PUBLIC_URL/twilio/voice` (POST) yapın. Tam adres Ayarlar → Bağlantılar'da yazar.
+  - Jarvis bu numaraya gelen aramaları karşılar: yapay zeka olduğunu ve not aldığını söyler, mesajı alır, görüşmeyi özetler.
+  - "Dişçiyi ara, perşembe randevu var mı sor" dediğinizde onay kartıyla sizin adınıza arar.
+  - Kendi cep telefonunuza gelen aramalar için operatörünüzün "cevap yoksa yönlendir" özelliği kullanılabilir.
+  - Twilio istekleri imzayla doğrulanır.
+- **WhatsApp Business (resmî Cloud API):** QR ile bağlanan WhatsApp Web'e alternatiftir.
+  - Meta for Developers'tan `WHATSAPP_CLOUD_TOKEN`, `WHATSAPP_PHONE_ID` ve `WHATSAPP_APP_SECRET` değerlerini alın; kendiniz bir `WHATSAPP_VERIFY_TOKEN` belirleyin.
+  - Webhook adresi: `PUBLIC_URL/hook/whatsapp`. Gelen mesajlar imzayla doğrulanır.
+- **Ses tanıma:** `DEEPGRAM_API_KEY` ya da `OPENAI_API_KEY` (Whisper) varsa onlar kullanılır, yoksa RouteLLM.
+- **Seslendirme:** ElevenLabs'e ek olarak Azure Speech (`AZURE_SPEECH_KEY` + `AZURE_SPEECH_REGION`) ile Türkçe Ahmet (erkek) ve Emel (kadın) sesleri.
+
+## Giriş isteyen MCP eklentileri (ör. Topview)
+
+*Ayarlar → Yetenekler*'e `https://github.com/topviewai/plugins` yapıştırıp **Kur**'a basın. Jarvis 3 beceriyi ve `topview-browser` MCP sunucusunu bulur. Sunucuyu açtığınızda **Giriş yap** düğmesi çıkar; açılan sayfada Topview hesabınızla izin verin. Giriş bilgileri bu bilgisayarda saklanır ve yeniden başlayınca hatırlanır.
+
 ## Telefon ve tablette kullanmak
 
 Mikrofon yalnızca HTTPS'te çalıştığı için bilgisayarındaki Jarvis'e bir tünelle bağlan:

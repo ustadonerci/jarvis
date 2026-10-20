@@ -132,6 +132,8 @@ export interface MessagingCfg { telegramOto: boolean; whatsappOto: boolean; aram
 export interface MessagingData {
   telegram: { durum: 'anahtar yok' | 'kapalı' | 'bağlı' | 'hata'; bot: string; hata: string };
   whatsapp: { durum: 'kapalı' | 'qr' | 'bağlanıyor' | 'bağlı' | 'hata'; qr: string; numara: string; hata: string };
+  whatsappCloud?: { hazir: boolean; webhook: string | null; imza: boolean };
+  telefon?: { hazir: boolean; numara: string | null; webhook: string | null; son: { sid: string; yon: 'gelen' | 'giden'; numara: string; basla: string; sure_sn?: number; ozet: string }[] };
   ayar: MessagingCfg;
   okunmamis: number;
 }
@@ -159,7 +161,7 @@ export const getErrors = () => fetch('/api/hatalar', { headers: headers() }).the
 export const clearErrorLog = () => fetch('/api/hatalar', { method: 'DELETE', headers: headers() }).then(r => json<{ ok: true }>(r));
 
 // ---------- Onay kartları ve webhook'lar ----------
-export interface ActionView { id: string; tur: 'komut' | 'uygulama' | 'paylasim' | 'webhook' | 'kod'; baslik: string; ayrinti: string; aciklama: string; durum: 'bekliyor' | 'calisiyor' | 'tamam' | 'hata' | 'reddedildi' | 'dustu'; sonuc?: string; at: string; bitti?: string }
+export interface ActionView { id: string; tur: 'komut' | 'uygulama' | 'paylasim' | 'webhook' | 'kod' | 'arama'; baslik: string; ayrinti: string; aciklama: string; durum: 'bekliyor' | 'calisiyor' | 'tamam' | 'hata' | 'reddedildi' | 'dustu'; sonuc?: string; at: string; bitti?: string }
 export const getActions = () => fetch('/api/islemler', { headers: headers() }).then(r => json<{ islemler: ActionView[] }>(r));
 export const decideAction = (id: string, onay: boolean) =>
   fetch(`/api/islemler/${encodeURIComponent(id)}`, { method: 'POST', headers: headers(), body: JSON.stringify({ onay }) }).then(r => json<ActionView>(r));

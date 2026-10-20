@@ -78,7 +78,7 @@ export type ServerEvent =
   | { type: 'kitaplik' }
   | { type: 'extensions' }
   | { type: 'restarting' }
-  | { type: 'mesaj'; platform: 'telegram' | 'whatsapp'; kisi: string; metin: string; arama?: boolean }
+  | { type: 'mesaj'; platform: 'telegram' | 'whatsapp' | 'telefon'; kisi: string; metin: string; arama?: boolean }
   | { type: 'whatsapp' }
   | { type: 'portfoy' }
   | { type: 'onay'; yeni?: { baslik: string }; bitti?: { baslik: string; durum: string } }
