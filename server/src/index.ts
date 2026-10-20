@@ -23,6 +23,7 @@ import { control, homeState, initHome, type DeviceId, type HomeAction } from './
 import { initLibrary, libraryRouter } from './library.js';
 import { extensionsRouter, initExtensions } from './extensions.js';
 import { initMessaging, messagingRouter } from './messaging.js';
+import { financeRouter, initFinance } from './finance.js';
 import { adminOnly, listKeys, restartServer, saveKeys } from './keys.js';
 import { PERSONAS, isPersona, setPersona, type PersonaId } from './persona.js';
 import { THEMES, isTheme, voiceGender, type ThemeId } from './look.js';
@@ -121,6 +122,7 @@ initHome(broadcast);
 initLibrary(broadcast);
 initExtensions(broadcast);
 initMessaging(broadcast);
+initFinance(broadcast);
 
 const app = express();
 app.use(express.json({ limit: '12mb' })); // kamera fotoğrafı (istemci ~1280 px JPEG'e küçültür)
@@ -281,6 +283,9 @@ app.use(extensionsRouter());
 
 // ---------- Bağlantılar: Telegram ve WhatsApp ----------
 app.use(messagingRouter());
+
+// ---------- Finans: portföy ve fiyat alarmları ----------
+app.use(financeRouter());
 
 // ---------- API anahtarları (server/.env) ----------
 app.get('/api/keys', adminOnly, (_req, res) => res.json(listKeys()));

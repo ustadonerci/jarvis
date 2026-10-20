@@ -141,6 +141,17 @@ export const saveMessaging = (patch: Partial<MessagingCfg>) => msgApi('/ayar', '
 export const connectWhatsApp = () => msgApi('/whatsapp/baglan', 'POST', {});
 export const logoutWhatsApp = () => msgApi('/whatsapp/cikis', 'POST', {});
 
+// ---------- Ayarlar → Portföy ----------
+export interface HoldingView { id: string; sembol: string; ad?: string; adet: number; para?: string; fiyat?: number; maliyet_birim?: number; deger_tl?: number; kar_tl?: number; kar_yuzde?: number; agirlik_yuzde?: number; gunluk_degisim?: number; sinyal?: string; hata?: string }
+export interface PortfolioData { bos?: boolean; toplam_deger_tl?: number; toplam_kar_tl?: number; toplam_kar_yuzde?: number; risk?: { yillik_oynaklik: number | null; en_buyuk_dusus_1y: number | null }; varliklar?: HoldingView[]; hata?: string }
+export interface AlarmView { id: string; sembol: string; kosul: 'ust' | 'alt'; fiyat: number; tetiklendi?: string }
+export const getPortfolio = () => fetch('/api/finans/portfoy', { headers: headers() }).then(r => json<PortfolioData>(r));
+export const addPortfolio = (sembol: string, adet: number, maliyet: number) =>
+  fetch('/api/finans/portfoy', { method: 'POST', headers: headers(), body: JSON.stringify({ sembol, adet, maliyet }) }).then(r => json<{ ok: true }>(r));
+export const deletePortfolio = (id: string) => fetch(`/api/finans/portfoy/${encodeURIComponent(id)}`, { method: 'DELETE', headers: headers() }).then(r => json<{ ok: true }>(r));
+export const getAlarms = () => fetch('/api/finans/alarm', { headers: headers() }).then(r => json<{ alarmlar: AlarmView[] }>(r));
+export const deleteAlarm = (id: string) => fetch(`/api/finans/alarm/${encodeURIComponent(id)}`, { method: 'DELETE', headers: headers() }).then(r => json<{ ok: true }>(r));
+
 /** Oynatıcı "sahibi bu sitede oynatılmasını engelledi" dedi: sunucu bir daha Jarvis içinde önermesin */
 export const reportVideoBlocked = (id: string, code: number) => post('/api/video-blocked', { id, code });
 

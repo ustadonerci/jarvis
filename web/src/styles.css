@@ -798,3 +798,14 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .theme-seg [data-swatch='neon'] .swatch { background: #c77dff; }
 .theme-seg [data-swatch='altin'] .swatch { background: #ffc94d; }
 .theme-seg [data-swatch='buz'] .swatch { background: #dff4ff; }
+/* Ayarlar → Portföy */
+.pf-total { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.pf-total b { font-size: 22px; }
+.pf-total em { font-style: normal; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.up { color: var(--ok); }
+.down { color: var(--danger); }
+.pf-add { display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 6px; }
+.pf-add input { min-width: 0; height: 38px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line); background: rgba(8, 18, 28, 0.75); color: var(--text); font-size: 14px; outline: none; }
+.pf-add button { padding: 0 14px; border-radius: 8px; border: 1px solid var(--line); background: none; color: var(--accent); }
+.pf-add button:disabled { opacity: 0.4; }
+@media (max-width: 560px) { .pf-add { grid-template-columns: 1fr 1fr; } }

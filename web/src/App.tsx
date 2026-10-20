@@ -16,6 +16,7 @@ import { ProfileSettings } from './components/Profile';
 import { LibrarySettings } from './components/LibrarySettings';
 import { ExtensionSettings, KeySettings } from './components/Extensions';
 import { MessagingSettings } from './components/Messaging';
+import { PortfolioSettings } from './components/Portfolio';
 import { addNote, patchBook, type Kitap } from './lib/library';
 import { VideoPanel, type VideoInfo } from './components/VideoPanel';
 import { CameraPanel } from './camera/CameraPanel';
@@ -571,6 +572,7 @@ export default function App() {
         case 'cleared': setMessages([]); setReply(null); setSceneIdx(-1); break;
         // Ayarlar'dan anahtar kaydedildi: sunucu yeni değerlerle açılınca sayfa da baştan yüklensin (demo modu vb.)
         case 'restarting': setTimeout(() => location.reload(), 4000); break;
+        case 'alarm': flash(`🔔 ${e.ad}: ${e.fiyat.toLocaleString('tr-TR')} · hedef ${e.kosul === 'ust' ? '≥' : '≤'} ${e.hedef.toLocaleString('tr-TR')}`); break;
         case 'mesaj': flash(`${e.platform === 'whatsapp' ? 'WhatsApp' : 'Telegram'} · ${e.arama ? `${e.kisi} aradı` : `${e.kisi}: ${e.metin}`}`); break;
       }
     }, setConnected);
@@ -1192,6 +1194,7 @@ export default function App() {
                   </div>
                   <p className="muted small">Ton hem konuşma üslubunu hem de seslendirmeyi değiştirir. Doğruluk ve onay kuralları her tonda aynıdır.</p>
                   <KeySettings flash={flash} />
+                  <PortfolioSettings flash={flash} />
                   <MessagingSettings flash={flash} />
                   <ExtensionSettings flash={flash} />
                   <ProfileSettings flash={flash} />
