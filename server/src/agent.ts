@@ -5,6 +5,7 @@ import { TOOLS, runTool, type ToolProgress } from './tools.js';
 import { EXT_TOOLS, extensionsForPrompt, mcpTools } from './extensions.js';
 import { MSG_TOOLS, messagingForPrompt } from './messaging.js';
 import { SEARCH_TOOLS } from './search.js';
+import { personaForPrompt } from './persona.js';
 import { findNewsById } from './news.js';
 import { resolveFastPhoto, resolveSlowPhoto, type PhotoMode } from './photos.js';
 import { findWiki } from './wiki.js';
@@ -40,6 +41,7 @@ function contextVars(device: Device, prevDevice: Device | null) {
     kitaplik: libraryForPrompt(),
     yetenekler: extensionsForPrompt(),
     mesajlasma: messagingForPrompt(),
+    ton: personaForPrompt(),
   };
 }
 

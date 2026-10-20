@@ -29,7 +29,7 @@ import { shrinkImage } from './lib/image';
 import { recorderSupported, startRecording } from './lib/recorder';
 import { Markdown } from './lib/markdown';
 import { createRecognizer, speechRecognitionSupported, voice } from './lib/speech';
-import { DEVICE_LABEL, type CoreState, type CurrencyCode, type Dashboard, type Device, type GreetingPeriod, type Health, type JarvisReply, type Sahne, type ServerEvent, type StoredMessage, type UiMode, type VoiceOption, type VoiceSel, type WakeConfig } from './lib/types';
+import { DEVICE_LABEL, type PersonaOption, type ThemeOption, type CoreState, type CurrencyCode, type Dashboard, type Device, type GreetingPeriod, type Health, type JarvisReply, type Sahne, type ServerEvent, type StoredMessage, type UiMode, type VoiceOption, type VoiceSel, type WakeConfig } from './lib/types';
 import { atServerTime, clockInfo, keepAwake, listenForCommand, preciseTimeout, startClockSync, syncClock, type CommandListen } from './lib/wake';
 
 type Highlight = CurrencyCode | 'weather';
@@ -126,6 +126,12 @@ export default function App() {
   const fileRef = useRef<HTMLInputElement>(null);
   // Seslendiren (tüm cihazlarda ortak; sunucuda saklanır)
   const [voiceSel, setVoiceSel] = useState<VoiceSel | null>(null);
+  // Konuşma tonu ve renk teması (tüm cihazlarda ortak; sunucuda saklanır)
+  const [persona, setPersona] = useState('profesyonel');
+  const [personas, setPersonas] = useState<PersonaOption[]>([]);
+  const [theme, setTheme] = useState('jarvis');
+  const [themes, setThemes] = useState<ThemeOption[]>([]);
+  useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
   const [sfxOn, setSfxOn] = useState(true);
   const [voices, setVoices] = useState<VoiceOption[] | null>(null);
   const [elevenUse, setElevenUse] = useState<ElevenUsage | null>(null);
@@ -441,6 +447,10 @@ export default function App() {
         setSfxOn(s.sfx);
         setWake(s.wake);
         setUi(s.ui ?? 'mark1');
+        if (s.persona) setPersona(s.persona);
+        setPersonas(s.personas ?? []);
+        if (s.theme) setTheme(s.theme);
+        setThemes(s.themes ?? []);
         setCameraEnabled(!!s.camera?.enabled);
         setUserName(s.userName || '');
         const last = [...s.messages].reverse().find(m => m.reply);
@@ -548,6 +558,8 @@ export default function App() {
         case 'settings':
           setWake(e.wake);
           if (e.ui) setUi(e.ui);
+          if (e.persona) setPersona(e.persona);
+          if (e.theme) setTheme(e.theme);
           setMode(e.photoMode);
           setVoiceSel(e.voice);
           setSfxOn(e.sfx);
@@ -1161,6 +1173,24 @@ export default function App() {
                     <button className={ui === 'mark2' ? 'on' : ''} onClick={() => saveSettings({ ui: 'mark2' }).catch(e => flash(e.message))}>Mark 2 · yoğun HUD</button>
                   </div>
                   <p className="muted small">Mark 2 geniş ekran için tasarlandı; telefonda sade bir düzene geçer.</p>
+                  <label>Tema</label>
+                  <div className="seg theme-seg">
+                    {themes.map(t => (
+                      <button key={t.id} className={theme === t.id ? 'on' : ''} data-swatch={t.id} onClick={() => saveSettings({ theme: t.id }).catch(e => flash(e.message))}>
+                        <i className="swatch" />{t.ad}
+                      </button>
+                    ))}
+                  </div>
+                  <label>Konuşma tonu (tüm cihazlarda)</label>
+                  <div className="seg">
+                    {personas.map(p => (
+                      <button key={p.id} className={persona === p.id ? 'on' : ''} onClick={() => {
+                        if (p.onay && persona !== p.id && !confirm('Bu ton argo ve küfür içerir (+18). Jarvis sizinle bu şekilde konuşsun mu?')) return;
+                        saveSettings({ persona: p.id }).then(() => flash(`Ton: ${p.ad} · bir sonraki cevaptan itibaren`)).catch(e => flash(e.message));
+                      }}>{p.ad}</button>
+                    ))}
+                  </div>
+                  <p className="muted small">Ton hem konuşma üslubunu hem de seslendirmeyi değiştirir. Doğruluk ve onay kuralları her tonda aynıdır.</p>
                   <KeySettings flash={flash} />
                   <MessagingSettings flash={flash} />
                   <ExtensionSettings flash={flash} />
@@ -1189,6 +1219,19 @@ export default function App() {
                   </div>
                   <p className="muted small">Video modu, çekimde telifsiz stok fotoğraf kullanır.</p>
                   <label>Seslendiren</label>
+                  {voices && voiceSel && voices.some(v => v.gender) && (
+                    <div className="seg">
+                      {(['erkek', 'kadin'] as const).map(g => {
+                        const cur = voices.find(v => v.model === voiceSel.model && v.voice === voiceSel.voice)?.gender;
+                        const pick = voices.find(v => v.gender === g);
+                        return (
+                          <button key={g} className={cur === g ? 'on' : ''} disabled={!pick} onClick={() => pick && chooseVoice({ model: pick.model, voice: pick.voice, speed: voiceSel.speed }, pick.label)}>
+                            {g === 'erkek' ? 'Erkek ses' : 'Kadın ses'}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                   {voices === null ? <p className="muted small">yükleniyor…</p> : voices.length === 0 ? (
                     <p className="muted small">Doğrulanmış ses yok. Sunucuda <code>npm run voices</code> çalıştırın.</p>
                   ) : (

@@ -8,6 +8,17 @@ const COLORS: Record<CoreState, [number, number, number]> = {
   speaking: [120, 236, 255],
 };
 
+/** Tema rengi (--accent-rgb); tema değişince bir sonraki karede okunur */
+let accentCache = { theme: '', rgb: COLORS.idle };
+function accent(): [number, number, number] {
+  const theme = document.documentElement.dataset.theme ?? '';
+  if (theme !== accentCache.theme) {
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--accent-rgb').split(',').map(Number);
+    accentCache = { theme, rgb: v.length === 3 && v.every(Number.isFinite) ? (v as [number, number, number]) : COLORS.idle };
+  }
+  return accentCache.rgb;
+}
+
 /** a–b saniye aralığında 0→1 (yumuşak), aralık dışında 0 ya da 1 */
 const span = (p: number, a: number, b: number) => {
   const x = Math.min(1, Math.max(0, (p - a) / (b - a)));
@@ -51,7 +62,7 @@ export function Core({ state, level, introAt = null }: { state: CoreState; level
 
     const draw = (t: number) => {
       const s = stateRef.current;
-      const target = COLORS[s];
+      const target = s === 'idle' || s === 'speaking' ? accent() : COLORS[s];
       col = col.map((c, i) => c + (target[i] - c) * 0.06);
       const lv = s === 'speaking' ? level() : s === 'listening' ? 0.25 + 0.2 * Math.sin(t / 180) * Math.sin(t / 77) : 0;
       L += (lv - L) * 0.3;

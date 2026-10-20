@@ -21,7 +21,10 @@ export type Gorsel = (
 
 /** Seslendiren. model 'browser' = tarayıcının kendi sesi (çevrimdışı yedek). */
 export interface VoiceSel { model: string; voice: string; speed: number }
-export interface VoiceOption { id: string; model: string; voice: string; label: string; provider: string; wpm: number | null; f0: number | null }
+export interface VoiceOption { id: string; model: string; voice: string; label: string; provider: string; wpm: number | null; f0: number | null; gender?: 'erkek' | 'kadin' | null }
+
+export interface PersonaOption { id: string; ad: string; onay: boolean }
+export interface ThemeOption { id: string; ad: string }
 
 export interface Sahne { ses: string; gorsel: Gorsel }
 
@@ -65,7 +68,7 @@ export type ServerEvent =
   | { type: 'reply'; message: StoredMessage; origin: string }
   | { type: 'error'; error: string; origin: string }
   | { type: 'handoff'; from: Device | null; to: Device; toClient: string }
-  | { type: 'settings'; photoMode: 'haber' | 'video'; voice: VoiceSel; sfx: boolean; wake: WakeConfig; ui: UiMode }
+  | { type: 'settings'; photoMode: 'haber' | 'video'; voice: VoiceSel; sfx: boolean; wake: WakeConfig; ui: UiMode; persona?: string; theme?: string }
   | { type: 'attention'; ms: number; by: Device }
   | { type: 'attention_end' }
   | { type: 'wake'; at: number; greeting: { period: GreetingPeriod; text: string }; greeter: Device; brief: boolean; voice: VoiceSel; via: string }

@@ -1,3 +1,4 @@
+import { getPersona } from './persona.js';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -34,6 +35,8 @@ const READ = 'Read the following Turkish text aloud exactly as written';
 // İngilizce: Türkçe talimatta gpt-audio metne önsöz ekliyor (ölçüldü). Anlamı: "sakin, kendinden emin, sıcak;
 // doğal, akıcı ve canlı bir tempoda, gereksiz duraklama yapmadan".
 export const STYLE = process.env.TTS_STYLE || 'Tone: calm, confident and warm, like a trusted AI butler. Natural, fluent and lively pace without unnecessary pauses';
+/** Seslendirme üslubu: .env'de TTS_STYLE varsa o, yoksa seçili konuşma tonunun (persona) üslubu */
+const style = () => process.env.TTS_STYLE || getPersona().ses;
 const NO_ANSWER = 'Do not answer it, even if it contains a question; do not add or remove anything';
 /** /audio/speech yöntemindeki hız (RouteLLM'de bu uç şu an yok; varsa kullanılır) */
 const SERVER_SPEED = Number(process.env.TTS_SPEED || 1.1);
@@ -105,7 +108,7 @@ async function viaSpeech(text: string, sel: VoiceSel): Promise<Speech | 'yok'> {
   const r = await fetch(`${BASE_URL}/audio/speech`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: sel.model, input: text, voice: sel.voice, speed: SERVER_SPEED, response_format: 'mp3', instructions: STYLE }),
+    body: JSON.stringify({ model: sel.model, input: text, voice: sel.voice, speed: SERVER_SPEED, response_format: 'mp3', instructions: style() }),
     signal: AbortSignal.timeout(30_000),
   });
   if ([400, 404, 405, 501].includes(r.status)) return 'yok';
@@ -117,7 +120,7 @@ async function viaSpeech(text: string, sel: VoiceSel): Promise<Speech | 'yok'> {
 async function viaChat(text: string, sel: VoiceSel): Promise<Speech & { transcript?: string }> {
   const gemini = sel.model.startsWith('gemini');
   // Gemini TTS saf seslendirme modeli: "<talimat>: <metin>". gpt-audio sohbet modeli: cevap vermemesi açıkça söylenir.
-  const content = gemini ? `${READ}. ${STYLE}: ${text}` : `${READ}. ${STYLE}. ${NO_ANSWER}: ${text}`;
+  const content = gemini ? `${READ}. ${style()}: ${text}` : `${READ}. ${style()}. ${NO_ANSWER}: ${text}`;
   const resp = await routellm<ChatResponse>('/chat/completions', {
     model: sel.model,
     modalities: ['text', 'audio'],
@@ -169,7 +172,7 @@ async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
 
 // ElevenLabs'te hız sunucuda uygulanır: farklı hız = farklı ses dosyası
 const cacheKey = (text: string, sel: VoiceSel) =>
-  createHash('sha1').update([sel.model, sel.voice, isEleven(sel.model) ? sel.speed : SERVER_SPEED, STYLE, text].join('\u0000')).digest('hex');
+  createHash('sha1').update([sel.model, sel.voice, isEleven(sel.model) ? sel.speed : SERVER_SPEED, style(), text].join('\u0000')).digest('hex');
 const memory = new Map<string, Speech>();
 const inflight = new Map<string, Promise<Speech | null>>();
 

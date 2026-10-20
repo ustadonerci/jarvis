@@ -1,4 +1,4 @@
-import type { Dashboard, Device, Health, ServerEvent, StoredMessage, UiMode, VoiceOption, VoiceSel, WakeConfig } from './types';
+import type { Dashboard, Device, Health, PersonaOption, ServerEvent, StoredMessage, ThemeOption, UiMode, VoiceOption, VoiceSel, WakeConfig } from './types';
 
 function safeGet(k: string) { try { return localStorage.getItem(k); } catch { return null; } }
 function safeSet(k: string, v: string) { try { localStorage.setItem(k, v); } catch { /* yok say */ } }
@@ -42,6 +42,10 @@ export interface AppState {
   sfx: boolean;
   wake: WakeConfig;
   ui: UiMode;
+  persona?: string;
+  personas?: PersonaOption[];
+  theme?: string;
+  themes?: ThemeOption[];
   camera?: { enabled: boolean; vision: string };
   userName?: string;
   mock: boolean;
@@ -70,7 +74,7 @@ export async function getVoices(): Promise<{ voices: VoiceOption[]; current: Voi
 export const previewUrl = (id: string) => `/api/voices/preview?id=${encodeURIComponent(id)}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
 
 /** Ses seçimi tüm cihazlarda ortaktır: sunucuda saklanır ve SSE ile herkese yayılır. */
-export async function saveSettings(patch: { voice?: VoiceSel; sfx?: boolean; wake?: Partial<WakeConfig>; ui?: UiMode }) {
+export async function saveSettings(patch: { voice?: VoiceSel; sfx?: boolean; wake?: Partial<WakeConfig>; ui?: UiMode; persona?: string; theme?: string }) {
   const r = await fetch('/api/settings', { method: 'POST', headers: headers(), body: JSON.stringify(patch) });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'kaydedilemedi');
 }

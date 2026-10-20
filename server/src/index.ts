@@ -24,6 +24,8 @@ import { initLibrary, libraryRouter } from './library.js';
 import { extensionsRouter, initExtensions } from './extensions.js';
 import { initMessaging, messagingRouter } from './messaging.js';
 import { adminOnly, listKeys, restartServer, saveKeys } from './keys.js';
+import { PERSONAS, isPersona, setPersona, type PersonaId } from './persona.js';
+import { THEMES, isTheme, voiceGender, type ThemeId } from './look.js';
 import { ELEVEN_MODEL, ELEVEN_MODEL_LABEL, elevenReady, elevenUsage, elevenVoices, isEleven } from './eleven.js';
 import type { Device, StoredMessage } from './types.js';
 
@@ -47,6 +49,10 @@ interface State {
   sfx?: boolean;
   /** İki alkışla uyanma ayarları (tüm cihazlarda ortak) */
   wake?: WakeConfig;
+  /** Konuşma tonu (persona) */
+  persona?: PersonaId;
+  /** Renk teması */
+  theme?: ThemeId;
 }
 function loadState(): State {
   try {
@@ -56,6 +62,7 @@ function loadState(): State {
   }
 }
 const state = loadState();
+if (state.persona && isPersona(state.persona)) setPersona(state.persona);
 function saveState() {
   fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
   fs.writeFileSync(DATA_FILE, JSON.stringify({ ...state, messages: state.messages.slice(-100) }, null, 2));
@@ -148,7 +155,9 @@ app.get('/api/events', (req, res) => {
 });
 
 const uiMode = () => state.ui ?? 'mark1';
-const settingsEvent = () => ({ type: 'settings', photoMode: state.photoMode, voice: currentVoice(), sfx: sfx(), wake: wakeCfg(), ui: uiMode() });
+const persona = () => state.persona ?? 'profesyonel';
+const theme = () => state.theme ?? 'jarvis';
+const settingsEvent = () => ({ type: 'settings', photoMode: state.photoMode, voice: currentVoice(), sfx: sfx(), wake: wakeCfg(), ui: uiMode(), persona: persona(), theme: theme() });
 
 app.get('/api/state', (_req, res) => {
   res.json({
@@ -160,6 +169,10 @@ app.get('/api/state', (_req, res) => {
     sfx: sfx(),
     wake: wakeCfg(),
     ui: uiMode(),
+    persona: persona(),
+    personas: PERSONAS.map(({ id, ad, onay }) => ({ id, ad, onay: !!onay })),
+    theme: theme(),
+    themes: THEMES,
     camera: { enabled: CAMERA_ENABLED, vision: VISION_MODEL },
     // El Kontrolü yüz HUD etiketi ("AD · TANINDI"); ad repoda değil .env'de
     userName: process.env.USER_NAME || '',
@@ -192,10 +205,10 @@ setInterval(() => {
 
 // ---------- Seslendiren ----------
 app.get('/api/voices', async (_req, res) => {
-  const list = usableVoices().map(({ id, model, voice, label, provider, f0, wpm }) => ({
-    id, model, voice, label, provider, wpm,
-    f0: f0?.length ? Math.round(f0.reduce((a, b) => a + b, 0) / f0.length) : null,
-  }));
+  const list = usableVoices().map(({ id, model, voice, label, provider, f0, wpm }) => {
+    const hz = f0?.length ? Math.round(f0.reduce((a, b) => a + b, 0) / f0.length) : null;
+    return { id, model, voice, label, provider, wpm, f0: hz, gender: voiceGender(voice, hz) };
+  });
   // ElevenLabs hesabındaki sesler (anahtar varsa)
   const [eleven, usage] = await Promise.all([elevenVoices(), elevenUsage()]);
   const elevenList = eleven.map(v => ({
@@ -206,6 +219,7 @@ app.get('/api/voices', async (_req, res) => {
     provider: 'ElevenLabs',
     wpm: null,
     f0: null,
+    gender: voiceGender(v.name, null, v.labels?.gender),
   }));
   res.json({ voices: [...elevenList, ...list], current: currentVoice(), tested: loadCatalog().length, eleven: usage });
 });
@@ -225,6 +239,15 @@ app.post('/api/settings', (req, res) => {
   if (req.body.photoMode === 'haber' || req.body.photoMode === 'video') state.photoMode = req.body.photoMode;
   if (typeof req.body.sfx === 'boolean') state.sfx = req.body.sfx;
   if (req.body.ui === 'mark1' || req.body.ui === 'mark2') state.ui = req.body.ui;
+  if (isTheme(req.body.theme)) state.theme = req.body.theme;
+  if (isPersona(req.body.persona) && req.body.persona !== persona()) {
+    state.persona = req.body.persona;
+    setPersona(req.body.persona);
+    console.log(`[ton] ${req.body.persona}`);
+    // Seslendirme üslubu değişti: açılış ve karşılama sesleri yeni üslupla yeniden hazırlansın
+    warmOpening(currentVoice()).catch(() => {});
+    warmGreetings();
+  }
   if (req.body.voice) {
     const v = req.body.voice;
     const sel: VoiceSel = { model: String(v.model ?? ''), voice: String(v.voice ?? ''), speed: clampRate(Number(v.speed ?? currentVoice().speed)) };
