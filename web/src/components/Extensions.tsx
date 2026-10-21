@@ -12,9 +12,12 @@ import {
 export function KeySettings({ flash }: { flash(t: string): void }) {
   const [data, setData] = useState<KeysData | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
-  const [open, setOpen] = useState(false);
+  // Bölüm açık başlar: anahtarı girilecek yer ilk bakışta görünsün
+  const [open, setOpen] = useState(true);
   const [newName, setNewName] = useState('');
   const [error, setError] = useState('');
+  // Gizli alanlarda yazılanı göster (varsayılan: noktalarla gizli)
+  const [shown, setShown] = useState<Set<string>>(new Set());
 
   useEffect(() => { if (open && !data) getKeys().then(setData).catch(e => setError(e.message)); }, [open, data]);
 
@@ -44,14 +47,21 @@ export function KeySettings({ flash }: { flash(t: string): void }) {
         <span>{f.label}</span>
         <em className={f.set ? 'ok' : ''}>{f.set ? (f.secret ? `kayıtlı ${f.value}` : 'kayıtlı') : 'boş'}</em>
       </div>
-      <input
-        type={f.secret ? 'password' : 'text'}
-        autoComplete="off"
-        spellCheck={false}
-        value={draft[f.name] ?? (f.secret ? '' : f.value)}
-        placeholder={f.secret ? (f.set ? 'Değiştirmek için yeni anahtarı yapıştırın' : 'Anahtarı yapıştırın') : ''}
-        onChange={e => set(f.name, e.target.value)}
-      />
+      <div className="key-input">
+        <input
+          type={f.secret && !shown.has(f.name) ? 'password' : 'text'}
+          autoComplete="off"
+          spellCheck={false}
+          value={draft[f.name] ?? (f.secret ? '' : f.value)}
+          placeholder={f.secret ? (f.set ? 'Değiştirmek için yeni anahtarı yapıştırın' : 'Anahtarı buraya yapıştırın (Ctrl+V)') : ''}
+          onChange={e => set(f.name, e.target.value)}
+        />
+        {f.secret && (
+          <button type="button" onClick={() => setShown(s => { const n = new Set(s); n.has(f.name) ? n.delete(f.name) : n.add(f.name); return n; })}>
+            {shown.has(f.name) ? 'gizle' : 'göster'}
+          </button>
+        )}
+      </div>
       <div className="key-foot">
         <p className="muted small">{f.hint}</p>
         {f.set && f.secret && draft[f.name] !== '' && <button onClick={() => set(f.name, '')}>Sil</button>}
@@ -69,7 +79,13 @@ export function KeySettings({ flash }: { flash(t: string): void }) {
           <em>düzenle</em>
         </button>
       ) : !data ? (
-        <p className="muted small">{error || 'yükleniyor…'}</p>
+        error ? (
+          <p className="small warn">
+            {/bilgisayardan|403|yetkisiz/i.test(error)
+              ? "Anahtarlar yalnızca Jarvis'in çalıştığı bilgisayardan değiştirilebilir. Bu sayfayı o bilgisayarda http://localhost:5173 adresinden açın."
+              : error}
+          </p>
+        ) : <p className="muted small">yükleniyor…</p>
       ) : (
         <div className="keys">
           {data.fields.map(field)}
@@ -79,7 +95,7 @@ export function KeySettings({ flash }: { flash(t: string): void }) {
             <button type="submit" disabled={!newName.trim()}>Ekle</button>
           </form>
           <div className="seg">
-            <button className={dirty ? 'on' : ''} disabled={!dirty} onClick={save}>Kaydet</button>
+            <button className={dirty ? 'on' : ''} disabled={!dirty} onClick={save}>{dirty ? 'Kaydet' : 'Kaydet (önce bir alana yazın)'}</button>
             <button onClick={() => { setDraft({}); setOpen(false); }}>{dirty ? 'Vazgeç' : 'Kapat'}</button>
           </div>
           <p className="muted small">Anahtarlar yalnızca bu bilgisayardaki server/.env dosyasına yazılır, GitHub'a gitmez ve tarayıcıya geri gönderilmez.</p>
