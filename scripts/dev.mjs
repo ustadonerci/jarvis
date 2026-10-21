@@ -1,15 +1,19 @@
 // Sunucuyu ve arayüzü birlikte başlatır: npm run dev
-// JARVIS_DEV: sunucu Ayarlar'dan anahtar kaydedilince kendini yeniden başlatabilir (tsx watch).
-// Başlamadan önce eksik paketleri kurar (güncellemeden sonra "npm run setup" unutulursa sunucu açılmıyordu) ve
-// sunucu açılamazsa hatasını en altta, kolay görülür biçimde tekrar yazar.
+//
+// Windows'ta "npm --prefix server run dev" (tsx watch, npm + kabuk katmanı) ile sunucu açılmazken aynı kod
+// "npx tsx src/index.ts" ile açılıyordu. Bu yüzden ikisi de npm/kabuk olmadan, doğrudan Node ile başlatılır:
+// sunucu node --import tsx ile (izleme modu yok), arayüz Vite'ın kendi giriş dosyasıyla.
+// - Ayarlar'dan anahtar kaydedilince sunucu 75 koduyla çıkar (JARVIS_DEV=1); burada hemen yeniden açılır.
+// - Sunucu başka bir sebeple kapanırsa hatası kırmızı kutuyla gösterilir ve 5 sn sonra yeniden denenir.
+// - Başlamadan önce eksik paketler kurulur, .env yoksa oluşturulur.
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
-import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const WIN = process.platform === 'win32';
+const RESTART_CODE = 75;
 
 /** package.json'daki her bağımlılık node_modules'ta var mı? Yoksa o klasörde npm install. */
 function ensureDeps(dir) {
@@ -26,41 +30,67 @@ ensureDeps('web');
 const env = path.join(ROOT, 'server', '.env');
 if (!fs.existsSync(env)) fs.copyFileSync(path.join(ROOT, 'server', '.env.example'), env);
 
-// Sunucunun son çıktısı: açılamazsa en altta tekrar gösterilir
+const TAGS = { server: '\x1b[36m[sunucu]\x1b[0m', web: '\x1b[33m[arayüz]\x1b[0m' };
 const serverLog = [];
 let proxyNoted = false;
-const run = (name, args) => {
-  const p = spawn('npm', args, { stdio: 'pipe', shell: WIN, env: { ...process.env, JARVIS_DEV: '1' } });
-  const tag = name === 'server' ? '\x1b[36m[sunucu]\x1b[0m' : '\x1b[33m[arayüz]\x1b[0m';
-  const keep = (d) => { if (name === 'server') { serverLog.push(...d.toString().split('\n').filter(Boolean)); serverLog.splice(0, Math.max(0, serverLog.length - 25)); } };
-  // Sunucu kapalıyken Vite her saniye "http proxy error / ECONNREFUSED" yazıp sunucunun asıl hatasını ekrandan
-  // kaydırıyordu: bu tekrarları yalnızca bir kez göster.
-  const noisy = (l) => name === 'web' && /http proxy error|ECONNREFUSED|internalConnectMultiple|afterConnectMultiple/.test(l);
-  const out = (d, stream) => {
-    keep(d);
-    const lines = d.toString().split('\n').filter(Boolean).filter(l => !noisy(l) || !proxyNoted && (proxyNoted = true));
-    if (lines.length) stream.write(lines.map(l => `${tag} ${l}`).join('\n') + '\n');
-  };
-  p.stdout.on('data', d => out(d, process.stdout));
-  p.stderr.on('data', d => out(d, process.stderr));
-  return p;
-};
-const ps = [run('server', ['--prefix', 'server', 'run', 'dev']), run('web', ['--prefix', 'web', 'run', 'dev'])];
-process.on('SIGINT', () => { ps.forEach(p => p.kill()); process.exit(0); });
+let stopping = false;
 
-// 40 sn içinde sunucu 8787'de dinlemiyorsa hatayı göze çarpacak biçimde yaz
-const port = Number(/^PORT=(\d+)/m.exec(fs.readFileSync(env, 'utf8'))?.[1] || 8787);
-const listening = () => new Promise(res => {
-  const s = net.connect(port, '127.0.0.1');
-  s.once('connect', () => { s.destroy(); res(true); });
-  s.once('error', () => res(false));
-});
-// Sunucu açılana kadar 40 sn'de bir; açılınca durur
-const check = setInterval(async () => {
-  if (await listening()) { clearInterval(check); proxyNoted = false; return; }
+/** Çıktıyı etiketleyerek yazar. Sunucu kapalıyken Vite'ın her saniye yazdığı proxy hatalarını bir kez gösterir. */
+function pipe(name, child) {
+  const out = (d, stream) => {
+    const lines = d.toString().split(/\r?\n/).filter(Boolean);
+    if (name === 'server') { serverLog.push(...lines); serverLog.splice(0, Math.max(0, serverLog.length - 25)); }
+    const shown = lines.filter(l => name !== 'web' || !/http proxy error|ECONNREFUSED|internalConnectMultiple|afterConnectMultiple/.test(l) || (!proxyNoted && (proxyNoted = true)));
+    if (shown.length) stream.write(shown.map(l => `${TAGS[name]} ${l}`).join('\n') + '\n');
+  };
+  child.stdout.on('data', d => out(d, process.stdout));
+  child.stderr.on('data', d => out(d, process.stderr));
+}
+
+function banner(code) {
   const bar = '!'.repeat(70);
-  console.error(`\n\x1b[41m\x1b[37m${bar}\n JARVIS SUNUCUSU AÇILAMADI. Sebebi aşağıdaki satırlarda; bu kutuyu Claude'a gönderin.\n${bar}\x1b[0m`);
+  console.error(`\n\x1b[41m\x1b[37m${bar}\n JARVIS SUNUCUSU KAPANDI (kod ${code}). Sebebi aşağıda; bu kutuyu Claude'a gönderin. 5 sn sonra yeniden denenecek.\n${bar}\x1b[0m`);
   console.error(serverLog.join('\n') || '(sunucu hiçbir şey yazmadı)');
   console.error(`\x1b[41m\x1b[37m${bar}\x1b[0m\n`);
-}, 40_000);
-check.unref();
+}
+
+let server = null;
+function startServer() {
+  serverLog.length = 0;
+  // tsx Node'un içine yüklenir (--import): tek süreç olur, kapatınca arkada sunucu kalmaz
+  server = spawn(process.execPath, ['--import', 'tsx', 'src/index.ts'], {
+    cwd: path.join(ROOT, 'server'),
+    env: { ...process.env, JARVIS_DEV: '1' },
+    windowsHide: true,
+  });
+  pipe('server', server);
+  server.on('exit', code => {
+    if (stopping) return;
+    if (code === RESTART_CODE) {
+      console.log(`${TAGS.server} yeni ayarlarla yeniden başlatılıyor…`);
+      proxyNoted = false;
+      return startServer();
+    }
+    banner(code);
+    setTimeout(startServer, 5000);
+  });
+}
+
+const web = spawn(process.execPath, [path.join(ROOT, 'web', 'node_modules', 'vite', 'bin', 'vite.js')], {
+  cwd: path.join(ROOT, 'web'),
+  env: process.env,
+  windowsHide: true,
+});
+pipe('web', web);
+web.on('exit', code => { if (!stopping) console.error(`${TAGS.web} arayüz kapandı (kod ${code})`); });
+
+startServer();
+
+const stop = () => {
+  stopping = true;
+  server?.kill();
+  web.kill();
+  process.exit(0);
+};
+process.on('SIGINT', stop);
+process.on('SIGTERM', stop);

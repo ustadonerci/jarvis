@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express, { type Router } from 'express';
-import { adminOnly } from './keys.js';
+import { adminOnly, restartServer } from './keys.js';
 import { propose } from './approvals.js';
 
 const SRC = path.dirname(fileURLToPath(import.meta.url));
@@ -175,7 +175,9 @@ export async function runAutomationTool(name: string, args: any, progress: (l: s
         fs.writeFileSync(yedek, now);
         fs.writeFileSync(f, now.replace(eski, () => yeni));
         console.log(`[kod] ${rel} güncellendi (yedek: ${path.basename(yedek)})`);
-        return `${rel} güncellendi. Yedek: server/data/kod-yedek/${path.basename(yedek)}. Sunucu dosyasıysa Jarvis birkaç saniye içinde yeniden başlar.`;
+        // Sunucu kodu değiştiyse yeni kodla açılsın (npm run dev altında); arayüz dosyalarını Vite kendisi yeniler
+        const restarting = rel.startsWith('server/') && restartServer();
+        return `${rel} güncellendi. Yedek: server/data/kod-yedek/${path.basename(yedek)}.${restarting ? ' Jarvis birkaç saniye içinde yeniden başlıyor.' : rel.startsWith('server/') ? ' Değişikliğin geçerli olması için Jarvis\'i yeniden başlatın.' : ''}`;
       });
     }
   } catch (e: any) {

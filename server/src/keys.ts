@@ -102,16 +102,16 @@ export function saveKeys(values: Record<string, unknown>): number {
   return changed;
 }
 
+/** scripts/dev.mjs bu çıkış koduyla kapanan sunucuyu hemen yeniden başlatır */
+export const RESTART_CODE = 75;
+
 /**
- * Sunucuyu yeniden başlatır. `npm run dev` altında (scripts/dev.mjs JARVIS_DEV=1 verir) tsx watch kaynak dosya
- * değişince süreci yeniden açar; dosyanın tarihini güncellemek yeterli. `npm start`ta kullanıcı elle yeniden başlatır.
+ * Sunucuyu yeniden başlatır. `npm run dev` altında (scripts/dev.mjs JARVIS_DEV=1 verir) süreç 75 koduyla çıkar,
+ * dev.mjs onu yeni .env değerleriyle yeniden açar. `npm start`ta kullanıcı elle yeniden başlatır.
  */
 export function restartServer(): boolean {
   if (process.env.JARVIS_DEV !== '1') return false;
-  setTimeout(() => {
-    const now = new Date();
-    fs.utimesSync(path.join(SRC, 'index.ts'), now, now);
-  }, 300);
+  setTimeout(() => process.exit(RESTART_CODE), 300);
   return true;
 }
 
