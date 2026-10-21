@@ -57,6 +57,8 @@ export default defineConfig({
   ],
   server: {
     host: true,
+    // npm run telefon: Cloudflare tüneli bu adresle gelir (Vite bilinmeyen adresleri engeller)
+    allowedHosts: ['.trycloudflare.com'],
     // xfwd: sunucu isteğin gerçekten bu bilgisayardan mı geldiğini görsün (Ayarlar → anahtarlar/yetenekler)
     proxy: { '/api': { target: 'http://localhost:8787', changeOrigin: true, xfwd: true } },
   },

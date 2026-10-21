@@ -28,7 +28,7 @@ import { financeRouter, initFinance } from './finance.js';
 import { clearErrors, errorList, initErrors, logError } from './errors.js';
 import { approvalsRouter, initApprovals } from './approvals.js';
 import { automationRouter } from './automation.js';
-import { adminOnly, listKeys, restartServer, saveKeys } from './keys.js';
+import { adminOnly, isLocalRequest, listKeys, restartServer, saveKeys } from './keys.js';
 import { PERSONAS, isPersona, setPersona, type PersonaId } from './persona.js';
 import { THEMES, isTheme, voiceGender, type ThemeId } from './look.js';
 import { ELEVEN_MODEL, ELEVEN_MODEL_LABEL, elevenReady, elevenUsage, elevenVoices, isEleven } from './eleven.js';
@@ -142,7 +142,8 @@ app.use(express.json({ limit: '12mb' })); // kamera fotoğrafı (istemci ~1280 p
 
 // İsteğe bağlı erişim koruması (tünel/deploy için önerilir)
 app.use('/api', (req: Request, res: Response, next: NextFunction) => {
-  if (!ACCESS_TOKEN) return next();
+  // Bu bilgisayardan gelen istek anahtarsız geçer; telefon/tünel anahtar ister
+  if (!ACCESS_TOKEN || isLocalRequest(req)) return next();
   const t = req.header('x-jarvis-token') || (req.query.token as string);
   if (t === ACCESS_TOKEN) return next();
   res.status(401).json({ error: 'yetkisiz' });

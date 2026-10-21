@@ -123,11 +123,19 @@ const LOOPBACK = /^(::1|127\.\d+\.\d+\.\d+|::ffff:127\.\d+\.\d+\.\d+)$/;
  * Vite geliştirme sunucusu isteği localhost'tan iletir ve gerçek adresi X-Forwarded-For'un SONUNA ekler
  * (vite.config.ts → xfwd); baştaki değerler istemcinin uydurabileceği şeyler olduğu için yalnızca son değere bakılır.
  */
-export function adminOnly(req: Request, res: Response, next: NextFunction) {
-  if (process.env.ACCESS_TOKEN) return next();
+/**
+ * İstek bu bilgisayardan mı geliyor? Cloudflare tüneli de localhost'tan bağlanır; ondan gelen her istekte
+ * Cloudflare'in kendi eklediği (istemcinin silemeyeceği) cf-connecting-ip / cf-ray başlıkları bulunur.
+ */
+export function isLocalRequest(req: Request): boolean {
+  if (req.headers['cf-connecting-ip'] || req.headers['cf-ray']) return false;
   const remote = req.socket.remoteAddress ?? '';
   const fwd = String(req.headers['x-forwarded-for'] ?? '').split(',').map(s => s.trim()).filter(Boolean).pop();
   const ip = LOOPBACK.test(remote) && fwd ? fwd : remote;
-  if (LOOPBACK.test(ip)) return next();
+  return LOOPBACK.test(ip);
+}
+
+export function adminOnly(req: Request, res: Response, next: NextFunction) {
+  if (process.env.ACCESS_TOKEN || isLocalRequest(req)) return next();
   res.status(403).json({ error: 'Bu ayar yalnızca Jarvis\'in çalıştığı bilgisayardan değiştirilebilir (ya da .env\'de ACCESS_TOKEN tanımlayın).' });
 }

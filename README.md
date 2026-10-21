@@ -113,6 +113,22 @@ Bu özellikler dışarıdan gelen çağrıları (webhook) kabul eder. Bunun içi
 
 *Ayarlar → Yetenekler*'e `https://github.com/topviewai/plugins` yapıştırıp **Kur**'a basın. Jarvis 3 beceriyi ve `topview-browser` MCP sunucusunu bulur. Sunucuyu açtığınızda **Giriş yap** düğmesi çıkar; açılan sayfada Topview hesabınızla izin verin. Giriş bilgileri bu bilgisayarda saklanır ve yeniden başlayınca hatırlanır.
 
+## En kolay başlatma (Windows): Jarvis.bat
+
+`Jarvis.bat` dosyasına çift tıklayın. İlk çalıştırmada kendini masaüstüne kopyalar; sonrasında masaüstündeki **Jarvis**'e çift tıklamanız yeterli. Her açılışta:
+
+1. Güncellemeleri alır (anahtarlarınız ve verileriniz korunur).
+2. Eksik paketleri kurar.
+3. Jarvis'i başlatıp tarayıcıyı açar.
+
+Açılışta **2**'yi seçerseniz telefonda kullanmanız için bir link ve QR kod da verir (`npm run telefon` ile aynı).
+
+**Telefondan kullanım (`npm run telefon`):**
+- Bir erişim anahtarı (`ACCESS_TOKEN`) oluşturur ve ücretsiz bir Cloudflare tüneli açar. `cloudflared` yoksa winget ile kendisi kurar.
+- Telefonda açılacak linki ve QR kodu gösterir.
+- Link her açılışta değişir ve pencere açık kaldıkça çalışır.
+- Bu bilgisayardan erişim anahtarsızdır; telefondan (tünelden) gelen her istek anahtar ister.
+
 ## Telefon ve tablette kullanmak
 
 Mikrofon yalnızca HTTPS'te çalıştığı için bilgisayarındaki Jarvis'e bir tünelle bağlan:
