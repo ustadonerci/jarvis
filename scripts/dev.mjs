@@ -28,12 +28,21 @@ if (!fs.existsSync(env)) fs.copyFileSync(path.join(ROOT, 'server', '.env.example
 
 // Sunucunun son çıktısı: açılamazsa en altta tekrar gösterilir
 const serverLog = [];
+let proxyNoted = false;
 const run = (name, args) => {
   const p = spawn('npm', args, { stdio: 'pipe', shell: WIN, env: { ...process.env, JARVIS_DEV: '1' } });
   const tag = name === 'server' ? '\x1b[36m[sunucu]\x1b[0m' : '\x1b[33m[arayüz]\x1b[0m';
   const keep = (d) => { if (name === 'server') { serverLog.push(...d.toString().split('\n').filter(Boolean)); serverLog.splice(0, Math.max(0, serverLog.length - 25)); } };
-  p.stdout.on('data', d => { keep(d); process.stdout.write(d.toString().split('\n').filter(Boolean).map(l => `${tag} ${l}`).join('\n') + '\n'); });
-  p.stderr.on('data', d => { keep(d); process.stderr.write(`${tag} ${d}`); });
+  // Sunucu kapalıyken Vite her saniye "http proxy error / ECONNREFUSED" yazıp sunucunun asıl hatasını ekrandan
+  // kaydırıyordu: bu tekrarları yalnızca bir kez göster.
+  const noisy = (l) => name === 'web' && /http proxy error|ECONNREFUSED|internalConnectMultiple|afterConnectMultiple/.test(l);
+  const out = (d, stream) => {
+    keep(d);
+    const lines = d.toString().split('\n').filter(Boolean).filter(l => !noisy(l) || !proxyNoted && (proxyNoted = true));
+    if (lines.length) stream.write(lines.map(l => `${tag} ${l}`).join('\n') + '\n');
+  };
+  p.stdout.on('data', d => out(d, process.stdout));
+  p.stderr.on('data', d => out(d, process.stderr));
   return p;
 };
 const ps = [run('server', ['--prefix', 'server', 'run', 'dev']), run('web', ['--prefix', 'web', 'run', 'dev'])];
@@ -46,10 +55,12 @@ const listening = () => new Promise(res => {
   s.once('connect', () => { s.destroy(); res(true); });
   s.once('error', () => res(false));
 });
-setTimeout(async () => {
-  if (await listening()) return;
+// Sunucu açılana kadar 40 sn'de bir; açılınca durur
+const check = setInterval(async () => {
+  if (await listening()) { clearInterval(check); proxyNoted = false; return; }
   const bar = '!'.repeat(70);
   console.error(`\n\x1b[41m\x1b[37m${bar}\n JARVIS SUNUCUSU AÇILAMADI. Sebebi aşağıdaki satırlarda; bu kutuyu Claude'a gönderin.\n${bar}\x1b[0m`);
   console.error(serverLog.join('\n') || '(sunucu hiçbir şey yazmadı)');
   console.error(`\x1b[41m\x1b[37m${bar}\x1b[0m\n`);
-}, 40_000).unref();
+}, 40_000);
+check.unref();
