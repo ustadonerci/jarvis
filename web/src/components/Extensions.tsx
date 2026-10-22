@@ -185,7 +185,7 @@ export function ExtensionSettings({ flash }: { flash(t: string): void }) {
       <label>Yetenekler · {data.skills.filter(s => s.aktif).length} beceri/iş akışı · {data.servers.filter(s => s.durum === 'bağlı').length} MCP</label>
       <p className="muted small">GitHub reposu ekleyin; Jarvis içindeki becerileri (SKILL.md), iş akışlarını (commands/, workflows/ altında .md) ve MCP sunucularını (.mcp.json ya da MCP paketi) kendisi bulup kurar.</p>
       <form className="memory-add" onSubmit={e => { e.preventDefault(); install(); }}>
-        <input value={repo} onChange={e => setRepo(e.target.value)} placeholder="https://github.com/kullanici/repo" disabled={busy} />
+        <input value={repo} onChange={e => setRepo(e.target.value)} placeholder="https://github.com/kullanici/repo  ya da  gh repo clone kullanici/repo" disabled={busy} />
         <button type="submit" disabled={!repo.trim() || busy}>{busy ? 'Kuruluyor…' : 'Kur'}</button>
       </form>
 
@@ -195,7 +195,7 @@ export function ExtensionSettings({ flash }: { flash(t: string): void }) {
       {bulkOpen && (
         <div className="keys">
           <textarea className="profile-text mono" rows={6} value={bulkText} onChange={e => setBulkText(e.target.value)}
-            placeholder={'Her satıra bir repo:\nkullanici/repo\nhttps://github.com/kullanici/repo'} />
+            placeholder={'Her satıra bir repo:\nkullanici/repo\nhttps://github.com/kullanici/repo\ngh repo clone kullanici/repo\ngit clone https://github.com/kullanici/repo.git'} />
           <div className="seg">
             <button onClick={() => setBulkText(RIFKI_PAKETI)}>RIFKI önerilen paketi (16 repo)</button>
             <button className="on" disabled={!bulkText.trim() || data.toplu?.calisiyor}

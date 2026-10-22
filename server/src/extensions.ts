@@ -519,6 +519,36 @@ export async function runExtensionTool(name: string, args: any, progress: (l: st
 // ---------------------------------------------------------------- GitHub'dan kurulum
 
 const GH = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:\/tree\/([\w./-]+?))?\/?$/;
+
+/** Tek bir parçayı (link, git@ adresi, kullanici/repo) https://github.com/kullanici/repo[/tree/…] biçimine çevirir */
+function toRepoUrl(token: string, bare: boolean): string | null {
+  const t = token.trim().replace(/^[<("'`]+|[>)"'`.,;]+$/g, '');
+  const ssh = /^(?:ssh:\/\/)?git@github\.com[:/]([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/i.exec(t);
+  if (ssh) return `https://github.com/${ssh[1]}/${ssh[2]}`;
+  const web = /^(?:https?:\/\/)?(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:(\/tree\/[^?#\s]*[^?#\s/])\/?(?:[?#].*)?|(?:[/?#].*)?)$/i.exec(t);
+  if (web) return `https://github.com/${web[1]}/${web[2]}${web[3] ?? ''}`;
+  if (bare && /^[\w.-]+\/[\w.-]+$/.test(t) && !t.startsWith('.')) return `https://github.com/${t.replace(/\.git$/, '')}`;
+  return null;
+}
+
+/** Metindeki GitHub repolarını bulur: düz linkler, "gh repo clone kullanici/repo", "git clone https://….git",
+ *  git@github.com:… adresleri, /blob/… ya da ?tab=… ekli linkler ve satırda tek başına "kullanici/repo". */
+export function extractRepoUrls(text: string): string[] {
+  const out: string[] = [];
+  for (const raw of text.split(/\r?\n|,/)) {
+    const line = raw.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, '').trim(); // madde işaretleri
+    if (!line) continue;
+    const tokens = line.split(/\s+/);
+    const cmd = /^(?:gh\s+repo\s+clone|git\s+clone)\s+/i.test(line);
+    // Komutta "kullanici/repo" kısa yazımı da olabilir (gh repo clone); komut dışında yalnızca satırda tek başınaysa
+    const skip = cmd ? (/^gh$/i.test(tokens[0]) ? 3 : 2) : 0;
+    tokens.forEach((tk, i) => {
+      const u = i >= skip && !tk.startsWith('-') ? toRepoUrl(tk, cmd || tokens.length === 1) : null;
+      if (u) out.push(u);
+    });
+  }
+  return [...new Set(out)];
+}
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.venv', 'venv', '__pycache__']);
 
 function walk(dir: string, depth = 0, out: string[] = []): string[] {
@@ -658,8 +688,8 @@ function referenceSkill(root: string, slug: string, repoName: string): Skill | n
 }
 
 async function installFromGitHub(url: string) {
-  const m = GH.exec(url.trim());
-  if (!m) throw new Error('Geçerli bir GitHub repo adresi değil (ör. https://github.com/kullanici/repo).');
+  const m = GH.exec(extractRepoUrls(url)[0] ?? '');
+  if (!m) throw new Error('Geçerli bir GitHub repo adresi değil (ör. https://github.com/kullanici/repo ya da gh repo clone kullanici/repo).');
   const [, owner, name, sub] = m;
   let slug = slugify(`${owner}-${name}${sub ? '-' + sub.split('/').pop() : ''}`);
   if (store.repos.some(r => r.slug === slug)) throw new Error('Bu repo zaten kurulu. Güncellemek için önce kaldırın.');
@@ -812,10 +842,8 @@ export function extensionsRouter(): Router {
 
   r.post('/api/extensions/github-toplu', (req, res) => {
     if (bulk.calisiyor) return res.status(409).json({ error: 'Bir toplu kurulum zaten sürüyor' });
-    const urls = [...new Set(str(req.body?.liste, 20_000).split(/[\s,]+/)
-      .map(u => u.trim()).filter(Boolean)
-      .map(u => (/^https?:\/\//.test(u) ? u : /^[\w.-]+\/[\w.-]+$/.test(u) ? `https://github.com/${u}` : u)))].slice(0, 60);
-    if (!urls.length) return res.status(400).json({ error: 'Liste boş' });
+    const urls = extractRepoUrls(str(req.body?.liste, 20_000)).slice(0, 60);
+    if (!urls.length) return res.status(400).json({ error: 'Listede GitHub reposu bulunamadı (ör. https://github.com/kullanici/repo ya da gh repo clone kullanici/repo)' });
     runBulk(urls);
     res.json(view());
   });
