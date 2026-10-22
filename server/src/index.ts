@@ -199,7 +199,10 @@ app.get('/api/state', (_req, res) => {
 });
 
 // ---------- Sabah panosu ----------
-const lastModel = () => [...state.messages].reverse().find(m => m.reply?.model)?.reply?.model ?? CHAT_MODEL;
+// Demo modunda ya da hazır komutla verilmiş eski cevaplar sayılmaz: anahtar girildikten sonra panel hâlâ
+// "beyin: demo" gösteriyordu.
+const lastModel = () => [...state.messages].reverse()
+  .find(m => m.reply?.model && m.reply.router !== 'demo' && m.reply.router !== 'hazır komut' && m.reply.model !== 'demo')?.reply?.model ?? CHAT_MODEL;
 const dashboard = () => buildDashboard({ devices: presence(), model: lastModel() });
 
 app.get('/api/dashboard', async (_req, res) => {
