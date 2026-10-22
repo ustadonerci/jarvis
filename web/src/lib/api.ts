@@ -117,7 +117,7 @@ export interface ExtensionsData { repos: { slug: string; url: string; at: string
 const ext = (path: string, method = 'GET', body?: object) =>
   fetch(`/api/extensions${path}`, { method, headers: headers(), body: body ? JSON.stringify(body) : undefined }).then(r => json<ExtensionsData>(r));
 export const getExtensions = () => ext('');
-export const installGitHub = (url: string) => ext('/github', 'POST', { url }) as Promise<ExtensionsData & { beceri: number; is_akisi: number; mcp: number }>;
+export const installGitHub = (url: string) => ext('/github', 'POST', { url }) as Promise<ExtensionsData & { bilgi?: boolean; beceri: number; is_akisi: number; mcp: number }>;
 export const installBulk = (liste: string) => ext('/github-toplu', 'POST', { liste });
 export const removeRepo = (slug: string) => ext(`/repo/${encodeURIComponent(slug)}`, 'DELETE');
 export const addSkill = (s: { ad: string; aciklama: string; icerik: string; tur: 'beceri' | 'is_akisi' }) => ext('/skill', 'POST', s);

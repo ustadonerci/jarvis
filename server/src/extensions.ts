@@ -391,7 +391,7 @@ const TR_EN: Record<string, string[]> = {
   tasarim: ['design', 'ui', 'ux'], logo: ['brand', 'logo'], marka: ['brand'], gorsel: ['image', 'visual'], resim: ['image'],
   video: ['video'], kurgu: ['edit', 'editing'], montaj: ['edit', 'editing'], ses: ['audio', 'voice'], muzik: ['music'],
   animasyon: ['animation', 'motion'], altyazi: ['subtitle', 'caption'],
-  finans: ['finance', 'financial'], hisse: ['stock', 'equity'], borsa: ['stock', 'market'], yatirim: ['investment', 'invest'],
+  finans: ['finance', 'financial'], hisse: ['stock', 'equity'], borsa: ['stock', 'market', 'trading'], alim: ['trading', 'buy'], satim: ['trading', 'sell'], ticaret: ['trading'], kripto: ['crypto'], ajan: ['agent'], yatirim: ['investment', 'invest'],
   bilanco: ['earnings', 'financial statements'], kazanc: ['earnings'], sirket: ['company'], portfoy: ['portfolio'],
   guvenlik: ['security'], kod: ['code', 'coding'], test: ['test', 'testing'], hata: ['debug', 'bug'],
   web: ['web', 'website'], site: ['website', 'site'], sayfa: ['page', 'landing'], uygulama: ['app'],
@@ -618,6 +618,8 @@ async function sparseClone(url: string, dir: string, branch?: string, sub = '') 
       if (/(^|\/)(commands|workflows)\/[^/]+\.md$/i.test(r) && !r.startsWith('.github/')) keep.add(`/${f}`);
       if (/\.workflow\.md$/i.test(r) || /(^|\/)(\.mcp\.claude\.json|\.mcp\.json|mcp\.json)$/.test(r) || r === 'package.json' || r === 'README.md') keep.add(`/${f}`);
     }
+    // Uygulama repoları için bilgi kaynağı: kökteki README ve yapay zeka rehberleri her zaman alınır
+    for (const f of ['README.md', 'readme.md', 'README_EN.md', 'CLAUDE.md', 'AGENTS.md']) if (files.includes(sub ? `${sub}/${f}` : f)) keep.add(`/${sub ? `${sub}/` : ''}${f}`);
     if (!keep.size) keep.add('/README.md');
     // Beceri klasörlerindeki örnek video/ses/arşivler Jarvis'e gerekmez (bir repoda 100 MB'ı bunlar tutuyordu)
     await git('sparse-checkout', 'set', '--no-cone', ...keep, ...['mp4', 'mov', 'webm', 'mkv', 'avi', 'mp3', 'wav', 'flac', 'ogg', 'zip', 'tar', 'gz', '7z', 'psd'].map(e => `!*.${e}`));
@@ -625,6 +627,34 @@ async function sparseClone(url: string, dir: string, branch?: string, sub = '') 
   await git('checkout');
   // Güncelleme yeniden kurulumla yapılır; geçmiş ve nesne deposu yalnızca yer kaplar
   if (!full) fs.rmSync(path.join(dir, '.git'), { recursive: true, force: true });
+}
+
+/** Uygulama reposunu tanıtan bilgi becerisi: README + CLAUDE.md/AGENTS.md (varsa) */
+function referenceSkill(root: string, slug: string, repoName: string): Skill | null {
+  const read = (f: string) => { try { return fs.readFileSync(path.join(root, f), 'utf8'); } catch { return ''; } };
+  const readme = read('README.md') || read('readme.md') || read('README_EN.md');
+  const guides = ['CLAUDE.md', 'AGENTS.md'].map(f => [f, read(f)] as const).filter(([, t]) => t.trim());
+  if (!readme.trim() && !guides.length) return null;
+  // README'nin ilk anlamlı paragrafı açıklama olur (başlık, rozet ve görsel satırları atlanır)
+  const intro = readme.split(/\r?\n\s*\r?\n/).map(p => p.replace(/<[^>]+>|!\[[^\]]*\]\([^)]*\)|\[!\[[^\]]*\]\([^)]*\)\]\([^)]*\)/g, '').replace(/^#+\s*/gm, '').replace(/\s+/g, ' ').trim())
+    .find(p => p.length > 40 && !/^[\[(!]/.test(p)) ?? '';
+  const icerik = [
+    `# ${repoName} (bilgi kaynağı)`,
+    `Bu bir uygulama reposu; Jarvis onu çalıştırmaz. Kullanıcı bu proje hakkında soru sorarsa (ne işe yarar, nasıl kurulur, nasıl kullanılır) aşağıdaki belgelere dayanarak cevap ver. Kurulum isterse komutları açıkla; bilgisayarda çalıştırmak gerekirse bilgisayar_komut ile onay kartıyla öner. Kaynak: https://github.com/${repoName}`,
+    readme && `## README\n${readme}`,
+    ...guides.map(([f, t]) => `## ${f}\n${t}`),
+  ].filter(Boolean).join('\n\n');
+  return {
+    id: randomUUID().slice(0, 8),
+    ad: repoName.split('/')[1],
+    aciklama: `${repoName} projesi hakkında bilgi: ${intro.slice(0, 220) || 'README'}`,
+    tur: 'beceri',
+    icerik: icerik.slice(0, MAX_SKILL),
+    aktif: true,
+    repo: slug,
+    dosya: 'README.md',
+    klasor: '',
+  };
 }
 
 async function installFromGitHub(url: string) {
@@ -644,7 +674,11 @@ async function installFromGitHub(url: string) {
     await sparseClone(`https://github.com/${owner}/${name}.git`, dir, branch, parts.slice(1).join('/'));
   } catch (e: any) {
     fs.rmSync(dir, { recursive: true, force: true });
-    throw new Error(`Repo indirilemedi: ${String(e?.stderr || e?.message || e).trim().split('\n').pop()}`);
+    const msg = String(e?.stderr || e?.message || e).trim();
+    throw new Error(/not found|does not exist|Repository not found|could not read Username|Authentication failed/i.test(msg)
+      ? `GitHub'da "${owner}/${name}" bulunamadı: adres yanlış, repo silinmiş ya da özel (gizli) olabilir.`
+      : /Remote branch .* not found/i.test(msg) ? `"${branch}" dalı bulunamadı; linkteki /tree/... kısmını kontrol edin.`
+      : `Repo indirilemedi: ${msg.split('\n').pop()}`);
   }
   const root = parts.length > 1 ? path.join(dir, ...parts.slice(1)) : dir;
   if (!root.startsWith(dir) || !fs.existsSync(root)) {
@@ -653,9 +687,16 @@ async function installFromGitHub(url: string) {
   }
 
   const found = scan(root, slug);
+  let bilgi = false;
   if (!found.skills.length && !found.servers.length) {
-    fs.rmSync(dir, { recursive: true, force: true });
-    throw new Error('Bu repoda yetenek bulunamadı. Aranan: SKILL.md, commands/ ya da workflows/ altında .md, .mcp.json veya MCP SDK\'lı bir Node paketi.');
+    // Beceri/MCP içermeyen bir uygulama reposu: README ve AI rehberleri bilgi kaynağı olarak eklenir; kod çalıştırılmaz
+    const ref = referenceSkill(root, slug, `${owner}/${name}`);
+    if (!ref) {
+      fs.rmSync(dir, { recursive: true, force: true });
+      throw new Error('Repo indirildi ama içinde ne yetenek (SKILL.md, commands/, workflows/, .mcp.json) ne de README var.');
+    }
+    found.skills.push(ref);
+    bilgi = true;
   }
   store.repos.push({ slug, url, at: new Date().toISOString() });
   store.skills.push(...found.skills);
@@ -663,7 +704,7 @@ async function installFromGitHub(url: string) {
   save();
   changed();
   console.log(`[yetenek] GitHub: ${owner}/${name} → ${found.skills.length} beceri/iş akışı, ${found.servers.length} MCP`);
-  return { slug, beceri: found.skills.filter(s => s.tur === 'beceri').length, is_akisi: found.skills.filter(s => s.tur === 'is_akisi').length, mcp: found.servers.length };
+  return { slug, bilgi, beceri: bilgi ? 0 : found.skills.filter(s => s.tur === 'beceri').length, is_akisi: found.skills.filter(s => s.tur === 'is_akisi').length, mcp: found.servers.length };
 }
 
 async function removeRepo(slug: string) {
@@ -696,10 +737,10 @@ async function runBulk(urls: string[]) {
     try {
       const r = await installFromGitHub(item.url);
       item.durum = 'tamam';
-      item.mesaj = [r.beceri && `${r.beceri} beceri`, r.is_akisi && `${r.is_akisi} iş akışı`, r.mcp && `${r.mcp} MCP (kapalı)`].filter(Boolean).join(', ');
+      item.mesaj = r.bilgi ? 'uygulama: README bilgi kaynağı olarak eklendi' : [r.beceri && `${r.beceri} beceri`, r.is_akisi && `${r.is_akisi} iş akışı`, r.mcp && `${r.mcp} MCP (kapalı)`].filter(Boolean).join(', ');
     } catch (e: any) {
       const m = String(e?.message || e);
-      item.durum = /zaten kurulu|yetenek bulunamadı/i.test(m) ? 'atlandı' : 'hata';
+      item.durum = /zaten kurulu/i.test(m) ? 'atlandı' : 'hata';
       item.mesaj = m.slice(0, 200);
     }
     changed();

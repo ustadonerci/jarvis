@@ -159,7 +159,7 @@ export function ExtensionSettings({ flash }: { flash(t: string): void }) {
         setData(r);
         setRepo('');
         const parts = [r.beceri && `${r.beceri} beceri`, r.is_akisi && `${r.is_akisi} iş akışı`, r.mcp && `${r.mcp} MCP sunucusu (kapalı, aşağıdan açın)`].filter(Boolean);
-        flash(`Kuruldu · ${parts.join(', ')}`);
+        flash(r.bilgi ? 'Uygulama reposu: README bilgi kaynağı olarak eklendi (kod çalıştırılmaz)' : `Kuruldu · ${parts.join(', ')}`);
       })
       .catch(e => flash(e.message))
       .finally(() => setBusy(false));
