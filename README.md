@@ -129,6 +129,13 @@ Açılışta **2**'yi seçerseniz telefonda kullanmanız için bir link ve QR ko
 - Link her açılışta değişir ve pencere açık kaldıkça çalışır.
 - Bu bilgisayardan erişim anahtarsızdır; telefondan (tünelden) gelen her istek anahtar ister.
 
+## Çok sayıda yetenek, toplu kurulum ve site indirme
+
+- **Toplu kurulum:** *Ayarlar → Yetenekler → Toplu kur (liste)* bölümüne her satıra bir repo yazıp **Hepsini kur**'a basın. Repolar sırayla kurulur ve ilerleme ekranda görünür. **RIFKI önerilen paketi (16 repo)** düğmesi listeyi hazır doldurur: pazarlama, SEO, reklam, sosyal medya, video, finans araştırması, tasarım ve genel ajan becerileri (~440).
+- **Az yer kaplar:** Kurulum reponun tamamını değil, yalnızca beceri / iş akışı / MCP dosyalarını indirir. Örnek videolar ve git geçmişi alınmaz; 16 repo 1,1 GB yerine ~70 MB tutar.
+- **Beceri arama:** Kurulu yetenek 25'ten fazlaysa Jarvis'e her soruda hepsinin adı gönderilmez. Jarvis `yetenek_ara` ile uygun beceriyi bulur; Türkçe kelimeler İngilizce karşılıklarıyla da aranır ("reklam" → ads).
+- **Site indirme:** "Şu siteyi indir" deyin. Jarvis siteyi sayfaları, görselleri ve stilleriyle internetsiz açılabilir biçimde `İndirilenler\Jarvis-Siteler` klasörüne kaydeder. Bu, Website-downloader'ın Windows'ta da çalışan karşılığıdır. Yerel ağ adresleri indirilmez.
+
 ## Telefon ve tablette kullanmak
 
 Mikrofon yalnızca HTTPS'te çalıştığı için bilgisayarındaki Jarvis'e bir tünelle bağlan:

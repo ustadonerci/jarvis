@@ -112,11 +112,13 @@ export const saveKeys = (values: Record<string, string>) =>
 
 export interface SkillView { id: string; ad: string; aciklama: string; tur: 'beceri' | 'is_akisi'; aktif: boolean; repo?: string; dosya?: string; kaynak?: 'jarvis'; uzunluk: number }
 export interface ServerView { id: string; ad: string; aktif: boolean; repo?: string; tur: 'stdio' | 'http'; hedef: string; durum: 'kapalı' | 'kuruluyor' | 'bağlanıyor' | 'bağlı' | 'giriş gerekli' | 'hata'; hata?: string; girisAdresi?: string; araclar: string[]; kurulum?: 'npm' }
-export interface ExtensionsData { repos: { slug: string; url: string; at: string }[]; skills: SkillView[]; servers: ServerView[] }
+export interface BulkView { calisiyor: boolean; liste: { url: string; durum: 'bekliyor' | 'kuruluyor' | 'tamam' | 'atlandı' | 'hata'; mesaj?: string }[] }
+export interface ExtensionsData { repos: { slug: string; url: string; at: string }[]; skills: SkillView[]; servers: ServerView[]; toplu?: BulkView }
 const ext = (path: string, method = 'GET', body?: object) =>
   fetch(`/api/extensions${path}`, { method, headers: headers(), body: body ? JSON.stringify(body) : undefined }).then(r => json<ExtensionsData>(r));
 export const getExtensions = () => ext('');
 export const installGitHub = (url: string) => ext('/github', 'POST', { url }) as Promise<ExtensionsData & { beceri: number; is_akisi: number; mcp: number }>;
+export const installBulk = (liste: string) => ext('/github-toplu', 'POST', { liste });
 export const removeRepo = (slug: string) => ext(`/repo/${encodeURIComponent(slug)}`, 'DELETE');
 export const addSkill = (s: { ad: string; aciklama: string; icerik: string; tur: 'beceri' | 'is_akisi' }) => ext('/skill', 'POST', s);
 export const toggleSkill = (id: string, aktif: boolean) => ext(`/skill/${id}`, 'POST', { aktif });

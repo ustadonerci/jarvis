@@ -57,7 +57,7 @@ export async function webSearch(q: string): Promise<{ motor: string; sonuclar: S
 }
 
 /** Yerel ağ, bu bilgisayar ve özel adresler: Jarvis'in kendi API'si ya da modem arayüzü okunmasın */
-function isPrivateHost(host: string): boolean {
+export function isPrivateHost(host: string): boolean {
   const h = host.replace(/^\[|\]$/g, '').toLowerCase();
   if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.localhost') || h.endsWith('.internal') || !h.includes('.') && !isIP(h)) return true;
   if (isIP(h) === 4) {

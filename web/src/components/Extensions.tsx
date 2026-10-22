@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   clearErrorLog, getErrors, type ErrorView, addWebhook, deleteWebhook, getWebhooks, type WebhookView,
-  addServer, addSkill, deleteServer, deleteSkill, getExtensions, getKeys, installGitHub, removeRepo, retryServer, logoutServer, saveKeys, toggleServer, toggleSkill,
+  addServer, addSkill, deleteServer, deleteSkill, getExtensions, getKeys, installGitHub, removeRepo, installBulk, retryServer, logoutServer, saveKeys, toggleServer, toggleSkill,
   type ExtensionsData, type KeysData, type KeyView,
 } from '../lib/api';
 
@@ -108,6 +108,19 @@ export function KeySettings({ flash }: { flash(t: string): void }) {
 const TUR = { beceri: 'beceri', is_akisi: 'iş akışı' } as const;
 
 /**
+ * RIFKI repo listesinden (110 repo) Jarvis'e beceri olarak yarayanlar: pazarlama, SEO, reklam, sosyal medya, video,
+ * finans araştırması, tasarım ve genel ajan becerileri. Uygulamaların kendi geliştirici becerileri, binlerce
+ * becerilik dev paketler ve güvenlik kısıtlarını aşmaya yönelik içerikler bilerek dışarıda bırakıldı.
+ */
+const RIFKI_PAKETI = [
+  'coreyhaines31/marketingskills', 'AgriciDaniel/claude-seo', 'AgriciDaniel/claude-ads', 'Ryze-AI-Adgent/open-seo-mcp-skills',
+  'fajrisilmi12-cyber/hermes-socmed-function', 'hardikpandya/stop-slop', 'calesthio/OpenMontage', 'heygen-com/hyperframes',
+  'haidrrrry/claude-remotion-skill', 'AI4Finance-Foundation/FinRobot', 'xbtlin/ai-berkshire', 'obra/superpowers',
+  'muratcankoylan/agent-skills-for-context-engineering', 'nextlevelbuilder/ui-ux-pro-max-skill', 'vercel-labs/skills', 'cloudflare/security-audit-skill',
+].join('\n');
+const BULK_ICON = { bekliyor: '·', kuruluyor: '…', tamam: '✓', 'atlandı': '–', hata: '✕' } as const;
+
+/**
  * Ayarlar → Yetenekler: GitHub reposundan kurulum, beceri / iş akışı (Markdown talimat) ve MCP sunucuları.
  * Jarvis yalnızca adları ve açıklamaları her istekte görür; ihtiyaç duyunca tam talimatı okur.
  */
@@ -123,11 +136,13 @@ export function ExtensionSettings({ flash }: { flash(t: string): void }) {
   const [skill, setSkill] = useState({ ad: '', aciklama: '', icerik: '', tur: 'beceri' as 'beceri' | 'is_akisi' });
   const [mcp, setMcp] = useState({ ad: '', hedef: '', env: '' });
   const [error, setError] = useState('');
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkText, setBulkText] = useState('');
 
   const load = () => getExtensions().then(setData).catch(e => setError(e.message));
   useEffect(() => { load(); }, []);
   // Kurulan ya da bağlanan sunucu varken durumu tazele
-  const pending = data?.servers.some(s => s.durum === 'kuruluyor' || s.durum === 'bağlanıyor' || s.durum === 'giriş gerekli');
+  const pending = data?.toplu?.calisiyor || data?.servers.some(s => s.durum === 'kuruluyor' || s.durum === 'bağlanıyor' || s.durum === 'giriş gerekli');
   useEffect(() => {
     if (!pending) return;
     const t = setInterval(load, 2000);
@@ -173,6 +188,31 @@ export function ExtensionSettings({ flash }: { flash(t: string): void }) {
         <input value={repo} onChange={e => setRepo(e.target.value)} placeholder="https://github.com/kullanici/repo" disabled={busy} />
         <button type="submit" disabled={!repo.trim() || busy}>{busy ? 'Kuruluyor…' : 'Kur'}</button>
       </form>
+
+      <div className="seg">
+        <button className={bulkOpen ? 'on' : ''} onClick={() => setBulkOpen(v => !v)}>Toplu kur (liste)</button>
+      </div>
+      {bulkOpen && (
+        <div className="keys">
+          <textarea className="profile-text mono" rows={6} value={bulkText} onChange={e => setBulkText(e.target.value)}
+            placeholder={'Her satıra bir repo:\nkullanici/repo\nhttps://github.com/kullanici/repo'} />
+          <div className="seg">
+            <button onClick={() => setBulkText(RIFKI_PAKETI)}>RIFKI önerilen paketi (16 repo)</button>
+            <button className="on" disabled={!bulkText.trim() || data.toplu?.calisiyor}
+              onClick={() => act(installBulk(bulkText), 'Toplu kurulum başladı; birkaç dakika sürebilir')}>{data.toplu?.calisiyor ? 'Kuruluyor…' : 'Hepsini kur'}</button>
+          </div>
+          <p className="muted small">Repolar sırayla kurulur. Beceri/iş akışı içermeyenler atlanır; MCP sunucuları güvenlik için kapalı eklenir.</p>
+        </div>
+      )}
+      {data.toplu && data.toplu.liste.length > 0 && (
+        <ul className="memory bulk">
+          {data.toplu.liste.map(i => (
+            <li key={i.url} className={i.durum}>
+              <span><b>{BULK_ICON[i.durum]}</b> {i.url.replace('https://github.com/', '')}{i.mesaj ? <small> · {i.mesaj}</small> : null}</span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {data.repos.length > 0 && (
         <ul className="memory">

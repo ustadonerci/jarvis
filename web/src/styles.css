@@ -829,3 +829,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .key-input { display: flex; gap: 6px; }
 .key-input input { flex: 1; min-width: 0; }
 .key-input button { padding: 0 10px; border-radius: 8px; border: 1px solid var(--line); background: none; color: var(--accent); font-size: 12px; white-space: nowrap; }
+.memory.bulk li { font-size: 13px; padding: 5px 10px; }
+.memory.bulk li small { color: var(--muted); }
+.memory.bulk li.tamam b { color: var(--ok); }
+.memory.bulk li.hata b { color: var(--danger); }
+.memory.bulk li.kuruluyor b { color: var(--accent); }

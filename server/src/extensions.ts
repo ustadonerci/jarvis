@@ -68,7 +68,9 @@ function save() {
 let broadcast: (e: object) => void = () => {};
 const changed = () => broadcast({ type: 'extensions' });
 
-const slugify = (s: string) => s.toLocaleLowerCase('tr').normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'yetenek';
+const norm = (t: string) => t.toLocaleLowerCase('tr').normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+// Türkçe küçük harf kuralı kullanılmaz: 'AI4Finance' → 'aı4finance' → 'a-4finance' oluyordu
+const slugify = (s: string) => s.replace(/ı/g, 'i').replace(/İ/g, 'I').toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'yetenek';
 
 // ---------------------------------------------------------------- Markdown → beceri
 
@@ -308,11 +310,27 @@ export function initExtensions(b: (e: object) => void) {
 const active = () => store.skills.filter(s => s.aktif);
 
 /** Sistem prompt'una eklenen kısa liste (tam metin yetenek_kullan ile okunur) */
+/** Sistem prompt'unda adıyla listelenen en fazla yetenek: yüzlerce beceri her istekte gönderilmesin */
+const PROMPT_LIMIT = 25;
+
 export function extensionsForPrompt(): string {
   const list = active();
   const mcp = store.servers.filter(s => s.aktif && live.get(s.id)?.tools?.length);
   if (!list.length && !mcp.length) return '(Yüklü yetenek yok.)';
-  const lines = list.map(s => `- ${s.ad} [${s.tur === 'is_akisi' ? 'iş akışı' : 'beceri'}]: ${s.aciklama}`);
+  const line = (s: Skill) => `- ${s.ad} [${s.tur === 'is_akisi' ? 'iş akışı' : 'beceri'}]: ${s.aciklama.slice(0, 160)}`;
+  let lines: string[];
+  if (list.length <= PROMPT_LIMIT) lines = list.map(line);
+  else {
+    // Önce kullanıcının ve Jarvis'in kendi yazdıkları, sonra repolar yalnızca adı ve beceri sayısıyla
+    const own = list.filter(s => !s.repo).slice(0, PROMPT_LIMIT);
+    const byRepo = new Map<string, number>();
+    for (const s of list) if (s.repo) byRepo.set(s.repo, (byRepo.get(s.repo) ?? 0) + 1);
+    const repoName = (slug: string) => store.repos.find(r => r.slug === slug)?.url.replace('https://github.com/', '') ?? slug;
+    lines = [
+      ...own.map(line),
+      `- Ayrıca GitHub'dan kurulu ${list.length - own.length} beceri/iş akışı var (${[...byRepo].map(([r, n]) => `${repoName(r)}: ${n}`).join(', ')}). Bunların adlarını bilmiyorsun: uygun olanı \`yetenek_ara\` ile anahtar kelimeyle bul, sonra \`yetenek_kullan\` ile oku.`,
+    ];
+  }
   if (mcp.length) lines.push(`- Bağlı MCP sunucuları: ${mcp.map(s => s.ad).join(', ')} (araçları "mcp_" ile başlar)`);
   return lines.join('\n');
 }
@@ -334,8 +352,32 @@ export const YETENEK_TOOL = {
 } as const;
 
 /** Kendini geliştirme: Jarvis kendine beceri yazar ya da GitHub'dan yetenek kurar (MCP sunucuları yine kapalı gelir). */
+/** Beceriler çoğunlukla İngilizce: sık kullanılan Türkçe kelimeler İngilizce karşılıklarıyla da aranır */
+const TR_EN: Record<string, string[]> = {
+  reklam: ['ads', 'ad', 'advertising'], reklamlar: ['ads'], pazarlama: ['marketing'], tanitim: ['marketing', 'promotion'],
+  arama: ['search', 'seo'], sosyal: ['social'], medya: ['media'], gonderi: ['post'], paylasim: ['post', 'posting'],
+  icerik: ['content'], metin: ['copy', 'copywriting', 'text'], yazi: ['writing', 'copy'], baslik: ['headline', 'title'],
+  eposta: ['email'], 'e-posta': ['email'], mail: ['email'], bulten: ['newsletter'], musteri: ['customer'],
+  satis: ['sales'], fiyat: ['pricing', 'price'], rakip: ['competitor', 'competitive'], analiz: ['analysis', 'audit'],
+  tasarim: ['design', 'ui', 'ux'], logo: ['brand', 'logo'], marka: ['brand'], gorsel: ['image', 'visual'], resim: ['image'],
+  video: ['video'], kurgu: ['edit', 'editing'], montaj: ['edit', 'editing'], ses: ['audio', 'voice'], muzik: ['music'],
+  animasyon: ['animation', 'motion'], altyazi: ['subtitle', 'caption'],
+  finans: ['finance', 'financial'], hisse: ['stock', 'equity'], borsa: ['stock', 'market'], yatirim: ['investment', 'invest'],
+  bilanco: ['earnings', 'financial statements'], kazanc: ['earnings'], sirket: ['company'], portfoy: ['portfolio'],
+  guvenlik: ['security'], kod: ['code', 'coding'], test: ['test', 'testing'], hata: ['debug', 'bug'],
+  web: ['web', 'website'], site: ['website', 'site'], sayfa: ['page', 'landing'], uygulama: ['app'],
+};
+
 export const EXT_TOOLS = [
   YETENEK_TOOL,
+  {
+    type: 'function',
+    function: {
+      name: 'yetenek_ara',
+      description: 'Kurulu beceri ve iş akışları arasında anahtar kelimeyle arar (ad ve açıklamada). Çok sayıda yetenek kuruluyken isteğe uygun olanı bulmak için önce bunu kullan; sonra yetenek_kullan ile oku. İngilizce kelimeler de dene (beceriler çoğunlukla İngilizce).',
+      parameters: { type: 'object', properties: { sorgu: { type: 'string', description: 'Ör. "seo", "instagram reklam", "video edit", "earnings"' } }, required: ['sorgu'] },
+    },
+  },
   {
     type: 'function',
     function: {
@@ -377,6 +419,19 @@ export function mcpTools() {
 export const isExtensionTool = (name: string) => EXT_TOOLS.some(t => t.function.name === name) || toolIndex.has(name);
 
 export async function runExtensionTool(name: string, args: any, progress: (l: string) => void): Promise<string> {
+  if (name === 'yetenek_ara') {
+    const words = [...new Set(norm(String(args.sorgu ?? '')).split(/\s+/).filter(w => w.length > 1).flatMap(w => [w, ...(TR_EN[w] ?? [])]))];
+    if (!words.length) return JSON.stringify({ hata: 'sorgu boş' });
+    const scored = active().map(s => {
+      const ad = norm(s.ad), ac = norm(s.aciklama);
+      const puan = words.reduce((t, w) => t + (ad.includes(w) ? 3 : 0) + (ac.includes(w) ? 1 : 0), 0);
+      return { s, puan };
+    }).filter(x => x.puan > 0).sort((a, b) => b.puan - a.puan).slice(0, 12);
+    progress(`yetenek arandı: ${args.sorgu} · ${scored.length} sonuç`);
+    return JSON.stringify(scored.length
+      ? { sonuclar: scored.map(({ s }) => ({ ad: s.ad, tur: s.tur, aciklama: s.aciklama.slice(0, 300) })) }
+      : { sonuc: 'Uygun yetenek bulunamadı; başka (İngilizce) kelimelerle dene ya da kendin yap.' });
+  }
   if (name === 'yetenek_kullan') {
     const q = String(args.ad ?? '').toLocaleLowerCase('tr').trim();
     const s = active().find(x => x.ad.toLocaleLowerCase('tr') === q) ?? active().find(x => x.ad.toLocaleLowerCase('tr').includes(q));
@@ -507,6 +562,42 @@ function scan(root: string, slug: string) {
   return { skills, servers };
 }
 
+/**
+ * Reponun tamamını değil yalnızca Jarvis'in kullandığı parçalarını indirir: önce dosya listesi (içeriksiz),
+ * sonra beceri klasörleri, commands/workflows Markdown'ları, MCP tanımları ve kök package.json. Kök package.json
+ * MCP SDK'sı kullanıyorsa (npm install gerekecek) repo tamamen açılır. Videolu/görselli repolar yüzlerce MB
+ * yerine birkaç MB tutar.
+ */
+async function sparseClone(url: string, dir: string, branch?: string, sub = '') {
+  const git = (...a: string[]) => run('git', ['-C', dir, ...a], { timeout: 5 * 60_000, maxBuffer: 32 * 1024 * 1024 });
+  await run('git', ['clone', '--depth', '1', '--filter=blob:none', '--no-checkout', ...(branch ? ['--branch', branch] : []), url, dir], { timeout: 5 * 60_000 });
+  const files = (await git('ls-tree', '-r', '--name-only', 'HEAD')).stdout.split('\n').filter(Boolean)
+    .filter(f => !sub || f === sub || f.startsWith(sub + '/'));
+  const rel = (f: string) => (sub ? f.slice(sub.length + 1) : f);
+  let full = false;
+  const rootPkg = sub ? `${sub}/package.json` : 'package.json';
+  if (files.includes(rootPkg)) {
+    const pkg = (await git('show', `HEAD:${rootPkg}`).catch(() => ({ stdout: '' }))).stdout;
+    full = pkg.includes('@modelcontextprotocol/sdk');
+  }
+  if (!full) {
+    const skillDirs = files.filter(f => /(^|\/)SKILL\.md$/.test(f)).map(f => path.posix.dirname(f));
+    const keep = new Set<string>();
+    for (const d of skillDirs) keep.add(d === '.' ? '/*' : `/${d}/`);
+    for (const f of files) {
+      const r = rel(f);
+      if (/(^|\/)(commands|workflows)\/[^/]+\.md$/i.test(r) && !r.startsWith('.github/')) keep.add(`/${f}`);
+      if (/\.workflow\.md$/i.test(r) || /(^|\/)(\.mcp\.claude\.json|\.mcp\.json|mcp\.json)$/.test(r) || r === 'package.json' || r === 'README.md') keep.add(`/${f}`);
+    }
+    if (!keep.size) keep.add('/README.md');
+    // Beceri klasörlerindeki örnek video/ses/arşivler Jarvis'e gerekmez (bir repoda 100 MB'ı bunlar tutuyordu)
+    await git('sparse-checkout', 'set', '--no-cone', ...keep, ...['mp4', 'mov', 'webm', 'mkv', 'avi', 'mp3', 'wav', 'flac', 'ogg', 'zip', 'tar', 'gz', '7z', 'psd'].map(e => `!*.${e}`));
+  }
+  await git('checkout');
+  // Güncelleme yeniden kurulumla yapılır; geçmiş ve nesne deposu yalnızca yer kaplar
+  if (!full) fs.rmSync(path.join(dir, '.git'), { recursive: true, force: true });
+}
+
 async function installFromGitHub(url: string) {
   const m = GH.exec(url.trim());
   if (!m) throw new Error('Geçerli bir GitHub repo adresi değil (ör. https://github.com/kullanici/repo).');
@@ -521,7 +612,7 @@ async function installFromGitHub(url: string) {
   const parts = sub?.split('/') ?? [];
   const branch = parts[0];
   try {
-    await run('git', ['clone', '--depth', '1', ...(branch ? ['--branch', branch] : []), `https://github.com/${owner}/${name}.git`, dir], { timeout: 5 * 60_000 });
+    await sparseClone(`https://github.com/${owner}/${name}.git`, dir, branch, parts.slice(1).join('/'));
   } catch (e: any) {
     fs.rmSync(dir, { recursive: true, force: true });
     throw new Error(`Repo indirilemedi: ${String(e?.stderr || e?.message || e).trim().split('\n').pop()}`);
@@ -561,8 +652,37 @@ async function removeRepo(slug: string) {
 
 // ---------------------------------------------------------------- HTTP
 
+// ---------------------------------------------------------------- Toplu kurulum
+
+interface BulkItem { url: string; durum: 'bekliyor' | 'kuruluyor' | 'tamam' | 'atlandı' | 'hata'; mesaj?: string }
+const bulk: { calisiyor: boolean; liste: BulkItem[] } = { calisiyor: false, liste: [] };
+
+async function runBulk(urls: string[]) {
+  bulk.calisiyor = true;
+  bulk.liste = urls.map(url => ({ url, durum: 'bekliyor' }));
+  changed();
+  for (const item of bulk.liste) {
+    item.durum = 'kuruluyor';
+    changed();
+    try {
+      const r = await installFromGitHub(item.url);
+      item.durum = 'tamam';
+      item.mesaj = [r.beceri && `${r.beceri} beceri`, r.is_akisi && `${r.is_akisi} iş akışı`, r.mcp && `${r.mcp} MCP (kapalı)`].filter(Boolean).join(', ');
+    } catch (e: any) {
+      const m = String(e?.message || e);
+      item.durum = /zaten kurulu|yetenek bulunamadı/i.test(m) ? 'atlandı' : 'hata';
+      item.mesaj = m.slice(0, 200);
+    }
+    changed();
+  }
+  bulk.calisiyor = false;
+  console.log(`[yetenek] toplu kurulum bitti: ${bulk.liste.filter(i => i.durum === 'tamam').length}/${bulk.liste.length}`);
+  changed();
+}
+
 function view() {
   return {
+    toplu: bulk,
     repos: store.repos,
     skills: store.skills.map(({ icerik, ...s }) => ({ ...s, uzunluk: icerik.length })),
     servers: store.servers.map(s => {
@@ -620,6 +740,15 @@ export function extensionsRouter(): Router {
     res.json(view());
   });
 
+  r.post('/api/extensions/github-toplu', (req, res) => {
+    if (bulk.calisiyor) return res.status(409).json({ error: 'Bir toplu kurulum zaten sürüyor' });
+    const urls = [...new Set(str(req.body?.liste, 20_000).split(/[\s,]+/)
+      .map(u => u.trim()).filter(Boolean)
+      .map(u => (/^https?:\/\//.test(u) ? u : /^[\w.-]+\/[\w.-]+$/.test(u) ? `https://github.com/${u}` : u)))].slice(0, 60);
+    if (!urls.length) return res.status(400).json({ error: 'Liste boş' });
+    runBulk(urls);
+    res.json(view());
+  });
   r.post('/api/extensions/github', async (req, res) => {
     try {
       res.json({ ok: true, ...(await installFromGitHub(str(req.body?.url))), ...view() });
