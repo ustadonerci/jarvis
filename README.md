@@ -119,7 +119,9 @@ Bu özellikler dışarıdan gelen çağrıları (webhook) kabul eder. Bunun içi
 
 - **Kendiliğinden başlar:** Bilgisayar açılınca Jarvis küçültülmüş pencerede başlar. Bunu kapatmak için *Ayarlar → anahtar ekle* bölümünden `OTOMATIK_BASLAT` = `0` girin.
 - **Kendiliğinden güncellenir:** Açıkken 3 dakikada bir yeni sürüm arar ve bulduğunu uygular. Arayüz değişiklikleri sayfaya kendiliğinden gelir. Sunucu değişikliklerinde sunucu birkaç saniyede yeniden başlar; Jarvis o sırada bir cevap hazırlıyorsa önce bitmesi beklenir. Anahtarlarınız ve verileriniz korunur. Bu bilgisayarda kodda değişiklik yapıldıysa önce `server/data/kod-yedek/` klasörüne yedeklenir.
-- **Telefon linki:** WhatsApp bağlıysa Jarvis her açılışta yeni telefon linkini size WhatsApp'ta (kendinize yazdığınız sohbete) gönderir. İstemiyorsanız `TELEFON_LINKI_WHATSAPP` = `0` girin.
+- **Sabit telefon linki:** İlk açılışta Jarvis ücretsiz Tailscale'i bir kez kurar. Açılan sayfada Google ya da Microsoft hesabıyla giriş yapıp **Enable**'a basmanız yeterli. Bundan sonra telefon linki hiç değişmez (`https://<bilgisayar>.<ağ>.ts.net`). Telefonda bir kez açıp **Ana ekrana ekle** derseniz Jarvis uygulama gibi durur. Telefona Tailscale kurmak gerekmez. Kurulum olmazsa her açılışta değişen Cloudflare linki kullanılır (`SABIT_LINK` = `0` ile de seçilebilir).
+- **Telefon linki WhatsApp'ta:** Link değiştiğinde ve WhatsApp bağlıysa Jarvis linki size WhatsApp'ta (kendinize yazdığınız sohbete) gönderir. İstemiyorsanız `TELEFON_LINKI_WHATSAPP` = `0` girin.
+- **Güvenlik:** Telefondan gelen her istek yerel bir "kapı"dan (5174) geçer ve işaretlenir. Bu yüzden link bilinse bile anahtar (token) olmadan Jarvis açılmaz; ayarlar ve yetenekler de değiştirilemez.
 - **Zaten açıkken:** Simgeye tekrar tıklarsanız ikinci bir Jarvis açılmaz; yalnızca tarayıcı açılır.
 
 **Telefondan kullanım (`npm run telefon`):**

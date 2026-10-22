@@ -478,7 +478,7 @@ export function messagingRouter(): Router {
   r.post('/api/telefon-linki', (req, res) => {
     if (!isLocalRequest(req)) return res.status(403).json({ error: 'yalnızca bu bilgisayardan' });
     const link = String(req.body?.link ?? '');
-    if (!/^https:\/\/[a-z0-9-]+\.trycloudflare\.com\/\?token=[\w-]+$/.test(link)) return res.status(400).json({ error: 'geçersiz link' });
+    if (!/^https:\/\/([a-z0-9-]+\.trycloudflare\.com|[a-z0-9-]+\.[a-z0-9-]+\.ts\.net)\/\?token=[\w-]+$/.test(link)) return res.status(400).json({ error: 'geçersiz link' });
     res.json({ ok: true });
     if (process.env.TELEFON_LINKI_WHATSAPP !== '0') sendLinkToSelf(link);
   });

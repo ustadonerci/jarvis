@@ -60,7 +60,7 @@ async function main() {
   say('Jarvis ve telefon bağlantısı başlatılıyor. Bu pencereyi KAPATMAYIN (küçültebilirsiniz).');
   say('Yeni özellikler eklendiğinde Jarvis kendini otomatik günceller; tekrar açmanız gerekmez.');
   const child = spawn(process.execPath, [path.join(ROOT, 'scripts', 'telefon.mjs')], {
-    cwd: ROOT, stdio: 'inherit', env: { ...process.env, JARVIS_BASLAT: '1', JARVIS_GUNCELLE: '1' },
+    cwd: ROOT, stdio: 'inherit', env: { ...process.env, JARVIS_BASLAT: '1', JARVIS_GUNCELLE: '1', JARVIS_OTO: OTO ? '1' : '' },
   });
   if (!OTO && !YENIDEN) {
     // Arayüz hazır olunca tarayıcıyı aç

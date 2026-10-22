@@ -128,7 +128,8 @@ const LOOPBACK = /^(::1|127\.\d+\.\d+\.\d+|::ffff:127\.\d+\.\d+\.\d+)$/;
  * Cloudflare'in kendi eklediği (istemcinin silemeyeceği) cf-connecting-ip / cf-ray başlıkları bulunur.
  */
 export function isLocalRequest(req: Request): boolean {
-  if (req.headers['cf-connecting-ip'] || req.headers['cf-ray']) return false;
+  // x-jarvis-uzak: telefon kapısı (scripts/telefon.mjs) tünelden gelen her isteğe ekler (Tailscale ya da Cloudflare)
+  if (req.headers['x-jarvis-uzak'] || req.headers['cf-connecting-ip'] || req.headers['cf-ray']) return false;
   const remote = req.socket.remoteAddress ?? '';
   const fwd = String(req.headers['x-forwarded-for'] ?? '').split(',').map(s => s.trim()).filter(Boolean).pop();
   const ip = LOOPBACK.test(remote) && fwd ? fwd : remote;
