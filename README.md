@@ -115,13 +115,12 @@ Bu özellikler dışarıdan gelen çağrıları (webhook) kabul eder. Bunun içi
 
 ## En kolay başlatma (Windows): Jarvis.bat
 
-`Jarvis.bat` dosyasına çift tıklayın. İlk çalıştırmada kendini masaüstüne kopyalar; sonrasında masaüstündeki **Jarvis**'e çift tıklamanız yeterli. Her açılışta:
+`Jarvis.bat` dosyasına bir kez çift tıklayın. Masaüstüne tek bir **Jarvis** simgesi koyar; Jarvis'i hem bu bilgisayarda hem telefonda aynı anda açar. Seçim yapmanız gerekmez.
 
-1. Güncellemeleri alır (anahtarlarınız ve verileriniz korunur).
-2. Eksik paketleri kurar.
-3. Jarvis'i başlatıp tarayıcıyı açar.
-
-Açılışta **2**'yi seçerseniz telefonda kullanmanız için bir link ve QR kod da verir (`npm run telefon` ile aynı).
+- **Kendiliğinden başlar:** Bilgisayar açılınca Jarvis küçültülmüş pencerede başlar. Bunu kapatmak için *Ayarlar → anahtar ekle* bölümünden `OTOMATIK_BASLAT` = `0` girin.
+- **Kendiliğinden güncellenir:** Açıkken 3 dakikada bir yeni sürüm arar ve bulduğunu uygular. Arayüz değişiklikleri sayfaya kendiliğinden gelir. Sunucu değişikliklerinde sunucu birkaç saniyede yeniden başlar; Jarvis o sırada bir cevap hazırlıyorsa önce bitmesi beklenir. Anahtarlarınız ve verileriniz korunur. Bu bilgisayarda kodda değişiklik yapıldıysa önce `server/data/kod-yedek/` klasörüne yedeklenir.
+- **Telefon linki:** WhatsApp bağlıysa Jarvis her açılışta yeni telefon linkini size WhatsApp'ta (kendinize yazdığınız sohbete) gönderir. İstemiyorsanız `TELEFON_LINKI_WHATSAPP` = `0` girin.
+- **Zaten açıkken:** Simgeye tekrar tıklarsanız ikinci bir Jarvis açılmaz; yalnızca tarayıcı açılır.
 
 **Telefondan kullanım (`npm run telefon`):**
 - Bir erişim anahtarı (`ACCESS_TOKEN`) oluşturur ve ücretsiz bir Cloudflare tüneli açar. `cloudflared` yoksa winget ile kendisi kurar.

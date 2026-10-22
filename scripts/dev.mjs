@@ -6,14 +6,22 @@
 // - Ayarlar'dan anahtar kaydedilince sunucu 75 koduyla çıkar (JARVIS_DEV=1); burada hemen yeniden açılır.
 // - Sunucu başka bir sebeple kapanırsa hatası kırmızı kutuyla gösterilir ve 5 sn sonra yeniden denenir.
 // - Başlamadan önce eksik paketler kurulur, .env yoksa oluşturulur.
+// - JARVIS_GUNCELLE=1 ise (masaüstündeki Jarvis.bat) 3 dakikada bir GitHub'da yeni sürüm aranır ve uygulanır:
+//   arayüz değişiklikleri sayfaya kendiliğinden gelir, sunucu değişikliklerinde sunucu yeniden başlar (Jarvis bir
+//   cevabı hazırlıyorsa bitmesi beklenir), paket/başlatıcı değişikliklerinde 76 koduyla çıkılır ve hepsi yeniden açılır.
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { baslaticiyaYonlendir, etki, guncelle } from './guncelleme.mjs';
+
+if (baslaticiyaYonlendir()) await new Promise(() => {});
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const WIN = process.platform === 'win32';
 const RESTART_CODE = 75;
+const UPDATE_EXIT = 76;
+const UPDATE_EVERY = (Number(process.env.JARVIS_GUNCELLE_SN) || 180) * 1000;
 
 /** package.json'daki her bağımlılık node_modules'ta var mı? Yoksa o klasörde npm install. */
 function ensureDeps(dir) {
@@ -55,6 +63,7 @@ function banner(code) {
 }
 
 let server = null;
+let updating = false;
 function startServer() {
   serverLog.length = 0;
   // tsx Node'un içine yüklenir (--import): tek süreç olur, kapatınca arkada sunucu kalmaz
@@ -66,8 +75,9 @@ function startServer() {
   pipe('server', server);
   server.on('exit', code => {
     if (stopping) return;
-    if (code === RESTART_CODE) {
-      console.log(`${TAGS.server} yeni ayarlarla yeniden başlatılıyor…`);
+    if (code === RESTART_CODE || updating) {
+      console.log(`${TAGS.server} ${updating ? 'yeni sürümle' : 'yeni ayarlarla'} yeniden başlatılıyor…`);
+      updating = false;
       proxyNoted = false;
       return startServer();
     }
@@ -86,11 +96,41 @@ web.on('exit', code => { if (!stopping) console.error(`${TAGS.web} arayüz kapan
 
 startServer();
 
-const stop = () => {
+const stop = (code = 0) => {
   stopping = true;
   server?.kill();
   web.kill();
-  process.exit(0);
+  process.exit(code);
 };
-process.on('SIGINT', stop);
-process.on('SIGTERM', stop);
+
+// ---- Otomatik güncelleme
+const idle = async () => {
+  try { return !(await (await fetch('http://localhost:8787/api/state', { signal: AbortSignal.timeout(5000) })).json()).mesgul; } catch { return true; }
+};
+async function checkUpdate() {
+  const g = await guncelle();
+  const e = g && etki(g.degisen);
+  if (!e) return;
+  console.log(`\n\x1b[32m[güncelleme]\x1b[0m Yeni sürüm indirildi (${g.degisen.length} dosya).`);
+  if (g.yedek) console.log(`\x1b[32m[güncelleme]\x1b[0m Bu bilgisayardaki kod değişiklikleri yedeklendi: ${g.yedek}`);
+  if (e === 'arayuz') return console.log('\x1b[32m[güncelleme]\x1b[0m Arayüz güncellendi; sayfa kendiliğinden yenilenir.');
+  // Jarvis bir cevabı hazırlıyorsa bitmesini bekle (en fazla 10 dk)
+  for (let i = 0; i < 60 && !(await idle()); i++) await new Promise(r => setTimeout(r, 10_000));
+  if (e === 'tam') {
+    console.log('\x1b[32m[güncelleme]\x1b[0m Paketler/başlatıcı değişti; Jarvis baştan açılıyor…');
+    return stop(UPDATE_EXIT);
+  }
+  console.log('\x1b[32m[güncelleme]\x1b[0m Sunucu yeni sürümle yeniden başlatılıyor…');
+  updating = true;
+  server?.kill();
+}
+if (process.env.JARVIS_GUNCELLE === '1') {
+  let running = false;
+  setInterval(async () => {
+    if (running || stopping) return;
+    running = true;
+    try { await checkUpdate(); } catch (err) { console.warn(`[güncelleme] kontrol başarısız: ${err?.message || err}`); } finally { running = false; }
+  }, UPDATE_EVERY);
+}
+process.on('SIGINT', () => stop());
+process.on('SIGTERM', () => stop());

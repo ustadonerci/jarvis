@@ -177,6 +177,7 @@ const settingsEvent = () => ({ type: 'settings', photoMode: state.photoMode, voi
 
 app.get('/api/state', (_req, res) => {
   res.json({
+    mesgul: busy, // otomatik güncelleme cevap yarıdayken sunucuyu yeniden başlatmasın
     messages: state.messages.slice(-50),
     photoMode: state.photoMode,
     lastDevice: state.lastDevice,

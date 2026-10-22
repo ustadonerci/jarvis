@@ -12,7 +12,7 @@ import express, { type Router } from 'express';
 import QRCode from 'qrcode';
 import pino from 'pino';
 import { CHAT_MODEL, MOCK, routellm, type ChatResponse } from './routellm.js';
-import { adminOnly } from './keys.js';
+import { adminOnly, isLocalRequest } from './keys.js';
 import { phoneStatus } from './phone.js';
 
 const DATA = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
@@ -474,7 +474,30 @@ export function messagingRouter(): Router {
     await waLogout();
     res.json(status());
   });
+  // Başlatıcı (scripts/telefon.mjs) yeni telefon linkini buraya bildirir; yalnızca bu bilgisayardan
+  r.post('/api/telefon-linki', (req, res) => {
+    if (!isLocalRequest(req)) return res.status(403).json({ error: 'yalnızca bu bilgisayardan' });
+    const link = String(req.body?.link ?? '');
+    if (!/^https:\/\/[a-z0-9-]+\.trycloudflare\.com\/\?token=[\w-]+$/.test(link)) return res.status(400).json({ error: 'geçersiz link' });
+    res.json({ ok: true });
+    if (process.env.TELEFON_LINKI_WHATSAPP !== '0') sendLinkToSelf(link);
+  });
   return r;
+}
+
+/** Linki kullanıcının WhatsApp'ta kendine yazdığı sohbete gönderir (WhatsApp birkaç sn geç bağlanabilir: 2 dk bekler) */
+async function sendLinkToSelf(link: string) {
+  for (let i = 0; i < 24 && !(wa.sock && wa.durum === 'bağlı' && wa.numara); i++) {
+    if (!waReady()) return;
+    await new Promise(r => setTimeout(r, 5000));
+  }
+  if (!(wa.sock && wa.durum === 'bağlı' && wa.numara)) return;
+  try {
+    await waSend(`${wa.numara}@s.whatsapp.net`, `🤖 Jarvis açıldı. Telefondan kullanmak için bu linke dokunun:\n${link}\n\nLinki kimseyle paylaşmayın.`);
+    console.log('[telefon] link WhatsApp\'ta kendinize gönderildi');
+  } catch (e: any) {
+    console.warn(`[telefon] link WhatsApp'a gönderilemedi: ${String(e?.message || e).slice(0, 120)}`);
+  }
 }
 
 /**
