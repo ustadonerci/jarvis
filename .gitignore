@@ -16,3 +16,5 @@ web/public/models/
 
 # npm run telefon (içinde erişim anahtarı var)
 telefon-linki.txt
+# npm run kontrol yedeği
+server/.env.yedek

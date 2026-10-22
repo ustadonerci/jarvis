@@ -37,6 +37,10 @@ if errorlevel 1 (
 )
 
 echo.
+echo Ayarlar kontrol ediliyor (anahtar eksikse burada sorulur)...
+call npm.cmd run kontrol
+
+echo.
 echo [3/3] Nasil acilsin?
 echo   1 = Sadece bu bilgisayarda
 echo   2 = Telefonda da (telefon linki ve QR kod verir)
