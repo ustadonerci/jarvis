@@ -300,9 +300,38 @@ async function enableServer(s: McpServer) {
   changed();
 }
 
+/**
+ * Kullanıcının istediği hazır paketler: Jarvis açılışta, daha önce kurulmadıysa bir kez kendiliğinden kurar
+ * (MCP sunucuları yine kapalı gelir). Kurulum bitince işaret dosyası yazılır; kullanıcı bir repoyu kaldırırsa
+ * tekrar kurulmaz. RIFKI: kullanıcının 110 repoluk listesinden Jarvis'e beceri olarak yarayan 16 repo.
+ */
+const AUTO_PACKAGES: Record<string, string[]> = {
+  rifki: [
+    'coreyhaines31/marketingskills', 'AgriciDaniel/claude-seo', 'AgriciDaniel/claude-ads', 'Ryze-AI-Adgent/open-seo-mcp-skills',
+    'fajrisilmi12-cyber/hermes-socmed-function', 'hardikpandya/stop-slop', 'calesthio/OpenMontage', 'heygen-com/hyperframes',
+    'haidrrrry/claude-remotion-skill', 'AI4Finance-Foundation/FinRobot', 'xbtlin/ai-berkshire', 'obra/superpowers',
+    'muratcankoylan/agent-skills-for-context-engineering', 'nextlevelbuilder/ui-ux-pro-max-skill', 'vercel-labs/skills', 'cloudflare/security-audit-skill',
+  ],
+};
+const packageMark = (name: string) => path.join(DATA, `paket-${name}.kuruldu`);
+
+async function autoInstallPackages() {
+  for (const [name, repos] of Object.entries(AUTO_PACKAGES)) {
+    if (fs.existsSync(packageMark(name))) continue;
+    const have = new Set(store.repos.map(r => r.url.replace('https://github.com/', '').toLowerCase()));
+    const todo = repos.filter(r => !have.has(r.toLowerCase()));
+    console.log(`[yetenek] "${name}" paketi kuruluyor (${todo.length} repo; arka planda, birkaç dakika)…`);
+    if (todo.length) await runBulk(todo.map(r => `https://github.com/${r}`));
+    fs.mkdirSync(DATA, { recursive: true });
+    fs.writeFileSync(packageMark(name), new Date().toISOString());
+  }
+}
+
 export function initExtensions(b: (e: object) => void) {
   broadcast = b;
   for (const s of store.servers) if (s.aktif) enableServer(s);
+  // Sunucu açılışını bekletmesin
+  setTimeout(() => autoInstallPackages().catch(e => console.warn('[yetenek] paket kurulamadı:', e)), 5000);
 }
 
 // ---------------------------------------------------------------- Model tarafı
