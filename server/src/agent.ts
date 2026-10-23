@@ -18,6 +18,7 @@ import { PHONE_TOOLS, phoneReady } from './phone.js';
 import { SMS_TOOLS } from './sms.js';
 import { SOCIAL_TOOLS, socialForPrompt } from './social.js';
 import { ANDROID_TOOLS, androidForPrompt } from './android.js';
+import { detectGroups, trimPrompt, type Group } from './intent.js';
 import { SITE_TOOLS } from './sitedownload.js';
 import { findNewsById } from './news.js';
 import { resolveFastPhoto, resolveSlowPhoto, type PhotoMode } from './photos.js';
@@ -349,8 +350,12 @@ export async function runJarvis(opts: RunOptions): Promise<JarvisReply> {
       : isBrief
       ? `${text}\n\n[Sistem notu: Bu, gündem brifingi komutu. Gündem özeti protokolünü uygula.]`
       : text;
+  // Yalnızca soruyla ilgili araç grupları ve talimat bölümleri (bkz. intent.ts): daha hızlı ve daha isabetli cevap
+  const groups = detectGroups(text, history);
+  if (isBrief) groups.add('gundem');
+  if (fal) groups.add('fal');
   const messages: ChatMessage[] = [
-    { role: 'system', content: buildSystemPrompt(contextVars(device, prevDevice)) },
+    { role: 'system', content: trimPrompt(buildSystemPrompt(contextVars(device, prevDevice)), groups) },
     ...history.slice(-12).map(m => ({ role: m.role, content: m.text }) as ChatMessage),
     { role: 'user', content: userContent },
   ];
@@ -358,7 +363,15 @@ export async function runJarvis(opts: RunOptions): Promise<JarvisReply> {
 
   // Komut yoksa haber aracı hiç sunulmaz: Jarvis kendiliğinden gündem anlatamaz. Diğer araçlar her zaman açık.
   // Her aracın çıktısı toolText'e eklenir; verifyVisual sayı/grafik/harita/alıntı görsellerini bu gerçek veriyle doğrular.
-  const tools = [...(isBrief ? TOOLS : TOOLS.filter(t => t.function.name !== 'get_news')), ...SEARCH_TOOLS, ...FINANCE_TOOLS, ...MSG_TOOLS, ...EMAIL_TOOLS, ...GITHUB_TOOLS, ...AGENT_TOOLS, ...ERROR_TOOLS, ...APPROVAL_TOOLS, ...SYSTEM_TOOLS, ...AUTOMATION_TOOLS, ...PHONE_TOOLS, ...SMS_TOOLS, ...SOCIAL_TOOLS, ...ANDROID_TOOLS, ...SITE_TOOLS, ...EXT_TOOLS, ...mcpTools()];
+  const pick = (g: Group, t: readonly any[]) => (groups.has(g) ? t : []);
+  const tools = [
+    ...(isBrief ? TOOLS : TOOLS.filter(t => t.function.name !== 'get_news')), ...SEARCH_TOOLS, ...ERROR_TOOLS, ...APPROVAL_TOOLS,
+    ...pick('finans', FINANCE_TOOLS), ...pick('mesaj', MSG_TOOLS), ...pick('eposta', EMAIL_TOOLS), ...pick('github', GITHUB_TOOLS),
+    ...pick('ajan', AGENT_TOOLS), ...pick('sistem', SYSTEM_TOOLS), ...pick('otomasyon', AUTOMATION_TOOLS), ...pick('telefon', PHONE_TOOLS),
+    ...pick('sms', SMS_TOOLS), ...pick('sosyal', SOCIAL_TOOLS), ...pick('android', ANDROID_TOOLS), ...pick('site', SITE_TOOLS),
+    ...pick('yetenek', EXT_TOOLS), ...pick('mcp', mcpTools()), ...pick('yetenek', mcpTools()),
+  ].filter((t, i, a) => a.findIndex(x => x.function.name === t.function.name) === i);
+  console.log(`[beyin] ${tools.length} araç · gruplar: ${[...groups].join(', ') || 'temel'}`);
   let forceNews = isBrief;
   let retriedJson = false;
 
