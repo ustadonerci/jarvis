@@ -512,6 +512,7 @@ app.post('/api/stt', express.raw({ type: ['audio/*', 'application/octet-stream']
     res.json(r);
   } catch (e: any) {
     console.warn(`[stt] ${STT_MODEL} başarısız: ${String(e?.message || e).slice(0, 120)}`);
+    logError('ses tanıma', `${STT_MODEL}: ${String(e?.message || e).slice(0, 300)}`);
     res.status(502).json({ error: 'ses yazıya çevrilemedi' });
   }
 });

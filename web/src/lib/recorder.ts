@@ -15,9 +15,16 @@ function pickMime(): string | undefined {
   return undefined;
 }
 
+export interface RecordingInfo {
+  /** Konuşma (gürültü tabanının belirgin üstünde ses) algılandı mı */
+  heard: boolean;
+  /** Kayıttaki en yüksek ses seviyesi (0–1 arası RMS). Çok düşükse mikrofon seviyesi kısık ya da yanlış mikrofon. */
+  peak: number;
+}
+
 export async function startRecording(h: {
-  /** Konuşma algılandıysa kayıt; hiç konuşulmadıysa null (boşuna istek gönderilmez) */
-  onStop(blob: Blob | null): void;
+  /** Kayıt; konuşma algılanmadıysa null (sendSilent ise yine de kayıt). info: algılama ve en yüksek seviye */
+  onStop(blob: Blob | null, info: RecordingInfo): void;
   onLevel?(level: number): void;
   /** Konuşma başladıktan sonra bu kadar sessizlikte dur (varsayılan 1400 ms) */
   silenceMs?: number;
@@ -25,6 +32,11 @@ export async function startRecording(h: {
   noSpeechMs?: number;
   /** En uzun kayıt (varsayılan 15000 ms) */
   maxMs?: number;
+  /**
+   * Konuşma algılanmasa da kaydı gönder (mikrofon düğmesi). Masaüstü mikrofonları çoğu zaman kısık çeker; seviye
+   * eşiğin altında kalınca kayıt eskiden sessizce atılıyordu ve Jarvis hiç cevap vermiyordu.
+   */
+  sendSilent?: boolean;
   /** Açık bir mikrofon akışı (alkış dinleyicisininki): yeniden izin/başlatma gecikmesi olmaz, kapatılmaz */
   stream?: MediaStream;
   /** Kullanıcı dokunuşuyla açılmış ses bağlamı. Dokunuşsuz (alkışla) başlayan kayıtta yeni bağlam askıda kalır ve
@@ -33,39 +45,46 @@ export async function startRecording(h: {
 }): Promise<Recording> {
   const silenceMs = h.silenceMs ?? 1400, noSpeechMs = h.noSpeechMs ?? 6000, maxMs = h.maxMs ?? 15000;
   const ownStream = !h.stream;
-  const stream = h.stream ?? (await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }));
+  const stream = h.stream ?? (await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }));
   const mime = pickMime();
   const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
   const chunks: Blob[] = [];
   rec.ondataavailable = e => e.data.size && chunks.push(e.data);
 
-  // Sessizlik algılama: konuşma başladıktan sonra 1,4 sn sessizlikte dur; 6 sn hiç konuşma yoksa vazgeç; en fazla 15 sn.
+  // Sessizlik algılama. Eşik sabit değil: ortamın gürültü tabanına göre (kısık masaüstü mikrofonunda da konuşma
+  // seçilsin, gürültülü odada da kayıt bitebilsin). Ölçüm requestAnimationFrame yerine zamanlayıcıyla yapılır:
+  // pencere arka plana geçince ya da küçültülünce rAF durur ve kayıt hiç bitmiyordu.
   const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   const ctx = h.ctx ?? new AC();
+  if (ctx.state !== 'running') await ctx.resume().catch(() => {});
   const analyser = ctx.createAnalyser();
   analyser.fftSize = 1024;
   const source = ctx.createMediaStreamSource(stream);
   source.connect(analyser);
-  // Bağlam askıdaysa seviye hep sıfır görünür: o durumda konuşma "duyulmuş" sayılır, kayıt süre sonunda gönderilir.
+  // Bağlam hâlâ askıdaysa seviye hep sıfır görünür: o durumda konuşma "duyulmuş" sayılır, kayıt süre sonunda gönderilir.
   const blind = ctx.state !== 'running';
   const buf = new Uint8Array(analyser.fftSize);
   const t0 = performance.now();
-  let heard = false;
+  let heard = blind;
   let lastVoice = t0;
-  let raf = 0;
+  let floor = Infinity; // gürültü tabanı: yumuşatılmış seviyenin şimdiye kadarki en düşüğü
+  let smooth = 0;
+  let peak = 0;
   let stopped = false;
 
   const finish = () => {
     if (stopped) return;
     stopped = true;
-    cancelAnimationFrame(raf);
+    clearInterval(timer);
+    clearTimeout(hardStop);
     if (rec.state !== 'inactive') rec.stop();
   };
   rec.onstop = () => {
     source.disconnect();
     if (ownStream) stream.getTracks().forEach(t => t.stop());
     if (!h.ctx) ctx.close().catch(() => {});
-    h.onStop(heard && chunks.length ? new Blob(chunks, { type: rec.mimeType || mime || 'audio/webm' }) : null);
+    const has = chunks.length > 0 && (heard || !!h.sendSilent);
+    h.onStop(has ? new Blob(chunks, { type: rec.mimeType || mime || 'audio/webm' }) : null, { heard, peak });
   };
 
   const tick = () => {
@@ -73,13 +92,18 @@ export async function startRecording(h: {
     let sum = 0;
     for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
     const rms = Math.sqrt(sum / buf.length);
+    peak = Math.max(peak, rms);
+    smooth = smooth ? smooth * 0.7 + rms * 0.3 : rms;
+    floor = Math.min(floor, smooth);
     h.onLevel?.(Math.min(1, rms * 4));
     const now = performance.now();
-    if (rms > 0.035 || blind) { heard = true; lastVoice = blind ? t0 : now; }
-    if ((heard && !blind && now - lastVoice > silenceMs) || (!heard && now - t0 > noSpeechMs) || now - t0 > (blind ? noSpeechMs : maxMs)) return finish();
-    raf = requestAnimationFrame(tick);
+    // Konuşma: gürültü tabanının ~3 katı (en az 0,012). Eski sabit eşik (0,035) kısık mikrofonlarda hiç aşılmıyordu.
+    const thr = Math.max(0.012, Math.min(0.05, floor * 3));
+    if (!blind && now - t0 > 150 && rms > thr) { heard = true; lastVoice = now; }
+    if ((heard && !blind && now - lastVoice > silenceMs) || (!heard && now - t0 > noSpeechMs) || (blind && now - t0 > noSpeechMs)) finish();
   };
   rec.start(250);
-  raf = requestAnimationFrame(tick);
+  const timer = setInterval(tick, 50);
+  const hardStop = setTimeout(finish, maxMs);
   return { stop: finish };
 }

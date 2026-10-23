@@ -712,26 +712,57 @@ export default function App() {
     if (!recorderSupported()) return startWebSpeech();
     setInterim('');
     setCore('listening');
+    // Yedek: kayıt sürerken tarayıcının kendi ses tanıması da dinler (masaüstü Chrome/Edge). Sunucudaki ses tanıma
+    // hata verir ya da boş dönerse onun duyduğu kullanılır; ara sonuçlar ekranda canlı görünür. iPhone'da kapalı
+    // (orada güvenilir değil ve kayıtla çakışabiliyor).
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    let webText = '';
+    let sideDone: () => void = () => {};
+    const sideEnded = new Promise<void>(r => { sideDone = r; });
+    const side = ios ? null : createRecognizer({
+      onInterim: t => { if (t) setInterim(t); },
+      onFinal: t => { webText = t; },
+      onEnd: () => sideDone(),
+      onError: () => sideDone(),
+    });
+    try { side?.start(); } catch { sideDone(); }
+    if (!side) sideDone();
+    /** Tarayıcı tanımasının son sözünü bekle (en çok 1,2 sn) */
+    const sideText = async () => { try { side?.stop(); } catch { /* zaten bitti */ } await Promise.race([sideEnded, new Promise(r => setTimeout(r, 1200))]); return webText.trim(); };
     try {
       recRef.current = await startRecording({
-        onStop: async blob => {
+        sendSilent: true,
+        noSpeechMs: 8000,
+        maxMs: 25_000,
+        onStop: async (blob, info) => {
           recRef.current = null;
-          if (!blob) { setCore(c => (c === 'listening' ? 'idle' : c)); return; }
+          const backup = sideText();
+          // Mikrofondan neredeyse hiç ses gelmediyse kaydı göndermeye değmez; sebebini söyle (eskiden sessizce kapanıyordu)
+          if ((!blob || info.peak < 0.004) && !(await backup)) {
+            setInterim('');
+            setCore(c => (c === 'listening' ? 'idle' : c));
+            flash(info.peak < 0.004
+              ? 'Mikrofondan ses gelmiyor. Windows → Ayarlar → Ses → Giriş: doğru mikrofon seçili mi, seviyesi açık mı? Tarayıcıda da mikrofon izni verilmiş olmalı.'
+              : 'Sizi duyamadım efendim.');
+            return;
+          }
           setInterim('anlıyorum…');
-          try {
-            const text = await stt(blob);
-            setInterim('');
-            if (text) submit(text);
-            else { setCore('idle'); flash('Sizi duyamadım efendim.'); }
-          } catch (err: any) {
-            setInterim('');
+          let text = '';
+          let err = '';
+          try { text = blob ? await stt(blob) : ''; } catch (e: any) { err = e.message; }
+          if (!text) text = await backup; // sunucu tanıyamadıysa tarayıcının duyduğu
+          setInterim('');
+          if (text) submit(text);
+          else {
             setCore('idle');
-            flash(`Ses yazıya çevrilemedi: ${err.message}`);
+            flash(err ? `Ses yazıya çevrilemedi: ${err}` : info.heard ? 'Sizi duyamadım efendim.' : 'Sizi duyamadım; mikrofon sesi düşük olabilir, biraz daha yakından konuşun.');
           }
         },
       });
+      setInterim('dinliyorum… (bitince susun ya da mikrofona tekrar basın)');
     } catch {
       // Mikrofon izni yok ya da kayıt başlamadı: Web Speech yedeğini dene.
+      try { side?.stop(); } catch { /* yok */ }
       setCore('idle');
       startWebSpeech();
     }
