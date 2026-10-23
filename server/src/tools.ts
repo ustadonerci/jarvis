@@ -19,6 +19,7 @@ import { isAutomationTool, runAutomationTool } from './automation.js';
 import { isPhoneTool, runPhoneTool } from './phone.js';
 import { isSmsTool, runSmsTool } from './sms.js';
 import { isSocialTool, runSocialTool } from './social.js';
+import { isAndroidTool, runAndroidTool } from './android.js';
 import { isSiteTool, runSiteTool } from './sitedownload.js';
 import { addBook, addBookNote, fillInBackground, findBook, setBookStatus } from './library.js';
 
@@ -300,6 +301,7 @@ async function runToolOnce(name: string, rawArgs: string, progress: ToolProgress
   if (isPhoneTool(name)) return runPhoneTool(name, args);
   if (isSmsTool(name)) return runSmsTool(name, args, progress);
   if (isSocialTool(name)) return runSocialTool(name, args, progress);
+  if (isAndroidTool(name)) return runAndroidTool(name, args, progress);
   if (isSiteTool(name)) return runSiteTool(args, progress);
   if (name === 'get_news') {
     progress('haber kaynakları taranıyor');

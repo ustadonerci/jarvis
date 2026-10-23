@@ -17,6 +17,7 @@ import { AUTOMATION_TOOLS, webhooksForPrompt } from './automation.js';
 import { PHONE_TOOLS, phoneReady } from './phone.js';
 import { SMS_TOOLS } from './sms.js';
 import { SOCIAL_TOOLS, socialForPrompt } from './social.js';
+import { ANDROID_TOOLS, androidForPrompt } from './android.js';
 import { SITE_TOOLS } from './sitedownload.js';
 import { findNewsById } from './news.js';
 import { resolveFastPhoto, resolveSlowPhoto, type PhotoMode } from './photos.js';
@@ -54,6 +55,7 @@ function contextVars(device: Device, prevDevice: Device | null) {
     yetenekler: extensionsForPrompt(),
     mesajlasma: messagingForPrompt(),
     takip: socialForPrompt(),
+    android: androidForPrompt(),
     ton: personaForPrompt(),
     hata_sayisi: String(openErrorCount()),
     webhooklar: webhooksForPrompt(),
@@ -356,7 +358,7 @@ export async function runJarvis(opts: RunOptions): Promise<JarvisReply> {
 
   // Komut yoksa haber aracı hiç sunulmaz: Jarvis kendiliğinden gündem anlatamaz. Diğer araçlar her zaman açık.
   // Her aracın çıktısı toolText'e eklenir; verifyVisual sayı/grafik/harita/alıntı görsellerini bu gerçek veriyle doğrular.
-  const tools = [...(isBrief ? TOOLS : TOOLS.filter(t => t.function.name !== 'get_news')), ...SEARCH_TOOLS, ...FINANCE_TOOLS, ...MSG_TOOLS, ...EMAIL_TOOLS, ...GITHUB_TOOLS, ...AGENT_TOOLS, ...ERROR_TOOLS, ...APPROVAL_TOOLS, ...SYSTEM_TOOLS, ...AUTOMATION_TOOLS, ...PHONE_TOOLS, ...SMS_TOOLS, ...SOCIAL_TOOLS, ...SITE_TOOLS, ...EXT_TOOLS, ...mcpTools()];
+  const tools = [...(isBrief ? TOOLS : TOOLS.filter(t => t.function.name !== 'get_news')), ...SEARCH_TOOLS, ...FINANCE_TOOLS, ...MSG_TOOLS, ...EMAIL_TOOLS, ...GITHUB_TOOLS, ...AGENT_TOOLS, ...ERROR_TOOLS, ...APPROVAL_TOOLS, ...SYSTEM_TOOLS, ...AUTOMATION_TOOLS, ...PHONE_TOOLS, ...SMS_TOOLS, ...SOCIAL_TOOLS, ...ANDROID_TOOLS, ...SITE_TOOLS, ...EXT_TOOLS, ...mcpTools()];
   let forceNews = isBrief;
   let retriedJson = false;
 

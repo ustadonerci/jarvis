@@ -16,6 +16,7 @@ import { ProfileSettings } from './components/Profile';
 import { LibrarySettings } from './components/LibrarySettings';
 import { ErrorLog, ExtensionSettings, KeySettings, TakipSettings } from './components/Extensions';
 import { MessagingSettings } from './components/Messaging';
+import { AndroidSettings } from './components/Android';
 import { PortfolioSettings } from './components/Portfolio';
 import { ApprovalCards } from './components/Approvals';
 import { addNote, patchBook, type Kitap } from './lib/library';
@@ -1201,6 +1202,7 @@ export default function App() {
                   <KeySettings flash={flash} />
                   <PortfolioSettings flash={flash} />
                   <MessagingSettings flash={flash} />
+                  <AndroidSettings flash={flash} />
                   <ExtensionSettings flash={flash} />
                   <TakipSettings flash={flash} />
                   <ErrorLog flash={flash} />

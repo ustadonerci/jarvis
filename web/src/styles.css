@@ -869,3 +869,4 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .chips button, .detail-cta { padding: 8px 13px; font-size: 13px; }
   .caption { min-height: 0; }
 }
+.android-help { margin: 4px 0 8px; padding-left: 20px; line-height: 1.5; } .android-help li { margin: 2px 0; }
