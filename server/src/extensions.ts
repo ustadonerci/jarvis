@@ -314,6 +314,15 @@ const AUTO_PACKAGES: Record<string, string[]> = {
     'haidrrrry/claude-remotion-skill', 'AI4Finance-Foundation/FinRobot', 'xbtlin/ai-berkshire', 'obra/superpowers',
     'muratcankoylan/agent-skills-for-context-engineering', 'nextlevelbuilder/ui-ux-pro-max-skill', 'vercel-labs/skills', 'cloudflare/security-audit-skill',
   ],
+  // Ramazan'ın istediği Claude Code eklentileri: yalnızca beceri/komut klasörleri (uygulamanın tamamı değil)
+  'claude-eklentileri': [
+    'obra/superpowers',
+    'JuliusBrussee/caveman/tree/main/skills',
+    'anthropics/claude-plugins-official/tree/main/plugins/claude-code-setup',
+    'anthropics/claude-plugins-official/tree/main/plugins/claude-security',
+    'anthropics/claude-code-security-review',
+    'diegosouzapw/OmniRoute/tree/main/skills',
+  ],
 };
 const packageMark = (name: string) => path.join(DATA, `paket-${name}.kuruldu`);
 
@@ -661,10 +670,16 @@ async function sparseClone(url: string, dir: string, branch?: string, sub = '') 
     .filter(f => !sub || f === sub || f.startsWith(sub + '/'));
   const rel = (f: string) => (sub ? f.slice(sub.length + 1) : f);
   let full = false;
+  let bigApp = false;
   const rootPkg = sub ? `${sub}/package.json` : 'package.json';
   if (files.includes(rootPkg)) {
     const pkg = (await git('show', `HEAD:${rootPkg}`).catch(() => ({ stdout: '' }))).stdout;
-    full = pkg.includes('@modelcontextprotocol/sdk');
+    // MCP kütüphanesini kullanan küçük bir paket = MCP sunucusu (tamamı indirilir). Binlerce dosyalık bir uygulama
+    // (ör. OmniRoute gibi bir yapay zeka ağ geçidi) MCP'yi yalnızca bir özelliği olarak kullanır: tamamı indirilmez,
+    // MCP sunucusu sanılmaz; yalnızca becerileri ve README'si alınır.
+    const sdk = pkg.includes('@modelcontextprotocol/sdk');
+    bigApp = sdk && files.length > 3000;
+    full = sdk && !bigApp;
   }
   if (!full) {
     const skillDirs = files.filter(f => /(^|\/)SKILL\.md$/.test(f)).map(f => path.posix.dirname(f));
@@ -673,7 +688,7 @@ async function sparseClone(url: string, dir: string, branch?: string, sub = '') 
     for (const f of files) {
       const r = rel(f);
       if (/(^|\/)(commands|workflows)\/[^/]+\.md$/i.test(r) && !r.startsWith('.github/')) keep.add(`/${f}`);
-      if (/\.workflow\.md$/i.test(r) || /(^|\/)(\.mcp\.claude\.json|\.mcp\.json|mcp\.json)$/.test(r) || r === 'package.json' || r === 'README.md') keep.add(`/${f}`);
+      if (/\.workflow\.md$/i.test(r) || /(^|\/)(\.mcp\.claude\.json|\.mcp\.json|mcp\.json)$/.test(r) || (r === 'package.json' && !bigApp) || r === 'README.md') keep.add(`/${f}`);
     }
     // Uygulama repoları için bilgi kaynağı: kökteki README ve yapay zeka rehberleri her zaman alınır
     for (const f of ['README.md', 'readme.md', 'README_EN.md', 'CLAUDE.md', 'AGENTS.md']) if (files.includes(sub ? `${sub}/${f}` : f)) keep.add(`/${sub ? `${sub}/` : ''}${f}`);
@@ -718,7 +733,9 @@ async function installFromGitHub(url: string) {
   const m = GH.exec(extractRepoUrls(url)[0] ?? '');
   if (!m) throw new Error('Geçerli bir GitHub repo adresi değil (ör. https://github.com/kullanici/repo ya da gh repo clone kullanici/repo).');
   const [, owner, name, sub] = m;
-  let slug = slugify(`${owner}-${name}${sub ? '-' + sub.split('/').pop() : ''}`);
+  // Alt klasör kurulumunda klasör adı sona eklenir ve kısaltmada korunur (aynı repodaki iki eklenti çakışmasın)
+  const last = sub ? slugify(sub.split('/').pop()!).slice(0, 24) : '';
+  let slug = last ? `${slugify(`${owner}-${name}`).slice(0, 39 - last.length).replace(/-$/, '')}-${last}` : slugify(`${owner}-${name}`);
   if (store.repos.some(r => r.slug === slug)) throw new Error('Bu repo zaten kurulu. Güncellemek için önce kaldırın.');
   fs.mkdirSync(REPOS, { recursive: true });
   const dir = path.join(REPOS, slug);
