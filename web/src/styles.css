@@ -841,3 +841,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .anaekran .ae-text { flex: 1; min-width: 0; }
 .anaekran .ae-add { flex: none; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--accent); background: rgba(var(--accent-rgb), 0.15); color: var(--accent); font-weight: 700; font-size: 13px; }
 .anaekran .ae-close { flex: none; background: none; border: none; color: #8fb3c2; font-size: 16px; padding: 4px 6px; }
+
+/* Ayarlar → Yetenekler: açılıp kapanan liste kutuları */
+.ext-box { border: 1px solid rgba(var(--accent-rgb), 0.22); border-radius: 10px; background: rgba(255, 255, 255, 0.02); }
+.ext-box > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 10px; padding: 9px 12px; font-size: 13px; font-weight: 600; user-select: none; }
+.ext-box > summary::-webkit-details-marker { display: none; }
+.ext-box > summary::before { content: '▸'; color: var(--accent); transition: transform 0.15s; }
+.ext-box[open] > summary::before { transform: rotate(90deg); }
+.ext-box > summary em { margin-left: auto; font-style: normal; font-weight: 400; font-size: 12px; color: var(--muted); }
+.ext-box > .memory { padding: 0 8px 8px; max-height: 420px; overflow-y: auto; }

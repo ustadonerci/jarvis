@@ -120,6 +120,18 @@ const RIFKI_PAKETI = [
 ].join('\n');
 const BULK_ICON = { bekliyor: '·', kuruluyor: '…', tamam: '✓', 'atlandı': '–', hata: '✕' } as const;
 
+/** Açılıp kapanan kutu (uzun listeler için). ac true olunca (ör. toplu kurulum başlayınca) kendiliğinden açılır. */
+function Kutu({ baslik, ozet, ac = false, children }: { baslik: string; ozet?: string; ac?: boolean; children: React.ReactNode }) {
+  const [open, setOpen] = useState(ac);
+  useEffect(() => { if (ac) setOpen(true); }, [ac]);
+  return (
+    <details className="ext-box" open={open} onToggle={e => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
+      <summary><span>{baslik}</span>{ozet && <em>{ozet}</em>}</summary>
+      {open && children}
+    </details>
+  );
+}
+
 /**
  * Ayarlar → Yetenekler: GitHub reposundan kurulum, beceri / iş akışı (Markdown talimat) ve MCP sunucuları.
  * Jarvis yalnızca adları ve açıklamaları her istekte görür; ihtiyaç duyunca tam talimatı okur.
@@ -204,17 +216,26 @@ export function ExtensionSettings({ flash }: { flash(t: string): void }) {
           <p className="muted small">Repolar sırayla kurulur. Beceri/iş akışı içermeyenler atlanır; MCP sunucuları güvenlik için kapalı eklenir.</p>
         </div>
       )}
-      {data.toplu && data.toplu.liste.length > 0 && (
-        <ul className="memory bulk">
-          {data.toplu.liste.map(i => (
-            <li key={i.url} className={i.durum}>
-              <span><b>{BULK_ICON[i.durum]}</b> {i.url.replace('https://github.com/', '')}{i.mesaj ? <small> · {i.mesaj}</small> : null}</span>
-            </li>
-          ))}
-        </ul>
-      )}
+      {data.toplu && data.toplu.liste.length > 0 && (() => {
+        const l = data.toplu.liste;
+        const say = (d: keyof typeof BULK_ICON) => l.filter(i => i.durum === d).length;
+        const ozet = [`✓ ${say('tamam')}`, say('atlandı') && `– ${say('atlandı')} atlandı`, say('hata') && `✕ ${say('hata')} hata`,
+          data.toplu.calisiyor && `${say('kuruluyor') + say('bekliyor')} sırada`].filter(Boolean).join(' · ');
+        return (
+          <Kutu baslik={`Toplu kurulum sonucu (${l.length} repo)`} ozet={ozet} ac={data.toplu.calisiyor}>
+            <ul className="memory bulk">
+              {l.map(i => (
+                <li key={i.url} className={i.durum}>
+                  <span><b>{BULK_ICON[i.durum]}</b> {i.url.replace('https://github.com/', '')}{i.mesaj ? <small> · {i.mesaj}</small> : null}</span>
+                </li>
+              ))}
+            </ul>
+          </Kutu>
+        );
+      })()}
 
       {data.repos.length > 0 && (
+        <Kutu baslik={`Kurulu repolar (${data.repos.length})`}>
         <ul className="memory">
           {data.repos.map(r => (
             <li key={r.slug}>
@@ -224,9 +245,11 @@ export function ExtensionSettings({ flash }: { flash(t: string): void }) {
             </li>
           ))}
         </ul>
+        </Kutu>
       )}
 
       {data.skills.length > 0 && (
+        <Kutu baslik={`Beceriler ve iş akışları (${data.skills.length})`} ozet={`${data.skills.filter(x => x.aktif).length} açık`}>
         <ul className="memory ext-list">
           {data.skills.map(s => (
             <li key={s.id} className={s.aktif ? '' : 'off'}>
@@ -239,9 +262,12 @@ export function ExtensionSettings({ flash }: { flash(t: string): void }) {
             </li>
           ))}
         </ul>
+        </Kutu>
       )}
 
       {data.servers.length > 0 && (
+        <Kutu baslik={`MCP sunucuları (${data.servers.length})`} ozet={`${data.servers.filter(x => x.durum === 'bağlı').length} bağlı`}
+          ac={data.servers.some(x => x.durum === 'giriş gerekli' || x.durum === 'hata')}>
         <ul className="memory ext-list">
           {data.servers.map(s => (
             <li key={s.id} className={s.aktif ? '' : 'off'}>
@@ -265,6 +291,7 @@ export function ExtensionSettings({ flash }: { flash(t: string): void }) {
             </li>
           ))}
         </ul>
+        </Kutu>
       )}
 
       <div className="seg">
