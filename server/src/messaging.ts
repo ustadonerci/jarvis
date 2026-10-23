@@ -578,6 +578,12 @@ export function messagingRouter(): Router {
   return r;
 }
 
+/** Kullanıcının WhatsApp'ta kendine yazdığı sohbete mesaj (bağlı değilse false) */
+export async function notifySelf(text: string): Promise<boolean> {
+  if (!(wa.sock && wa.durum === 'bağlı' && wa.numara)) return false;
+  try { await waSend(`${wa.numara}@s.whatsapp.net`, text); return true; } catch { return false; }
+}
+
 /** Linki kullanıcının WhatsApp'ta kendine yazdığı sohbete gönderir (WhatsApp birkaç sn geç bağlanabilir: 2 dk bekler) */
 async function sendLinkToSelf(link: string) {
   for (let i = 0; i < 24 && !(wa.sock && wa.durum === 'bağlı' && wa.numara); i++) {

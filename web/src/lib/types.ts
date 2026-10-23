@@ -80,6 +80,8 @@ export type ServerEvent =
   | { type: 'restarting' }
   | { type: 'mesaj'; platform: 'telegram' | 'whatsapp' | 'telefon'; kisi: string; metin: string; arama?: boolean }
   | { type: 'whatsapp' }
+  /** Kullanıcının dokunacağı link (ör. Google Play'de aç) */
+  | { type: 'link'; baslik: string; aciklama?: string; url: string; dugme?: string }
   | { type: 'portfoy' }
   | { type: 'onay'; yeni?: { baslik: string }; bitti?: { baslik: string; durum: string } }
   | { type: 'alarm'; sembol: string; ad: string; fiyat: number; hedef: number; kosul: 'ust' | 'alt' };

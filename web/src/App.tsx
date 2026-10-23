@@ -137,6 +137,8 @@ export default function App() {
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
   // Onay kartları: SSE "onay" olayıyla yenilenir
   const [approvalKey, setApprovalKey] = useState(0);
+  // Dokunulacak link kartları (ör. Google Play'de aç); en fazla 3, ✕ ile kapanır
+  const [links, setLinks] = useState<{ id: number; baslik: string; aciklama?: string; url: string; dugme?: string }[]>([]);
   const [sfxOn, setSfxOn] = useState(true);
   const [voices, setVoices] = useState<VoiceOption[] | null>(null);
   const [elevenUse, setElevenUse] = useState<ElevenUsage | null>(null);
@@ -577,6 +579,7 @@ export default function App() {
         // Ayarlar'dan anahtar kaydedildi: sunucu yeni değerlerle açılınca sayfa da baştan yüklensin (demo modu vb.)
         case 'restarting': setTimeout(() => location.reload(), 4000); break;
         case 'onay': setApprovalKey(k => k + 1); if (e.yeni) flash(`Onay bekliyor: ${e.yeni.baslik}`); break;
+        case 'link': if (/^https:\/\//.test(e.url)) setLinks(l => [...l.slice(-2), { id: Date.now(), baslik: e.baslik, aciklama: e.aciklama, url: e.url, dugme: e.dugme }]); break;
         case 'alarm': flash(`🔔 ${e.ad}: ${e.fiyat.toLocaleString('tr-TR')} · hedef ${e.kosul === 'ust' ? '≥' : '≤'} ${e.hedef.toLocaleString('tr-TR')}`); break;
         case 'mesaj': flash(`${{ whatsapp: 'WhatsApp', telegram: 'Telegram', telefon: '📞 Telefon' }[e.platform]} · ${e.arama ? `${e.kisi} ${e.platform === 'telefon' ? e.metin : 'aradı'}` : `${e.kisi}: ${e.metin}`}`); break;
       }
@@ -1150,6 +1153,17 @@ export default function App() {
       )}
 
       <ApprovalCards version={approvalKey} />
+      {links.length > 0 && (
+        <div className="link-cards">
+          {links.map(l => (
+            <div key={l.id} className="link-card">
+              <div className="lc-head"><b>{l.baslik}</b><button aria-label="Kapat" onClick={() => setLinks(x => x.filter(y => y.id !== l.id))}>✕</button></div>
+              {l.aciklama && <p>{l.aciklama}</p>}
+              <a className="lc-btn" href={l.url} target="_blank" rel="noopener noreferrer" onClick={() => setTimeout(() => setLinks(x => x.filter(y => y.id !== l.id)), 500)}>{l.dugme || 'Aç'}</a>
+            </div>
+          ))}
+        </div>
+      )}
       <AnimatePresence>
         {drawer && (
           <motion.aside className="drawer" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 28, stiffness: 260 }}>

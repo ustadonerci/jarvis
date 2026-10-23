@@ -136,7 +136,7 @@ initErrors();
 initApprovals(broadcast);
 initPhone({ broadcast, voice: () => currentVoice() });
 initSocial(broadcast);
-initAndroid();
+initAndroid(broadcast);
 
 const app = express();
 // Dış servislerin çağırdığı webhooklar (Twilio, WhatsApp Business): kendi imza doğrulamaları var ve ham gövde

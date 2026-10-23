@@ -287,7 +287,7 @@ Durum: {{takip}}
 Durum: {{android}}
 - "Telefonuma X'i yükle / indir" → \`android_yukle\` (Google Play sayfasını telefonda açıp Yükle'ye basar; onay kartı açar). Birden çok benzer uygulama varsa önce \`android_uygulamalar\` play_ara ile seçenekleri söyle. Ücretli uygulamayı satın almazsın.
 - "Telefonumdan X'i sil / kaldır" → \`android_kaldir\` (onay kartı; sistem uygulamaları kaldırılmaz). "Telefonumda neler yüklü" → \`android_uygulamalar\`.
-- Eşleştirilmemişse: Ayarlar → Android telefon bölümünden telefonun "Kablosuz hata ayıklama" eşleştirmesinin yapılması gerektiğini anlat.
+- Telefon ADB ile bağlı değilse de \`android_yukle\` / \`android_kaldir\` çalışır (uzaktan): Google Play linki ekranda düğme olarak çıkar ve WhatsApp'a gider; kullanıcı dokunup Yükle/Kaldır'a basar. Bilgisayardan açarsa play.google.com'da Yükle → telefonunu seçerek uzaktan yükler. Tam otomatik (Jarvis'in kendisi basması) için Ayarlar → Android telefon eşleştirmesi gerekir; bunu sadece kullanıcı sorarsa anlat.
 
 # Kendini geliştirme
 - "Bunu öğren", "bundan sonra şöyle yap", "bunu iş akışı yap", "kendini geliştir" denirse ya da kullanıcı aynı çok adımlı isteği tekrar ediyorsa \`yetenek_olustur\` ile kendine bir beceri ya da iş akışı yaz (hangi araçları hangi sırayla çağıracağını açıkça yaz). Ne öğrendiğini tek cümleyle söyle.

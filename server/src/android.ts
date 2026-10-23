@@ -4,6 +4,9 @@
 // → Geliştirici seçenekleri → Kablosuz hata ayıklama (açık) → "Cihazı eşleştirme koduyla eşle". Ekrandaki adres ve 6
 // haneli kod Jarvis → Ayarlar → Android telefon bölümüne yazılır. Telefon ve bilgisayar aynı Wi-Fi'de olmalı.
 // Neden ADB: Google Play başka programların uygulama kurmasına izin vermez; ADB telefonun kendi resmî geliştirici aracıdır.
+// ADB bağlı değilse (uzaktan): uygulamanın Google Play linki Jarvis ekranlarında düğme olarak çıkar ve WhatsApp bağlıysa
+// kullanıcının kendine yazdığı sohbete gönderilir. Telefonda dokununca Play Store uygulaması açılır ("Yükle" / "Kaldır");
+// bilgisayarda açılırsa play.google.com'da "Yükle" → cihaz seçilerek telefona uzaktan yüklenir (aynı Google hesabıyla).
 // Ücretli uygulamalarda "Yükle"ye basılmaz (satın alma kullanıcıya bırakılır); sistem uygulamaları kaldırılmaz.
 import { execFile, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -12,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import express, { type Router } from 'express';
 import { propose } from './approvals.js';
 import { adminOnly } from './keys.js';
+import { notifySelf } from './messaging.js';
 
 const DATA = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
 const FILE = path.join(DATA, 'android.json');
@@ -218,7 +222,27 @@ export async function androidStatus(): Promise<{ adb: boolean; bagli: boolean; c
   }
 }
 
-export function initAndroid() {
+let broadcast: (e: object) => void = () => {};
+
+/** ADB olmadan: Play linkini ekranlara düğme olarak ve WhatsApp'a gönderir */
+async function remote(hit: { paket: string; ad: string }, islem: 'yukle' | 'kaldir'): Promise<string> {
+  const url = `https://play.google.com/store/apps/details?id=${hit.paket}`;
+  const yukle = islem === 'yukle';
+  broadcast({
+    type: 'link', baslik: `${yukle ? 'Yükle' : 'Kaldır'}: ${hit.ad}`, url, dugme: 'Google Play\'de aç',
+    aciklama: yukle
+      ? 'Telefonda dokunun → Play Store açılır → "Yükle". Bilgisayardan açarsanız "Yükle" → telefonunuzu seçin; uzaktan yüklenir.'
+      : 'Telefonda dokunun → Play Store sayfası açılır → "Kaldır".',
+  });
+  const wa = await notifySelf(`🤖 ${hit.ad} — ${yukle ? 'yüklemek' : 'kaldırmak'} için dokunun, Play Store'da ${yukle ? '"Yükle"ye' : '"Kaldır"a'} basın:\n${url}`);
+  return JSON.stringify({
+    uzaktan: true, uygulama: hit.ad, paket: hit.paket, link: url, whatsapp_gonderildi: wa,
+    not: `Telefon ADB ile bağlı olmadığı için Jarvis düğmeye kendisi basamaz. Google Play linki Jarvis ekranında düğme olarak çıktı${wa ? ' ve WhatsApp\'ta kendine yazdığı sohbete gönderildi' : ''}. Kullanıcıya: telefonda linke dokunup ${yukle ? '"Yükle"ye' : '"Kaldır"a'} basmasını${yukle ? '; bilgisayardan açarsa Yükle → telefonunu seçerek uzaktan yükleyebileceğini' : ''} söyle.`,
+  });
+}
+
+export function initAndroid(b: (e: object) => void = () => {}) {
+  broadcast = b;
   // Açılışta (ve 5 dakikada bir) daha önce eşleştirilmiş telefona sessizce yeniden bağlan
   const tick = async () => { try { if (findAdb() && readCfg().sonAdres && !(await devices()).length) await reconnect(); } catch { /* sessiz */ } };
   setTimeout(tick, 15_000).unref();
@@ -240,16 +264,16 @@ export const ANDROID_TOOLS = [
     type: 'function',
     function: {
       name: 'android_yukle',
-      description: "Telefona Google Play'den ÜCRETSİZ uygulama yükler: Play sayfasını telefonda açar ve 'Yükle'ye basar. Onay kartı açar. Ücretli uygulamada satın almaz. Ad ya da paket adı (com.whatsapp gibi) verilebilir.",
-      parameters: { type: 'object', properties: { uygulama: { type: 'string' } }, required: ['uygulama'] },
+      description: "Telefona Google Play'den ÜCRETSİZ uygulama yükler. Telefon ADB ile bağlıysa Play sayfasını telefonda açıp 'Yükle'ye basar (onay kartı). Bağlı değilse UZAKTAN: Play linki Jarvis ekranında düğme olarak çıkar ve WhatsApp'a gönderilir; kullanıcı dokunup Yükle'ye basar (bilgisayardan açarsa telefonunu seçerek uzaktan yükler). Ad ya da paket adı verilebilir.",
+      parameters: { type: 'object', properties: { uygulama: { type: 'string' }, uzaktan: { type: 'boolean', description: 'ADB bağlı olsa bile link yöntemi' } }, required: ['uygulama'] },
     },
   },
   {
     type: 'function',
     function: {
       name: 'android_kaldir',
-      description: 'Telefondan uygulama kaldırır (yalnızca kullanıcının yüklediği uygulamalar; sistem uygulamaları değil). Onay kartı açar; uygulamanın verileri de silinir.',
-      parameters: { type: 'object', properties: { uygulama: { type: 'string', description: 'Ad ya da paket adı' } }, required: ['uygulama'] },
+      description: "Telefondan uygulama kaldırır (yalnızca kullanıcının yüklediği uygulamalar; sistem uygulamaları değil). ADB bağlıysa onay kartıyla kaldırır; bağlı değilse UZAKTAN: uygulamanın Play sayfası linki ekranda ve WhatsApp'ta çıkar, kullanıcı dokunup 'Kaldır'a basar.",
+      parameters: { type: 'object', properties: { uygulama: { type: 'string', description: 'Ad ya da paket adı' }, uzaktan: { type: 'boolean' } }, required: ['uygulama'] },
     },
   },
 ] as const;
@@ -271,7 +295,14 @@ export async function runAndroidTool(name: string, args: any, progress: (l: stri
     }
     const q = String(args.uygulama ?? '').trim().slice(0, 100);
     if (!q) return JSON.stringify({ hata: 'uygulama adı boş' });
-    const d = await device();
+    // ADB bağlı değilse (ya da uzaktan istendiyse) Play linkiyle
+    const d = args.uzaktan === true || !findAdb() ? null : await device().catch(() => null);
+    if (!d) {
+      progress(`Google Play'de aranıyor: ${q}`);
+      const hit = PKG.test(q) ? { paket: q, ad: await playTitle(q) } : (await playSearch(q))[0];
+      if (!hit) return JSON.stringify({ hata: `Google Play'de "${q}" bulunamadı` });
+      return remote(hit, name === 'android_yukle' ? 'yukle' : 'kaldir');
+    }
     if (name === 'android_yukle') {
       progress(`Google Play'de aranıyor: ${q}`);
       let hit: { paket: string; ad: string } | undefined;
