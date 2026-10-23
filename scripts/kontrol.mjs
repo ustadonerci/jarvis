@@ -31,6 +31,18 @@ if (!fixed) ok('Dosya kodlaması doğru (UTF-8)');
 
 let lines = text.split(/\r?\n/);
 
+// ---- 1b) Bozuk Türkçe karakterler: "Ä°stanbul" → "İstanbul" (UTF-8, Windows-1252 sanılıp yeniden kaydedilmiş)
+const CP1252 = { '€': 0x80, '‚': 0x82, 'ƒ': 0x83, '„': 0x84, '…': 0x85, '†': 0x86, '‡': 0x87, 'ˆ': 0x88, '‰': 0x89, 'Š': 0x8a, '‹': 0x8b, 'Œ': 0x8c, 'Ž': 0x8e, '‘': 0x91, '’': 0x92, '“': 0x93, '”': 0x94, '•': 0x95, '–': 0x96, '—': 0x97, '˜': 0x98, '™': 0x99, 'š': 0x9a, '›': 0x9b, 'œ': 0x9c, 'ž': 0x9e, 'Ÿ': 0x9f };
+const unmojibake = (s) => {
+  if (!/[ÃÄÅÂ]/.test(s)) return s;
+  const bytes = [];
+  for (const ch of s) { const c = ch.codePointAt(0); if (c < 256) bytes.push(c); else if (CP1252[ch] !== undefined) bytes.push(CP1252[ch]); else return s; }
+  const out = Buffer.from(bytes).toString('utf8');
+  return out.includes('�') ? s : out;
+};
+const repaired = lines.map(unmojibake);
+if (repaired.some((l, i) => l !== lines[i])) { lines = repaired; fixed = true; bad('Bozuk Türkçe karakterler vardı (ör. "Ä°stanbul") → düzeltildi'); }
+
 // ---- 2) MOCK=1 demo modunu zorlar
 const mockIdx = lines.findIndex(l => /^\s*MOCK\s*=\s*1\s*$/.test(l));
 if (mockIdx >= 0) { lines[mockIdx] = `# ${lines[mockIdx].trim()}   (kontrol: demo modunu kapatmak için devre dışı bırakıldı)`; fixed = true; bad('MOCK=1 satırı Jarvis\'i demo modunda tutuyordu → devre dışı bırakıldı'); }

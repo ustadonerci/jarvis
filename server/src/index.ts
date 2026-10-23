@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import './envfix.js';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';

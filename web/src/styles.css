@@ -23,6 +23,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto auto;
   grid-template-areas: 'top' 'strip' 'stage' 'ticker' 'dock';
+  /* Tek sütun ekran genişliğinde kalsın: içerik (ör. hava/döviz şeridi) sığmazsa sayfayı genişletmesin */
+  grid-template-columns: minmax(0, 1fr);
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
@@ -851,3 +853,19 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .ext-box > summary em { margin-left: auto; font-style: normal; font-weight: 400; font-size: 12px; color: var(--muted); }
 .ext-box > .memory { padding: 0 8px 8px; max-height: 420px; overflow-y: auto; }
 .memory-add select { height: 38px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line); background: rgba(8, 18, 28, 0.75); color: var(--text); font-size: 13px; }
+
+/* Dar telefon ekranı: hava/döviz şeridi gerekirse iki satıra iner; alt çubukta yazı kutusu üstte tam genişlik,
+   düğmeler altta tek sıra (yan yana sığmayıp ekrandan taşıyordu) */
+@media (max-width: 560px) {
+  .strip { flex-wrap: wrap; row-gap: 2px; column-gap: 8px; padding: 2px 10px 6px; }
+  .topbar { padding: 8px 12px; gap: 8px; }
+  .dock { flex-wrap: wrap; justify-content: space-between; row-gap: 8px; column-gap: 6px; padding: 6px 12px 12px; }
+  .dock .ask { order: -1; flex: 1 1 100%; }
+  .dock .ask input { height: 44px; }
+  .dock .icon-btn { width: 42px; height: 42px; flex: none; }
+  .dock .mic { width: 50px; height: 50px; flex: none; }
+  .ticker { margin: 0 10px; }
+  .chips { gap: 6px; }
+  .chips button, .detail-cta { padding: 8px 13px; font-size: 13px; }
+  .caption { min-height: 0; }
+}
