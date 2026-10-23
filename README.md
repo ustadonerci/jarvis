@@ -115,7 +115,7 @@ Bu özellikler dışarıdan gelen çağrıları (webhook) kabul eder. Bunun içi
 
 ## En kolay başlatma (Windows): Jarvis.bat
 
-`Jarvis.bat` dosyasına bir kez çift tıklayın. Masaüstüne tek bir **Jarvis** simgesi koyar; Jarvis'i hem bu bilgisayarda hem telefonda aynı anda açar. Seçim yapmanız gerekmez.
+`Jarvis.bat` dosyasına bir kez çift tıklayın. Masaüstüne Jarvis simgeli bir **Jarvis** kısayolu koyar (eski masaüstü `Jarvis.bat` sonraki açılışta kaldırılır); Jarvis'i hem bu bilgisayarda hem telefonda aynı anda açar. Seçim yapmanız gerekmez.
 
 - **Kendiliğinden başlar:** Bilgisayar açılınca Jarvis küçültülmüş pencerede başlar. Bunu kapatmak için *Ayarlar → anahtar ekle* bölümünden `OTOMATIK_BASLAT` = `0` girin.
 - **Kendiliğinden güncellenir:** Açıkken 3 dakikada bir yeni sürüm arar ve bulduğunu uygular. Arayüz değişiklikleri sayfaya kendiliğinden gelir. Sunucu değişikliklerinde sunucu birkaç saniyede yeniden başlar; Jarvis o sırada bir cevap hazırlıyorsa önce bitmesi beklenir. Anahtarlarınız ve verileriniz korunur. Bu bilgisayarda kodda değişiklik yapıldıysa önce `server/data/kod-yedek/` klasörüne yedeklenir.

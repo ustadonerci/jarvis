@@ -4,6 +4,8 @@ title Jarvis
 rem Jarvis: tek tikla bilgisayarda ve telefonda acar, yeni ozellikleri kendiliginden yukler.
 rem Asil isi scripts\baslat.mjs yapar; bu dosya bilerek kisa tutuldu.
 set "JDIR=%USERPROFILE%\jarvis"
+rem Hangi dosyadan acildigini baslatici bilsin (eski masaustu dosyasini guvenle kaldirabilmek icin)
+set "JARVIS_BAT=%~f0"
 if not exist "%JDIR%\package.json" (
     echo [HATA] Jarvis klasoru bulunamadi: %JDIR%
     pause

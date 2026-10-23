@@ -84,30 +84,74 @@ function ensurePackages(dir) {
   else console.error(`\x1b[31m[jarvis] ${dir} paketleri kurulamadı (kod ${r.status}). Yukarıdaki hatayı Claude'a gönderin.\x1b[0m`);
 }
 
-/** Masaüstüne Jarvis.bat (güncel hâli) ve Windows açılışına otomatik başlatma */
+/** PowerShell komutu; Türkçe karakterli yollar (ör. OneDrive\Masaüstü) bozulmasın diye çıktı UTF-8, girdiler ortam değişkeniyle */
+function ps(command, env = {}) {
+  const r = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', `[Console]::OutputEncoding=[Text.Encoding]::UTF8; ${command}`], {
+    encoding: 'utf8', env: { ...process.env, ...env }, windowsHide: true,
+  });
+  return { ok: r.status === 0, out: (r.stdout ?? '').trim(), err: (r.stderr ?? '').trim() };
+}
+
+/** PNG'yi içine gömerek .ico yapar (Windows Vista ve sonrası PNG'li ikonları gösterir) */
+function pngToIco(png) {
+  const w = png.readUInt32BE(16), h = png.readUInt32BE(20);
+  const head = Buffer.alloc(22);
+  head.writeUInt16LE(0, 0); head.writeUInt16LE(1, 2); head.writeUInt16LE(1, 4);
+  head.writeUInt8(w >= 256 ? 0 : w, 6); head.writeUInt8(h >= 256 ? 0 : h, 7);
+  head.writeUInt16LE(1, 10); head.writeUInt16LE(32, 12);
+  head.writeUInt32LE(png.length, 14); head.writeUInt32LE(22, 18);
+  return Buffer.concat([head, png]);
+}
+
+/**
+ * Masaüstüne Jarvis kısayolu (Jarvis simgeli) ve Windows açılışına otomatik başlatma.
+ * Kısayolun açtığı başlatıcı server/data/Jarvis.bat'tır: git güncellemeleri ona dokunmaz, yalnızca burada yenilenir.
+ */
 function installLaunchers() {
   try {
+    const data = path.join(ROOT, 'server', 'data');
+    fs.mkdirSync(data, { recursive: true });
     const bat = fs.readFileSync(path.join(ROOT, 'Jarvis.bat'));
-    const desk = spawnSync('powershell', ['-NoProfile', '-Command', "[Environment]::GetFolderPath('Desktop')"], { encoding: 'utf8' }).stdout?.trim();
-    if (!desk || !fs.existsSync(desk)) return;
-    const deskBat = path.join(desk, 'Jarvis.bat');
-    let old = null;
-    try { old = fs.readFileSync(deskBat); } catch { /* yok */ }
-    if (!old || !old.equals(bat)) {
-      fs.writeFileSync(deskBat, bat);
-      say(old ? 'Masaüstündeki Jarvis güncellendi (artık tek dosya: hem bilgisayar hem telefon).' : 'Masaüstüne "Jarvis" eklendi.');
+    const launcher = path.join(data, 'Jarvis.bat');
+    let cur = null;
+    try { cur = fs.readFileSync(launcher); } catch { /* yok */ }
+    if (!cur || !cur.equals(bat)) fs.writeFileSync(launcher, bat);
+    const ico = path.join(data, 'jarvis.ico');
+    if (!fs.existsSync(ico)) fs.writeFileSync(ico, pngToIco(fs.readFileSync(path.join(ROOT, 'web', 'public', 'icon-192.png'))));
+
+    const desk = ps("[Environment]::GetFolderPath('Desktop')").out;
+    if (desk && fs.existsSync(desk)) {
+      const lnk = path.join(desk, 'Jarvis.lnk');
+      const mark = path.join(data, 'kisayol-1');
+      if (!fs.existsSync(lnk) || !fs.existsSync(mark)) {
+        const r = ps(
+          '$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:J_LNK); $s.TargetPath = $env:J_BAT; $s.WorkingDirectory = $env:J_DIR; ' +
+          '$s.IconLocation = "$env:J_ICO,0"; $s.Description = "Jarvis: bilgisayarda ve telefonda açar"; $s.WindowStyle = 1; $s.Save()',
+          { J_LNK: lnk, J_BAT: launcher, J_DIR: ROOT, J_ICO: ico },
+        );
+        if (r.ok && fs.existsSync(lnk)) { fs.writeFileSync(mark, new Date().toISOString()); say('Masaüstüne Jarvis kısayolu eklendi (Jarvis simgeli).'); }
+        else say(`Masaüstü kısayolu oluşturulamadı: ${r.err.slice(0, 200)}`);
+      }
+      // Eski masaüstü Jarvis.bat'ı kısayol varken gereksiz; ama şu an o dosyadan açıldıysa silinmez (pencere onu okuyor)
+      const deskBat = path.join(desk, 'Jarvis.bat');
+      const running = path.resolve(process.env.JARVIS_BAT || deskBat).toLowerCase();
+      if (fs.existsSync(lnk) && fs.existsSync(deskBat) && running !== path.resolve(deskBat).toLowerCase()) {
+        fs.rmSync(deskBat, { force: true });
+        say('Masaüstündeki eski Jarvis.bat kaldırıldı; artık Jarvis kısayolunu kullanın.');
+      }
     }
+
     const startup = path.join(process.env.APPDATA ?? '', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
     const auto = path.join(startup, 'Jarvis.cmd');
     if (envValue('OTOMATIK_BASLAT') === '0') {
       if (fs.existsSync(auto)) { fs.rmSync(auto); say('Windows açılışında otomatik başlatma kapatıldı.'); }
     } else if (fs.existsSync(startup)) {
-      const content = `@echo off\r\nrem Jarvis'i Windows acilisinda kucultulmus pencerede baslatir. Kapatmak icin: server\\.env -> OTOMATIK_BASLAT=0\r\nstart "Jarvis" /min "${deskBat}" oto\r\n`;
-      let cur = '';
-      try { cur = fs.readFileSync(auto, 'utf8'); } catch { /* yok */ }
-      if (cur !== content) {
+      const content = `@echo off\r\nrem Jarvis'i Windows acilisinda kucultulmus pencerede baslatir. Kapatmak icin: server\\.env -> OTOMATIK_BASLAT=0\r\nstart "Jarvis" /min "${launcher}" oto\r\n`;
+      let old = '';
+      try { old = fs.readFileSync(auto, 'utf8'); } catch { /* yok */ }
+      if (old !== content) {
         fs.writeFileSync(auto, content);
-        if (!cur) say('Jarvis artık bilgisayar açılınca kendiliğinden başlayacak.');
+        if (!old) say('Jarvis artık bilgisayar açılınca kendiliğinden başlayacak.');
       }
     }
   } catch (e) {
