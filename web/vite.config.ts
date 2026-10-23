@@ -28,10 +28,45 @@ function mediapipeWasm(): Plugin {
   }
 }
 
+/**
+ * Telefonda "Ana ekrana ekle": geliştirme sunucusunda manifest. ?t=<anahtar> verilirse açılış adresi anahtarı içerir
+ * (iPhone ana ekran uygulaması Safari'nin depolamasını göremez). Yalnızca verilen değeri geri yazar, sır içermez.
+ */
+function jarvisManifest(): Plugin {
+  return {
+    name: 'jarvis-manifest',
+    configureServer(server) {
+      server.middlewares.use('/jarvis.webmanifest', (req, res) => {
+        const t = new URL(req.url || '/', 'http://x').searchParams.get('t') || ''
+        res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8')
+        res.setHeader('Cache-Control', 'no-store')
+        res.end(JSON.stringify({
+          id: '/',
+          name: 'Jarvis',
+          short_name: 'Jarvis',
+          description: 'Kişisel yapay zeka asistanı',
+          start_url: /^[\w-]{8,200}$/.test(t) ? `/?token=${t}` : '/',
+          scope: '/',
+          display: 'standalone',
+          orientation: 'any',
+          theme_color: '#04070c',
+          background_color: '#04070c',
+          icons: [
+            { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+            { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+            { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          ],
+        }))
+      })
+    },
+  }
+}
+
 export default defineConfig({
   plugins: [
     react(),
     mediapipeWasm(),
+    jarvisManifest(),
     VitePWA({
       // Yeni service worker hemen devreye girer (skipWaiting + clientsClaim); sayfayı main.tsx Jarvis boştayken yeniler.
       // Eskiden yeni sürüm ancak ikinci yenilemede geliyordu; tablet eski sürümde kalıyordu.

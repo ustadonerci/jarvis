@@ -4,12 +4,17 @@ function safeGet(k: string) { try { return localStorage.getItem(k); } catch { re
 function safeSet(k: string, v: string) { try { localStorage.setItem(k, v); } catch { /* yok say */ } }
 
 // ?token=... bir kez açılınca saklanır
+// iPhone'da ise anahtar Safari'de adreste bırakılır: "Ana Ekrana Ekle" adresi olduğu gibi alır ve ana ekran uygulaması
+// Safari'nin depolamasını göremez; adreste olmazsa uygulama açılınca anahtar yeniden sorulurdu.
 const urlToken = new URLSearchParams(location.search).get('token');
+const iosBrowser = (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
+  && !(navigator as any).standalone;
 if (urlToken) {
   safeSet('jarvis.token', urlToken);
-  history.replaceState(null, '', location.pathname);
+  if (!iosBrowser) history.replaceState(null, '', location.pathname);
 }
 export const token = safeGet('jarvis.token') || '';
+if (!urlToken && token && iosBrowser) history.replaceState(null, '', `${location.pathname}?token=${encodeURIComponent(token)}`);
 
 export const clientId = (() => {
   let id = sessionStorage.getItem('jarvis.client');

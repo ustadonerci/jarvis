@@ -4,6 +4,8 @@ import './styles.css'
 import App from './App.tsx'
 import { getRole } from './lib/camera'
 import { token } from './lib/api'
+import './lib/install'
+import { AnaEkran } from './components/AnaEkran'
 import { TokenGate } from './components/TokenGate'
 import { registerSW } from 'virtual:pwa-register'
 
@@ -18,6 +20,15 @@ navigator.serviceWorker?.addEventListener('controllerchange', () => { if (hadCon
 registerSW({ immediate: true, onRegisteredSW(_url, reg) { if (reg) setInterval(() => reg.update().catch(() => {}), 60_000) } })
 setInterval(() => { if (pending && !busy()) { pending = false; location.reload() } }, 3000)
 
+// Telefonda "Ana ekrana ekle" için manifest (geliştirme sunucusu, vite.config.ts → jarvisManifest). Açılış adresi
+// anahtarı içerir: iPhone'da ana ekran uygulaması Safari'nin sakladığı anahtarı göremez.
+if (import.meta.env.DEV && !document.querySelector('link[rel="manifest"]')) {
+  const l = document.createElement('link')
+  l.rel = 'manifest'
+  l.href = `/jarvis.webmanifest${token ? `?t=${encodeURIComponent(token)}` : ''}`
+  document.head.appendChild(l)
+}
+
 // Kamera rolündeki cihaz (eski iPhone) Jarvis arayüzünü değil kamera ekranını açar; ayrı parça olarak yüklenir.
 const CameraDevice = lazy(() => import('./camera/CameraDevice'))
 
@@ -31,7 +42,7 @@ function Root() {
   }, [])
   if (auth === '?') return null
   if (auth === 'yok') return <TokenGate wrong={!!token} />
-  return getRole() === 'kamera' ? <Suspense fallback={null}><CameraDevice /></Suspense> : <App />
+  return getRole() === 'kamera' ? <Suspense fallback={null}><CameraDevice /></Suspense> : <><App /><AnaEkran /></>
 }
 
 createRoot(document.getElementById('root')!).render(

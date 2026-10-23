@@ -493,7 +493,7 @@ async function sendLinkToSelf(link: string) {
   }
   if (!(wa.sock && wa.durum === 'bağlı' && wa.numara)) return;
   try {
-    await waSend(`${wa.numara}@s.whatsapp.net`, `🤖 Jarvis açıldı. Telefondan kullanmak için bu linke dokunun:\n${link}\n\nLinki kimseyle paylaşmayın.`);
+    await waSend(`${wa.numara}@s.whatsapp.net`, `🤖 Jarvis açıldı. Telefondan kullanmak için bu linke dokunun:\n${link}\n\nAçılınca alttaki "Ekle" düğmesiyle Jarvis'i ana ekrana ekleyin; uygulama gibi simgesiyle açılır. Linki kimseyle paylaşmayın.`);
     console.log('[telefon] link WhatsApp\'ta kendinize gönderildi');
   } catch (e: any) {
     console.warn(`[telefon] link WhatsApp'a gönderilemedi: ${String(e?.message || e).slice(0, 120)}`);
