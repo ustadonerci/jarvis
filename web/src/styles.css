@@ -850,3 +850,4 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .ext-box[open] > summary::before { transform: rotate(90deg); }
 .ext-box > summary em { margin-left: auto; font-style: normal; font-weight: 400; font-size: 12px; color: var(--muted); }
 .ext-box > .memory { padding: 0 8px 8px; max-height: 420px; overflow-y: auto; }
+.memory-add select { height: 38px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line); background: rgba(8, 18, 28, 0.75); color: var(--text); font-size: 13px; }

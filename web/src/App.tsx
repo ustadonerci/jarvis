@@ -14,7 +14,7 @@ import { WeatherPanel } from './components/dashboard/WeatherPanel';
 import { SleepLayer, WakeChecks, WakeSettings, calibBus } from './components/Wake';
 import { ProfileSettings } from './components/Profile';
 import { LibrarySettings } from './components/LibrarySettings';
-import { ErrorLog, ExtensionSettings, KeySettings } from './components/Extensions';
+import { ErrorLog, ExtensionSettings, KeySettings, TakipSettings } from './components/Extensions';
 import { MessagingSettings } from './components/Messaging';
 import { PortfolioSettings } from './components/Portfolio';
 import { ApprovalCards } from './components/Approvals';
@@ -1202,6 +1202,7 @@ export default function App() {
                   <PortfolioSettings flash={flash} />
                   <MessagingSettings flash={flash} />
                   <ExtensionSettings flash={flash} />
+                  <TakipSettings flash={flash} />
                   <ErrorLog flash={flash} />
                   <ProfileSettings flash={flash} />
                   <LibrarySettings flash={flash} version={libKey} />

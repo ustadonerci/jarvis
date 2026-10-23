@@ -29,8 +29,10 @@ const WIN = process.platform === 'win32';
 export type SkillKind = 'beceri' | 'is_akisi';
 export interface Skill {
   id: string; ad: string; aciklama: string; tur: SkillKind; icerik: string; aktif: boolean; repo?: string; dosya?: string;
-  /** 'jarvis': Jarvis'in kendi yazdığı (yetenek_olustur) */
-  kaynak?: 'jarvis';
+  /** 'jarvis': Jarvis'in kendi yazdığı (yetenek_olustur); 'takip': takip edilen bir kanaldan çıkarılan öneri */
+  kaynak?: 'jarvis' | 'takip';
+  /** 'takip' önerisinin geldiği video/gönderi adresi */
+  kaynakUrl?: string;
   /** Becerinin repo içindeki klasörü (references/ gibi ek dosyaları yetenek_kullan ile okunabilir) */
   klasor?: string;
 }
@@ -341,6 +343,31 @@ const active = () => store.skills.filter(s => s.aktif);
 /** Sistem prompt'una eklenen kısa liste (tam metin yetenek_kullan ile okunur) */
 /** Sistem prompt'unda adıyla listelenen en fazla yetenek: yüzlerce beceri her istekte gönderilmesin */
 const PROMPT_LIMIT = 25;
+
+/**
+ * Takip edilen kanallardan çıkarılan yetenek ÖNERİSİ: kapalı eklenir (internetten gelen içerik Jarvis'in davranışını
+ * kullanıcı onaylamadan değiştirmesin). Aynı kaynaktan aynı adla ikinci kez eklenmez.
+ */
+export function addSuggestedSkill(o: { ad: string; aciklama: string; icerik: string; tur: SkillKind; kaynakUrl: string; aktif?: boolean }): Skill | null {
+  const ad = o.ad.trim().slice(0, 80);
+  if (!ad || store.skills.some(x => x.kaynakUrl === o.kaynakUrl || (x.kaynak === 'takip' && x.ad === ad))) return null;
+  const sk: Skill = { ...skillFrom(o.icerik.slice(0, MAX_SKILL), ad, o.tur), ad, aciklama: o.aciklama.slice(0, 400) || ad, kaynak: 'takip', kaynakUrl: o.kaynakUrl, aktif: !!o.aktif };
+  store.skills.push(sk);
+  save();
+  changed();
+  return sk;
+}
+
+/** Takip önerilerini açar (ada göre; 'hepsi' ile tümü). Açılanların adlarını döndürür. */
+export function activateSuggestions(names: string[] | 'hepsi'): string[] {
+  const want = names === 'hepsi' ? null : names.map(n => n.toLocaleLowerCase('tr'));
+  const list = store.skills.filter(x => x.kaynak === 'takip' && !x.aktif && (!want || want.some(w => x.ad.toLocaleLowerCase('tr').includes(w))));
+  list.forEach(x => { x.aktif = true; });
+  if (list.length) { save(); changed(); }
+  return list.map(x => x.ad);
+}
+
+export const pendingSuggestions = () => store.skills.filter(x => x.kaynak === 'takip' && !x.aktif).map(x => ({ ad: x.ad, aciklama: x.aciklama, kaynak: x.kaynakUrl }));
 
 export function extensionsForPrompt(): string {
   const list = active();

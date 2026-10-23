@@ -115,7 +115,7 @@ export const getKeys = () => fetch('/api/keys', { headers: headers() }).then(r =
 export const saveKeys = (values: Record<string, string>) =>
   fetch('/api/keys', { method: 'POST', headers: headers(), body: JSON.stringify({ values }) }).then(r => json<KeysData & { changed: number; restarting: boolean }>(r));
 
-export interface SkillView { id: string; ad: string; aciklama: string; tur: 'beceri' | 'is_akisi'; aktif: boolean; repo?: string; dosya?: string; kaynak?: 'jarvis'; uzunluk: number }
+export interface SkillView { id: string; ad: string; aciklama: string; tur: 'beceri' | 'is_akisi'; aktif: boolean; repo?: string; dosya?: string; kaynak?: 'jarvis' | 'takip'; kaynakUrl?: string; uzunluk: number }
 export interface ServerView { id: string; ad: string; aktif: boolean; repo?: string; tur: 'stdio' | 'http'; hedef: string; durum: 'kapalı' | 'kuruluyor' | 'bağlanıyor' | 'bağlı' | 'giriş gerekli' | 'hata'; hata?: string; girisAdresi?: string; araclar: string[]; kurulum?: 'npm' }
 export interface BulkView { calisiyor: boolean; liste: { url: string; durum: 'bekliyor' | 'kuruluyor' | 'tamam' | 'atlandı' | 'hata'; mesaj?: string }[] }
 export interface ExtensionsData { repos: { slug: string; url: string; at: string }[]; skills: SkillView[]; servers: ServerView[]; toplu?: BulkView }
@@ -124,6 +124,19 @@ const ext = (path: string, method = 'GET', body?: object) =>
 export const getExtensions = () => ext('');
 export const installGitHub = (url: string) => ext('/github', 'POST', { url }) as Promise<ExtensionsData & { bilgi?: boolean; beceri: number; is_akisi: number; mcp: number }>;
 export const installBulk = (liste: string) => ext('/github-toplu', 'POST', { liste });
+
+export type SosyalPlatform = 'youtube' | 'instagram' | 'tiktok' | 'x';
+export interface TakipData {
+  kanallar: { id: string; platform: SosyalPlatform; ad: string; url: string; eklendi: string; son_kontrol?: string; ogrenilen_yetenek: number }[];
+  oneriler: { ad: string; aciklama: string; kaynak?: string }[];
+  not?: string;
+}
+const takip = (path: string, method = 'GET', body?: object) =>
+  fetch(`/api/takip${path}`, { method, headers: headers(), body: body ? JSON.stringify(body) : undefined }).then(r => json<TakipData>(r));
+export const getTakip = () => takip('');
+export const addTakip = (kim: string, platform?: SosyalPlatform) => takip('', 'POST', { kim, platform });
+export const removeTakip = (id: string) => takip(`/${id}`, 'DELETE');
+export const checkTakip = () => takip('/kontrol', 'POST');
 export const removeRepo = (slug: string) => ext(`/repo/${encodeURIComponent(slug)}`, 'DELETE');
 export const addSkill = (s: { ad: string; aciklama: string; icerik: string; tur: 'beceri' | 'is_akisi' }) => ext('/skill', 'POST', s);
 export const toggleSkill = (id: string, aktif: boolean) => ext(`/skill/${id}`, 'POST', { aktif });

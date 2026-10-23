@@ -3,6 +3,7 @@ import {
   clearErrorLog, getErrors, type ErrorView, addWebhook, deleteWebhook, getWebhooks, type WebhookView,
   addServer, addSkill, deleteServer, deleteSkill, getExtensions, getKeys, installGitHub, removeRepo, installBulk, retryServer, logoutServer, saveKeys, toggleServer, toggleSkill,
   type ExtensionsData, type KeysData, type KeyView,
+  addTakip, checkTakip, getTakip, removeTakip, type SosyalPlatform, type TakipData,
 } from '../lib/api';
 
 /**
@@ -254,8 +255,9 @@ export function ExtensionSettings({ flash }: { flash(t: string): void }) {
           {data.skills.map(s => (
             <li key={s.id} className={s.aktif ? '' : 'off'}>
               <span>
-                <div className="ext-title"><b>{s.ad}</b><i className="tag">{TUR[s.tur]}</i>{s.kaynak === 'jarvis' && <i className="tag ok">Jarvis öğrendi</i>}</div>
+                <div className="ext-title"><b>{s.ad}</b><i className="tag">{TUR[s.tur]}</i>{s.kaynak === 'jarvis' && <i className="tag ok">Jarvis öğrendi</i>}{s.kaynak === 'takip' && <i className="tag">{s.aktif ? 'Takipten' : 'Takipten öneri'}</i>}</div>
                 <small>{s.aciklama}</small>
+                {s.kaynak === 'takip' && s.kaynakUrl && <small><a href={s.kaynakUrl} target="_blank" rel="noopener noreferrer">kaynak video</a>{!s.aktif && ' · açarsanız Jarvis bu yöntemi kullanır'}</small>}
               </span>
               <button className="toggle" onClick={() => act(toggleSkill(s.id, !s.aktif))}>{s.aktif ? 'açık' : 'kapalı'}</button>
               {!s.repo && <button aria-label="Sil" onClick={() => act(deleteSkill(s.id))}>✕</button>}
@@ -400,6 +402,52 @@ export function ErrorLog({ flash }: { flash(t: string): void }) {
             <button onClick={() => setOpen(false)}>Kapat</button>
           </div>
         </>
+      )}
+    </>
+  );
+}
+
+const PLATFORM_AD = { youtube: 'YouTube', instagram: 'Instagram', tiktok: 'TikTok', x: 'X' } as const;
+
+/** Ayarlar → Takip: Jarvis'in izlediği kanal/hesaplar ve onlardan gelen yetenek önerileri */
+export function TakipSettings({ flash }: { flash(t: string): void }) {
+  const [data, setData] = useState<TakipData | null>(null);
+  const [kim, setKim] = useState('');
+  const [platform, setPlatform] = useState<SosyalPlatform>('youtube');
+  const [busy, setBusy] = useState(false);
+  const load = () => getTakip().then(setData).catch(() => {});
+  useEffect(() => { load(); }, []);
+  const act = (p: Promise<TakipData>, ok?: string) => {
+    setBusy(true);
+    return p.then(d => { setData(d); flash(d.not || ok || 'Tamam'); }).catch(e => flash(e.message)).finally(() => setBusy(false));
+  };
+  if (!data) return null;
+  return (
+    <>
+      <label>Takip · {data.kanallar.length} kanal/hesap{data.oneriler.length ? ` · ${data.oneriler.length} yetenek önerisi` : ''}</label>
+      <p className="muted small">Kanal adı, @kullanıcı adı ya da link yazın. YouTube kanallarının yeni videolarından Jarvis kendine yetenek önerisi çıkarır; öneriler Yetenekler listesinde kapalı gelir, açınca kullanılır. Instagram, TikTok ve X hesapları listede tutulur (giriş yapmadan yeni gönderileri alınamıyor).</p>
+      <form className="memory-add" onSubmit={e => { e.preventDefault(); if (kim.trim()) act(addTakip(kim.trim(), platform)).then(() => setKim('')); }}>
+        <select value={platform} onChange={e => setPlatform(e.target.value as SosyalPlatform)} disabled={busy}>
+          {(Object.keys(PLATFORM_AD) as SosyalPlatform[]).map(p => <option key={p} value={p}>{PLATFORM_AD[p]}</option>)}
+        </select>
+        <input value={kim} onChange={e => setKim(e.target.value)} placeholder="ör. Ali Usta, @kullanici ya da https://youtube.com/@kanal" disabled={busy} />
+        <button type="submit" disabled={!kim.trim() || busy}>{busy ? '…' : 'Takip et'}</button>
+      </form>
+      {data.kanallar.length > 0 && (
+        <Kutu baslik={`Takip edilenler (${data.kanallar.length})`} ozet={`${data.kanallar.reduce((t, k) => t + k.ogrenilen_yetenek, 0)} yetenek önerisi çıkarıldı`}>
+          <ul className="memory">
+            {data.kanallar.map(k => (
+              <li key={k.id}>
+                <span><i className="tag">{PLATFORM_AD[k.platform]}</i> <a href={k.url} target="_blank" rel="noopener noreferrer">{k.ad}</a></span>
+                <em>{k.ogrenilen_yetenek ? `${k.ogrenilen_yetenek} öneri` : k.platform === 'youtube' ? 'izleniyor' : 'listede'}</em>
+                <button aria-label="Takipten çık" onClick={() => act(removeTakip(k.id), 'Takipten çıkarıldı')}>✕</button>
+              </li>
+            ))}
+          </ul>
+        </Kutu>
+      )}
+      {data.kanallar.some(k => k.platform === 'youtube') && (
+        <div className="seg"><button disabled={busy} onClick={() => act(checkTakip(), 'Yeni videolar kontrol edildi')}>{busy ? 'Kontrol ediliyor…' : 'Yeni videolara şimdi bak'}</button></div>
       )}
     </>
   );

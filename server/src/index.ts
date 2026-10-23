@@ -24,6 +24,7 @@ import { initLibrary, libraryRouter } from './library.js';
 import { extensionsRouter, initExtensions } from './extensions.js';
 import { initMessaging, messagingHooksRouter, messagingRouter } from './messaging.js';
 import { initPhone, phoneRouter } from './phone.js';
+import { initSocial, socialRouter } from './social.js';
 import { financeRouter, initFinance } from './finance.js';
 import { clearErrors, errorList, initErrors, logError } from './errors.js';
 import { approvalsRouter, initApprovals } from './approvals.js';
@@ -132,11 +133,13 @@ initFinance(broadcast);
 initErrors();
 initApprovals(broadcast);
 initPhone({ broadcast, voice: () => currentVoice() });
+initSocial(broadcast);
 
 const app = express();
 // Dış servislerin çağırdığı webhooklar (Twilio, WhatsApp Business): kendi imza doğrulamaları var ve ham gövde
 // gerektiriyor; bu yüzden JSON ayrıştırıcıdan ve /api erişim korumasından önce bağlanır.
 app.use(phoneRouter());
+app.use(socialRouter());
 app.use(messagingHooksRouter());
 app.use(express.json({ limit: '12mb' })); // kamera fotoğrafı (istemci ~1280 px JPEG'e küçültür)
 
