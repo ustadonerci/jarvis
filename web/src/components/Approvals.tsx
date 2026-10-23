@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { decideAction, getActions, type ActionView } from '../lib/api';
 
-const TUR = { komut: 'Bilgisayarda komut', uygulama: 'Uygulama', paylasim: 'Paylaşım', webhook: 'İş akışı (webhook)', kod: "Jarvis'in kendi kodu", arama: 'Telefon araması' } as const;
+const TUR = { komut: 'Bilgisayarda komut', uygulama: 'Uygulama', paylasim: 'Paylaşım', webhook: 'İş akışı (webhook)', kod: "Jarvis'in kendi kodu", arama: 'Telefon araması', mesaj: 'Mesaj' } as const;
 
 /**
  * Onay kartları: Jarvis'in önerdiği riskli işlemler (komut, uygulama kurma, paylaşım, webhook, kod değişikliği)

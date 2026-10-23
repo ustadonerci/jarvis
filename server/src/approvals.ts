@@ -7,7 +7,7 @@ import express, { type Router } from 'express';
 import { adminOnly } from './keys.js';
 import { logError } from './errors.js';
 
-export type ActionKind = 'komut' | 'uygulama' | 'paylasim' | 'webhook' | 'kod' | 'arama';
+export type ActionKind = 'komut' | 'uygulama' | 'paylasim' | 'webhook' | 'kod' | 'arama' | 'mesaj';
 
 export interface Action {
   id: string;

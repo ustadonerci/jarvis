@@ -17,6 +17,7 @@ import { APPROVAL_TOOLS, runApprovalTool } from './approvals.js';
 import { isSystemTool, runSystemTool } from './system.js';
 import { isAutomationTool, runAutomationTool } from './automation.js';
 import { isPhoneTool, runPhoneTool } from './phone.js';
+import { isSmsTool, runSmsTool } from './sms.js';
 import { isSiteTool, runSiteTool } from './sitedownload.js';
 import { addBook, addBookNote, fillInBackground, findBook, setBookStatus } from './library.js';
 
@@ -296,6 +297,7 @@ async function runToolOnce(name: string, rawArgs: string, progress: ToolProgress
   if (isSystemTool(name)) return runSystemTool(name, args, progress);
   if (isAutomationTool(name)) return runAutomationTool(name, args, progress);
   if (isPhoneTool(name)) return runPhoneTool(name, args);
+  if (isSmsTool(name)) return runSmsTool(name, args, progress);
   if (isSiteTool(name)) return runSiteTool(args, progress);
   if (name === 'get_news') {
     progress('haber kaynakları taranıyor');

@@ -14,6 +14,7 @@ import pino from 'pino';
 import { CHAT_MODEL, MOCK, routellm, type ChatResponse } from './routellm.js';
 import { adminOnly, isLocalRequest } from './keys.js';
 import { phoneStatus } from './phone.js';
+import { propose } from './approvals.js';
 
 const DATA = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
 const MSG_FILE = path.join(DATA, 'mesajlar.json');
@@ -25,6 +26,9 @@ export type Platform = 'telegram' | 'whatsapp';
 export interface Msg {
   id: string; platform: Platform; chat: string; kisi: string; metin: string;
   gelen: boolean; at: string; grup?: boolean; okundu?: boolean; otomatik?: boolean; arama?: boolean;
+  /** WhatsApp grup mesajında yazan kişi (mesajı silmek için gerekir) */
+  katilimci?: string;
+  duzenlendi?: boolean;
 }
 interface Cfg {
   telegramOto: boolean;
@@ -312,6 +316,7 @@ async function waConnect(fresh = false) {
       const ad = m.key.fromMe ? user() : m.pushName || waNames.get(jid) || jid.split('@')[0];
       const saved = record({
         id: `wa-${m.key.id}`, platform: 'whatsapp', chat: jid, grup, kisi: ad, metin, gelen: !m.key.fromMe,
+        katilimci: grup && !m.key.fromMe ? m.key.participant : undefined,
         at: new Date(Number(m.messageTimestamp ?? Date.now() / 1000) * 1000).toISOString(),
       });
       if (saved && saved.gelen && !grup && cfg.whatsappOto) autoReply('whatsapp', jid, t => waSend(jid, t));
@@ -385,9 +390,30 @@ export const MSG_TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'mesaj_duzenle_sil',
+      description: "Telegram ya da WhatsApp'ta bir mesajı düzenler ya da siler. Onay kartı açar; kullanıcı onaylayınca yapılır. "
+        + "duzenle: kullanıcının (Telegram'da botun) gönderdiği mesajın metnini değiştirir (WhatsApp'ta yalnızca ilk 15 dakika). "
+        + "herkesten_sil: gönderilen mesajı karşı taraftan da siler (WhatsApp ~2 gün, Telegram 48 saat içinde). "
+        + "benden_sil: mesajı (gelen ya da giden) yalnızca bu hesaptan siler; karşı tarafta kalır. Gelen bir mesaj herkesten silinemez.",
+      parameters: {
+        type: 'object',
+        properties: {
+          platform: { type: 'string', enum: ['telegram', 'whatsapp'] },
+          kisi: { type: 'string', description: 'Sohbetin kişi ya da grup adı (mesajlardaki gibi) ya da telefon numarası' },
+          islem: { type: 'string', enum: ['duzenle', 'herkesten_sil', 'benden_sil'] },
+          hangi: { type: 'string', description: 'Mesajdaki bir kelime/cümle. Boşsa: düzenle/herkesten_sil için son gönderilen, benden_sil için sohbetteki son mesaj.' },
+          yeni_metin: { type: 'string', description: 'duzenle için yeni metin' },
+        },
+        required: ['platform', 'kisi', 'islem'],
+      },
+    },
+  },
 ] as const;
 
-export const isMsgTool = (n: string) => n === 'mesajlari_oku' || n === 'mesaj_gonder';
+export const isMsgTool = (n: string) => n === 'mesajlari_oku' || n === 'mesaj_gonder' || n === 'mesaj_duzenle_sil';
 const norm = (s: string) => s.toLocaleLowerCase('tr').normalize('NFKD').replace(/[̀-ͯ]/g, '');
 
 export async function runMsgTool(name: string, args: any, progress: (l: string) => void): Promise<string> {
@@ -434,8 +460,75 @@ export async function runMsgTool(name: string, args: any, progress: (l: string) 
       return JSON.stringify({ hata: String(e?.message || e) });
     }
   }
+  if (name === 'mesaj_duzenle_sil') return editOrDelete(args);
   return JSON.stringify({ hata: 'bilinmeyen araç' });
 }
+
+/** Kişi adından sohbeti bulur (mesaj_gonder ile aynı kurallar) */
+function findChat(platform: Platform, kisi: string): string | undefined {
+  const q = norm(kisi.trim());
+  if (!q) return undefined;
+  const byMsg = [...msgs].reverse().find(m => m.platform === platform && m.gelen && norm(m.kisi).includes(q))?.chat;
+  if (byMsg || platform !== 'whatsapp') return byMsg;
+  const named = [...waNames].find(([, n]) => norm(n).includes(q))?.[0];
+  const digits = q.replace(/\D/g, '');
+  return named ?? (digits.length >= 10 ? `${digits}@s.whatsapp.net` : undefined);
+}
+
+const LIMITS = { wa_duzenle: 15 * 60_000, wa_sil: 2 * 24 * 3600_000, tg_sil: 48 * 3600_000 };
+const sure = (ms: number) => (ms >= 3600_000 ? `${Math.round(ms / 3600_000)} saat` : `${Math.round(ms / 60_000)} dakika`);
+
+function editOrDelete(args: any): string {
+  const platform: Platform = args.platform === 'whatsapp' ? 'whatsapp' : 'telegram';
+  const islem = ['duzenle', 'herkesten_sil', 'benden_sil'].includes(args.islem) ? args.islem as 'duzenle' | 'herkesten_sil' | 'benden_sil' : null;
+  if (!islem) return JSON.stringify({ hata: 'islem: duzenle, herkesten_sil ya da benden_sil olmalı' });
+  const yeni = String(args.yeni_metin ?? '').trim().slice(0, 4000);
+  if (islem === 'duzenle' && !yeni) return JSON.stringify({ hata: 'yeni_metin boş' });
+  const chat = findChat(platform, String(args.kisi ?? ''));
+  if (!chat) return JSON.stringify({ hata: `"${args.kisi}" sohbeti bulunamadı.` });
+  if (platform === 'whatsapp' && !chat.includes('@')) return JSON.stringify({ hata: 'WhatsApp Business (Cloud API) mesajları düzenlenemez ve silinemez; bu yalnızca QR ile bağlı WhatsApp\'ta mümkün.' });
+  if (platform === 'whatsapp' && (wa.durum !== 'bağlı' || !wa.sock)) return JSON.stringify({ hata: 'WhatsApp bağlı değil' });
+  if (platform === 'telegram' && tg.durum !== 'bağlı') return JSON.stringify({ hata: 'Telegram bağlı değil' });
+
+  const q = norm(String(args.hangi ?? '').trim());
+  const own = islem !== 'benden_sil';
+  // En yeni eşleşen mesaj (dosyadaki sıraya değil tarihe göre)
+  const target = msgs
+    .filter(m => m.platform === platform && m.chat === chat && !m.arama && (!own || !m.gelen) && (!q || norm(m.metin).includes(q)))
+    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0];
+  if (!target) return JSON.stringify({ hata: own ? 'Bu sohbette uygun gönderilmiş mesaj bulunamadı (yalnızca Jarvis açıkken gönderilen/görülen mesajlar bilinir). Gelen bir mesaj için benden_sil kullanılabilir.' : 'Bu sohbette uygun mesaj bulunamadı.' });
+  const age = Date.now() - Date.parse(target.at);
+  const limit = platform === 'whatsapp' ? (islem === 'duzenle' ? LIMITS.wa_duzenle : islem === 'herkesten_sil' ? LIMITS.wa_sil : 0) : islem === 'duzenle' ? 0 : LIMITS.tg_sil;
+  if (limit && age > limit) return JSON.stringify({ hata: `Bu mesaj ${sure(age)} önce gönderilmiş; ${platform === 'whatsapp' ? 'WhatsApp' : 'Telegram'} ${islem === 'duzenle' ? 'düzenlemeye' : 'silmeye'} yalnızca ${sure(limit)} içinde izin veriyor.${platform === 'whatsapp' && islem !== 'benden_sil' ? ' Yalnızca kendinden silebilirsin (benden_sil).' : ''}` });
+
+  const ad = target.gelen ? target.kisi : (findName(platform, chat) ?? String(args.kisi));
+  const baslik = `${platform === 'whatsapp' ? 'WhatsApp' : 'Telegram'} · ${ad} · ${islem === 'duzenle' ? 'mesajı düzenle' : islem === 'herkesten_sil' ? 'herkesten sil' : 'benden sil'}`;
+  const ayrinti = islem === 'duzenle' ? `Eski:\n${target.metin}\n\nYeni:\n${yeni}` : `Silinecek mesaj (${target.gelen ? target.kisi : 'siz'}, ${new Date(target.at).toLocaleString('tr-TR')}):\n${target.metin}`;
+  const aciklama = islem === 'duzenle' ? 'Mesajın metni karşı tarafta da değişir ("düzenlendi" yazar).'
+    : islem === 'herkesten_sil' ? 'Mesaj karşı taraftan da silinir ("Bu mesaj silindi" yazar). Geri alınamaz.'
+    : 'Mesaj yalnızca sizin hesabınızdan silinir; karşı tarafta kalır.';
+  return propose('mesaj', baslik, ayrinti, aciklama, async () => {
+    const rawId = target.id.replace(/^wa-/, '').replace(/^tg-.*-(\d+)$/, '$1');
+    if (platform === 'whatsapp') {
+      const key = { remoteJid: chat, fromMe: !target.gelen, id: rawId, ...(target.katilimci ? { participant: target.katilimci } : {}) };
+      if (islem === 'duzenle') await wa.sock.sendMessage(chat, { text: yeni, edit: key });
+      else if (islem === 'herkesten_sil') await wa.sock.sendMessage(chat, { delete: key });
+      else await wa.sock.chatModify({ deleteForMe: { deleteMedia: false, key, timestamp: Math.floor(Date.parse(target.at) / 1000) } }, chat);
+    } else {
+      const message_id = Number(rawId);
+      if (islem === 'duzenle') await tgCall('editMessageText', { chat_id: chat, message_id, text: yeni });
+      else await tgCall('deleteMessage', { chat_id: chat, message_id });
+    }
+    if (islem === 'duzenle') { target.metin = yeni; target.duzenlendi = true; }
+    else msgs = msgs.filter(m => m !== target);
+    saveMsgs();
+    console.log(`[mesaj] ${baslik}`);
+    return islem === 'duzenle' ? 'Mesaj düzenlendi.' : 'Mesaj silindi.';
+  });
+}
+
+const findName = (platform: Platform, chat: string) =>
+  [...msgs].reverse().find(m => m.platform === platform && m.chat === chat && m.gelen)?.kisi ?? (platform === 'whatsapp' ? waNames.get(chat) : undefined);
 
 /** Sistem prompt'u için kısa durum (bağlı mı, okunmamış sayısı) */
 export function messagingForPrompt(): string {
