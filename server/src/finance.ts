@@ -60,22 +60,57 @@ export interface Series { sembol: string; ad: string; para: string; kapanis: num
 const cache = new Map<string, { at: number; s: Series }>();
 const TTL = 60_000;
 
+class NotFound extends Error {}
+
 async function yahoo(sym: string, range = '1y'): Promise<Series> {
-  const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=${range}&interval=1d&includePrePost=false`, {
-    headers: { 'User-Agent': UA, Accept: 'application/json' },
-    signal: AbortSignal.timeout(10_000),
-  });
-  const j: any = await r.json().catch(() => null);
+  // query1 yoğunlukta 429 verebiliyor; query2 aynı veriyi sunar
+  let r: Response | null = null;
+  let j: any = null;
+  for (const host of ['query1', 'query2']) {
+    r = await fetch(`https://${host}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=${range}&interval=1d&includePrePost=false`, {
+      headers: { 'User-Agent': UA, Accept: 'application/json' },
+      signal: AbortSignal.timeout(10_000),
+    }).catch(() => null);
+    j = await r?.json().catch(() => null);
+    if (r && r.status !== 429 && r.status < 500) break;
+  }
   const res = j?.chart?.result?.[0];
-  if (!r.ok || !res) throw new Error(j?.chart?.error?.description || `"${sym}" bulunamadı (Yahoo ${r.status})`);
+  // Yahoo bilinmeyen sembolde "No data found, symbol may be delisted" der
+  if (r?.status === 404 || j?.chart?.error?.code === 'Not Found') throw new NotFound(`"${sym}" Yahoo Finance'ta bulunamadı`);
+  if (!r?.ok || !res) throw new Error(`Yahoo Finance cevap vermedi (${r?.status ?? 'bağlantı yok'})${j?.chart?.error?.description ? `: ${j.chart.error.description}` : ''}`);
   const ts: number[] = res.timestamp ?? [];
   const cl: (number | null)[] = res.indicators?.quote?.[0]?.close ?? [];
   const pairs = ts.map((t, i) => [t, cl[i]] as const).filter((p): p is readonly [number, number] => typeof p[1] === 'number');
-  if (pairs.length < 2) throw new Error(`"${sym}" için fiyat geçmişi yok`);
+  if (pairs.length < 2) throw new NotFound(`"${sym}" için fiyat geçmişi yok`);
   const meta = res.meta ?? {};
   const fiyat = typeof meta.regularMarketPrice === 'number' ? meta.regularMarketPrice : pairs[pairs.length - 1][1];
   return { sembol: sym, ad: meta.shortName || meta.longName || sym, para: meta.currency || '', kapanis: pairs.map(p => p[1]), tarih: pairs.map(p => p[0] * 1000), fiyat, kaynak: 'Yahoo Finance' };
 }
+
+/** Yahoo arama: şirket adı ya da eksik yazılmış koddan sembol bulur (Borsa İstanbul öncelikli) */
+async function yahooSearch(q: string): Promise<string[]> {
+  const r = await fetch(`https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=8&newsCount=0&lang=tr-TR&region=TR`, {
+    headers: { 'User-Agent': UA, Accept: 'application/json' },
+    signal: AbortSignal.timeout(10_000),
+  }).catch(() => null);
+  const j: any = await r?.json().catch(() => null);
+  const quotes: any[] = (j?.quotes ?? []).filter((x: any) => x?.symbol && /EQUITY|ETF|INDEX|CRYPTOCURRENCY|CURRENCY|FUTURE|MUTUALFUND/.test(String(x.quoteType)));
+  quotes.sort((a, b) => Number(b.exchange === 'IST') - Number(a.exchange === 'IST'));
+  return quotes.map(x => String(x.symbol)).slice(0, 4);
+}
+
+/** Bulunamayan sembol için denenecek diğer yazımlar: BIST (.IS), kripto (-USD) */
+function alternatives(sym: string, raw: string): string[] {
+  const out: string[] = [];
+  const base = sym.replace(/\.IS$/, '');
+  if (/^[A-Z0-9]{2,6}$/.test(sym)) out.push(`${sym}.IS`, `${sym}-USD`);
+  if (/^[A-Z0-9]{2,6}\.IS$/.test(sym)) out.push(base);
+  if (/^[A-Z0-9]{2,10}(USDT|TRY)$/.test(sym)) out.push(`${sym.replace(/(USDT|TRY)$/, '')}-USD`);
+  return out.filter(x => x !== sym && x !== raw);
+}
+
+/** Kullanıcının yazdığı → bulunan Yahoo sembolü (yeniden aramamak için) */
+const resolved = new Map<string, string>();
 
 async function binance(sym: string): Promise<Series> {
   const base = sym.split('-')[0];
@@ -100,15 +135,44 @@ export async function getSeries(raw: string): Promise<Series> {
     const rows = ons.tarih.map((t, i) => [t, ons.kapanis[i] * (usdBy.get(new Date(t).toISOString().slice(0, 10)) ?? NaN) / TROY_OUNCE_G] as const).filter(r => Number.isFinite(r[1]));
     s = { sembol: 'GRAM_ALTIN', ad: 'Gram altın (ons × USD/TRY)', para: 'TRY', kapanis: rows.map(r => r[1]), tarih: rows.map(r => r[0]), fiyat: ons.fiyat * usd.fiyat / TROY_OUNCE_G, kaynak: 'Yahoo Finance (hesaplanan)' };
   } else {
-    try {
-      s = await yahoo(sym);
-    } catch (e) {
-      if (!isCrypto(sym)) throw e;
-      s = await binance(sym);
-    }
+    s = await findSeries(sym, raw);
   }
   cache.set(sym, { at: Date.now(), s });
   return s;
+}
+
+/** Önce sembolün kendisi; bulunamazsa diğer yazımlar, sonra Yahoo araması; kripto için Binance */
+async function findSeries(sym: string, raw: string): Promise<Series> {
+  const known = resolved.get(sym);
+  if (known) return yahoo(known);
+  let first: unknown;
+  try {
+    return await yahoo(sym);
+  } catch (e) {
+    first = e;
+    if (!(e instanceof NotFound)) {
+      if (isCrypto(sym)) return binance(sym);
+      throw e;
+    }
+  }
+  const tried = new Set([sym]);
+  const tryAll = async (list: string[]) => {
+    for (const alt of list) {
+      if (tried.has(alt)) continue;
+      tried.add(alt);
+      try {
+        const s = await yahoo(alt);
+        resolved.set(sym, alt);
+        console.log(`[finans] "${raw}" → ${alt}`);
+        return s;
+      } catch (e) { if (!(e instanceof NotFound)) throw e; }
+    }
+    return null;
+  };
+  const s = await tryAll(alternatives(sym, raw)) ?? await tryAll(await yahooSearch(raw.trim()));
+  if (s) return s;
+  if (isCrypto(sym)) return binance(sym).catch(() => { throw first; });
+  throw new Error(`"${raw.trim()}" bulunamadı. Borsa İstanbul hissesi için kodu yazın (ör. THYAO ya da THYAO.IS); şirket adıyla da arayabilirsiniz.`);
 }
 
 // ---------------------------------------------------------------- Göstergeler
