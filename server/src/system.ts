@@ -16,7 +16,7 @@ const MAX_OUT = 12_000;
 
 /** Ev klasörü dışına ve gizli anahtar/oturum klasörlerine çıkılmasın */
 const SECRET = /(^|[\\/])(\.ssh|\.aws|\.azure|\.gnupg|\.docker|\.kube|\.npmrc|\.git-credentials|\.env(\..*)?|Login Data|Cookies|Local State|whatsapp-auth|keychain)([\\/]|$)/i;
-function safePath(p: string): string {
+export function safePath(p: string): string {
   const full = path.resolve(HOME, p.replace(/^~[\\/]?/, ''));
   const rel = path.relative(HOME, full);
   if (rel.startsWith('..') || path.isAbsolute(rel)) throw new Error('Yalnızca kullanıcı klasörünüzün içi okunabilir.');

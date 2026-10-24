@@ -9,7 +9,9 @@ import { personaForPrompt } from './persona.js';
 import { FINANCE_TOOLS } from './finance.js';
 import { EMAIL_TOOLS } from './email.js';
 import { GITHUB_TOOLS } from './github.js';
-import { AGENT_TOOLS } from './agents.js';
+import { agentTools } from './agents.js';
+import { githubForPrompt } from './github.js';
+import { MEDIA_TOOLS } from './media.js';
 import { ERROR_TOOLS, openErrorCount } from './errors.js';
 import { APPROVAL_TOOLS } from './approvals.js';
 import { SYSTEM_TOOLS } from './system.js';
@@ -57,6 +59,7 @@ function contextVars(device: Device, prevDevice: Device | null) {
     mesajlasma: messagingForPrompt(),
     takip: socialForPrompt(),
     android: androidForPrompt(),
+    kesif: githubForPrompt(),
     ton: personaForPrompt(),
     hata_sayisi: String(openErrorCount()),
     webhooklar: webhooksForPrompt(),
@@ -367,8 +370,8 @@ export async function runJarvis(opts: RunOptions): Promise<JarvisReply> {
   const tools = [
     ...(isBrief ? TOOLS : TOOLS.filter(t => t.function.name !== 'get_news')), ...SEARCH_TOOLS, ...ERROR_TOOLS, ...APPROVAL_TOOLS,
     ...pick('finans', FINANCE_TOOLS), ...pick('mesaj', MSG_TOOLS), ...pick('eposta', EMAIL_TOOLS), ...pick('github', GITHUB_TOOLS),
-    ...pick('ajan', AGENT_TOOLS), ...pick('sistem', SYSTEM_TOOLS), ...pick('otomasyon', AUTOMATION_TOOLS), ...pick('telefon', PHONE_TOOLS),
-    ...pick('sms', SMS_TOOLS), ...pick('sosyal', SOCIAL_TOOLS), ...pick('android', ANDROID_TOOLS), ...pick('site', SITE_TOOLS),
+    ...pick('ajan', agentTools()), ...pick('sistem', SYSTEM_TOOLS), ...pick('otomasyon', AUTOMATION_TOOLS), ...pick('telefon', PHONE_TOOLS),
+    ...pick('sms', SMS_TOOLS), ...pick('sosyal', SOCIAL_TOOLS), ...pick('android', ANDROID_TOOLS), ...pick('site', SITE_TOOLS), ...pick('medya', MEDIA_TOOLS), ...pick('medya', SYSTEM_TOOLS.filter(t => t.function.name === 'dosya_listele' || t.function.name === 'uygulama_yonet' || t.function.name === 'uygulama_ara')),
     ...pick('yetenek', EXT_TOOLS), ...pick('mcp', mcpTools()), ...pick('yetenek', mcpTools()),
   ].filter((t, i, a) => a.findIndex(x => x.function.name === t.function.name) === i);
   console.log(`[beyin] ${tools.length} araç · gruplar: ${[...groups].join(', ') || 'temel'}`);

@@ -1,9 +1,10 @@
 // E-posta (IMAP): klasörleri (gelen, taslaklar, gönderilenler, çöp, arşiv) okur, kategorilere ayırmak için özet verir,
-// cevap TASLAĞI yazar ve taslakları düzenler (Jarvis e-posta göndermez), okundu/yıldız işaretler, arşivler, Çöp kutusuna
+// cevap TASLAĞI yazar ve taslakları düzenler, onay kartıyla gönderir (SMTP), okundu/yıldız işaretler, arşivler, Çöp kutusuna
 // taşır (geri alınabilir). Kalıcı silme yalnızca onay kartıyla.
 // Gmail: Google Hesabı → Güvenlik → 2 adımlı doğrulama açık → "Uygulama şifreleri" ile 16 haneli şifre alınır.
 import { ImapFlow, type FetchMessageObject } from 'imapflow';
 import { simpleParser } from 'mailparser';
+import nodemailer from 'nodemailer';
 import { propose } from './approvals.js';
 
 const addr = () => process.env.EMAIL_ADDRESS || '';
@@ -22,6 +23,32 @@ function imapHost(): string {
 }
 
 export const emailReady = () => !!addr() && !!pass();
+
+/** Gönderme sunucusu (SMTP); başkaları için EMAIL_SMTP_HOST (ve gerekirse EMAIL_SMTP_PORT) */
+function smtp(): { host: string; port: number; secure: boolean } {
+  const d = addr().split('@')[1]?.toLowerCase() ?? '';
+  const port = Number(process.env.EMAIL_SMTP_PORT) || 0;
+  const pick = (host: string, p: number) => ({ host, port: port || p, secure: (port || p) === 465 });
+  if (process.env.EMAIL_SMTP_HOST) return pick(process.env.EMAIL_SMTP_HOST, 465);
+  if (d === 'gmail.com' || d === 'googlemail.com') return pick('smtp.gmail.com', 465);
+  if (/^(outlook|hotmail|live|msn)\./.test(d)) return pick('smtp-mail.outlook.com', 587);
+  if (/^yandex\./.test(d)) return pick('smtp.yandex.com', 465);
+  if (/^(icloud|me|mac)\.com$/.test(d)) return pick('smtp.mail.me.com', 587);
+  if (/^yahoo\./.test(d)) return pick('smtp.mail.yahoo.com', 465);
+  return pick(`smtp.${d}`, 465);
+}
+
+async function sendMail(o: { kime: string; konu: string; metin: string; inReplyTo?: string }): Promise<string> {
+  const t = nodemailer.createTransport({ ...smtp(), auth: { user: addr(), pass: pass() }, connectionTimeout: 20_000, greetingTimeout: 20_000 });
+  try {
+    const r = await t.sendMail({ from: addr(), to: o.kime, subject: o.konu, text: o.metin, ...(o.inReplyTo ? { inReplyTo: o.inReplyTo, references: o.inReplyTo } : {}) });
+    console.log(`[eposta] gönderildi → ${o.kime}`);
+    return `E-posta gönderildi (${o.kime}${r.messageId ? '' : ''}).`;
+  } catch (e: any) {
+    const msg = String(e?.response || e?.message || e);
+    throw new Error(/auth|credential|password|535|534/i.test(msg) ? `Gönderme girişi başarısız (${msg.slice(0, 100)}). Gmail için "uygulama şifresi" gerekir.` : `E-posta gönderilemedi: ${msg.slice(0, 160)}`);
+  }
+}
 
 async function withClient<T>(fn: (c: ImapFlow) => Promise<T>): Promise<T> {
   const client = new ImapFlow({ host: imapHost(), port: 993, secure: true, auth: { user: addr(), pass: pass() }, logger: false, socketTimeout: 30_000 });
@@ -247,7 +274,7 @@ export const EMAIL_TOOLS = [
     type: 'function',
     function: {
       name: 'eposta_taslak',
-      description: 'Cevap ya da yeni e-posta TASLAĞI oluşturur ve Taslaklar klasörüne koyar; GÖNDERMEZ. Kullanıcı kontrol edip kendisi gönderir. Cevap için yanit_id ver.',
+      description: 'Cevap ya da yeni e-posta TASLAĞI oluşturur ve Taslaklar klasörüne koyar; göndermez (göndermek için eposta_gonder). Cevap için yanit_id ver.',
       parameters: {
         type: 'object',
         properties: {
@@ -266,6 +293,17 @@ export const EMAIL_TOOLS = [
       name: 'eposta_sil',
       description: "E-postaları Çöp kutusuna taşır (geri alınabilir). Önce hangilerini sileceğini listeleyip kullanıcıdan onay almış olmalısın. kalici: true ise KALICI siler (geri alınamaz; onay kartı açar) — yalnızca kullanıcı açıkça 'kalıcı sil / çöpü boşalt' derse.",
       parameters: { type: 'object', properties: { idler: { type: 'array', items: { type: 'integer' } }, klasor: { type: 'string', enum: ['gelen', 'taslaklar', 'gonderilenler', 'cop', 'arsiv'], description: 'Varsayılan gelen. id\'ler klasöre özeldir: listelerken hangi klasörü kullandıysan aynısını ver.' }, kalici: { type: 'boolean' } }, required: ['idler'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'eposta_gonder',
+      description: "E-posta GÖNDERİR (onay kartı açar; kullanıcı onaylayınca gider). Yeni e-posta için kime/konu/metin; cevap için yanit_id (gelen kutusundaki id); hazır bir taslağı göndermek için taslak_id (taslaklar klasöründeki id; gönderilince taslak silinir). Göndermeden önce kime ne yazacağını kullanıcıya söyle.",
+      parameters: {
+        type: 'object',
+        properties: { kime: { type: 'string' }, konu: { type: 'string' }, metin: { type: 'string' }, yanit_id: { type: 'integer' }, taslak_id: { type: 'integer' } },
+      },
     },
   },
   {
@@ -320,6 +358,29 @@ export async function runEmailTool(name: string, args: any, progress: (l: string
       const r = await draftMail({ kime: String(args.kime ?? ''), konu: String(args.konu ?? ''), metin: String(args.metin ?? ''), yanit_id: args.yanit_id ? Number(args.yanit_id) : undefined });
       console.log(`[eposta] taslak → ${r.kime}`);
       return JSON.stringify({ ...r, not: 'Taslak kaydedildi, gönderilmedi.' });
+    }
+    if (name === 'eposta_gonder') {
+      let kime = String(args.kime ?? '').trim(), konu = String(args.konu ?? '').trim(), metin = String(args.metin ?? '');
+      let inReplyTo: string | undefined;
+      const taslak = args.taslak_id ? Number(args.taslak_id) : 0;
+      if (taslak) {
+        const d = await readMail(taslak, 'taslaklar');
+        kime ||= d.kime; konu ||= d.konu; metin ||= d.metin;
+      }
+      if (args.yanit_id) {
+        const orig = await readMail(Number(args.yanit_id));
+        kime ||= /<([^>]+)>/.exec(orig.kimden)?.[1] ?? orig.kimden;
+        konu ||= /^re:/i.test(orig.konu) ? orig.konu : `Re: ${orig.konu}`;
+        inReplyTo = orig.mesaj_id || undefined;
+      }
+      kime = kime.replace(/[\r\n]/g, '');
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+(\s*,\s*[^@\s]+@[^@\s]+\.[^@\s]+)*$/.test(kime)) return JSON.stringify({ hata: 'Geçerli bir alıcı adresi gerekli' });
+      if (!metin.trim()) return JSON.stringify({ hata: 'E-postanın metni boş' });
+      return propose('mesaj', `E-posta gönder: ${kime}`, `Kime: ${kime}\nKonu: ${konu || '(konusuz)'}\n\n${metin}`, 'Onaylarsanız e-posta hemen gönderilir; gönderildikten sonra geri alınamaz.', async () => {
+        const r = await sendMail({ kime, konu, metin, inReplyTo });
+        if (taslak) await inFolder('taslaklar', c => c.messageDelete([taslak], { uid: true })).catch(() => {});
+        return r;
+      });
     }
     if (name === 'eposta_taslak_duzenle') {
       progress('taslak düzenleniyor');

@@ -1,6 +1,8 @@
 // Hata günlüğü: araç hataları, sohbet hataları ve yakalanmamış hatalar server/data/hatalar.json'a yazılır
 // (aynı hata tek kayıtta sayılır). Jarvis `hata_gunlugu` ile okur, olası kök nedeni söyler, çözüm önerir;
 // gerekirse kendine bir beceri yazarak (yetenek_olustur) aynı hatayı tekrarlamamayı öğrenir.
+// Deneyim hafızası: bir hata çözülünce sebebi ve çözümü server/data/deneyimler.json'a yazılır; aynı (benzer) hata
+// yeniden görülünce hata_gunlugu o kaydı "gecmis_cozum" olarak hemen getirir.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -64,13 +66,50 @@ export function initErrors() {
   process.on('uncaughtException', e => { logError('sunucu', e); console.error('[hata] beklenmeyen:', e); });
 }
 
+// ---------------------------------------------------------------- Deneyim hafızası
+
+const EXP_FILE = path.join(path.dirname(FILE), 'deneyimler.json');
+interface Lesson { hata: string; neden: string; cozum: string; at: string; kullanim: number }
+const lessons = (): Lesson[] => { try { return JSON.parse(fs.readFileSync(EXP_FILE, 'utf8')); } catch { return []; } };
+const words = (t: string) => new Set(t.toLocaleLowerCase('tr').replace(/[^a-zçğıöşü0-9]+/gi, ' ').split(' ').filter(w => w.length > 3));
+
+/** Hata metnine en çok benzeyen geçmiş çözüm (kelime örtüşmesi; en az 3 ortak kelime ya da %40) */
+export function pastSolution(err: string): Lesson | null {
+  const a = words(err);
+  let best: { l: Lesson; sc: number } | null = null;
+  for (const l of lessons()) {
+    const b = words(l.hata);
+    const common = [...a].filter(w => b.has(w)).length;
+    const sc = common / Math.max(1, Math.min(a.size, b.size));
+    if ((common >= 3 || sc >= 0.4) && (!best || sc > best.sc)) best = { l, sc };
+  }
+  return best?.l ?? null;
+}
+
+function saveLesson(hata: string, neden: string, cozum: string) {
+  const all = lessons();
+  const same = all.find(l => shape(l.hata) === shape(hata));
+  if (same) Object.assign(same, { neden, cozum, at: new Date().toISOString() });
+  else all.push({ hata: hata.slice(0, 400), neden: neden.slice(0, 600), cozum: cozum.slice(0, 1500), at: new Date().toISOString(), kullanim: 0 });
+  fs.mkdirSync(path.dirname(EXP_FILE), { recursive: true });
+  fs.writeFileSync(EXP_FILE, JSON.stringify(all.slice(-300), null, 2));
+}
+
 export const ERROR_TOOLS = [
   {
     type: 'function',
     function: {
       name: 'hata_gunlugu',
-      description: "Jarvis'in hata günlüğünü getirir (hangi araç/özellik, kaç kez, ne zaman, olası neden). 'Neden çalışmadı', 'hata var mı', 'sistem durumu', 'kendini kontrol et' gibi isteklerde. Kök nedeni açıkla ve çözüm öner; kalıcı bir davranış düzeltmesi gerekiyorsa yetenek_olustur ile kendine not yaz. 'cozuldu' işlemi kullanıcı sorunu giderdiğini söyleyince.",
-      parameters: { type: 'object', properties: { islem: { type: 'string', enum: ['listele', 'cozuldu', 'temizle'] } } },
+      description: "Jarvis'in hata günlüğünü getirir (hangi araç/özellik, kaç kez, ne zaman, olası neden). 'Neden çalışmadı', 'hata var mı', 'sistem durumu', 'kendini kontrol et' gibi isteklerde. Kök nedeni açıkla ve çözüm öner; kalıcı bir davranış düzeltmesi gerekiyorsa yetenek_olustur ile kendine not yaz. 'cozuldu' işlemi kullanıcı sorunu giderdiğini söyleyince. Bir hatayı çözünce islem: deneyim_kaydet ile hata, neden ve çözümü kaydet: aynı hata tekrar görülünce listede gecmis_cozum olarak gelir, onu uygula.",
+      parameters: {
+        type: 'object',
+        properties: {
+          islem: { type: 'string', enum: ['listele', 'cozuldu', 'temizle', 'deneyim_kaydet'] },
+          hata: { type: 'string', description: 'deneyim_kaydet: hatanın metni (günlükteki mesaj)' },
+          neden: { type: 'string', description: 'deneyim_kaydet: kök neden' },
+          cozum: { type: 'string', description: 'deneyim_kaydet: işe yarayan çözüm, adım adım' },
+        },
+      },
     },
   },
 ] as const;
@@ -78,6 +117,14 @@ export const ERROR_TOOLS = [
 export function runErrorTool(args: any): string {
   if (args.islem === 'temizle') { clearErrors(); return JSON.stringify({ ok: true }); }
   if (args.islem === 'cozuldu') { markResolved(); return JSON.stringify({ ok: true }); }
+  if (args.islem === 'deneyim_kaydet') {
+    const hata = String(args.hata ?? '').trim(), cozum = String(args.cozum ?? '').trim();
+    if (!hata || !cozum) return JSON.stringify({ hata: 'hata ve cozum gerekli' });
+    saveLesson(hata, String(args.neden ?? ''), cozum);
+    return JSON.stringify({ ok: true, not: 'Deneyim kaydedildi; bu hata tekrar görülünce çözüm hemen gelecek.' });
+  }
   const open = errorList().filter(e => !e.cozuldu);
-  return JSON.stringify(open.length ? { acik_hata: open.length, hatalar: open.slice(0, 30) } : { sonuc: 'Kayıtlı açık hata yok; sistem sağlıklı görünüyor.' });
+  return JSON.stringify(open.length
+    ? { acik_hata: open.length, hatalar: open.slice(0, 30).map(e => { const p = pastSolution(e.mesaj); return p ? { ...e, gecmis_cozum: { neden: p.neden, cozum: p.cozum, kaydedildi: p.at.slice(0, 10) } } : e; }) }
+    : { sonuc: 'Kayıtlı açık hata yok; sistem sağlıklı görünüyor.' });
 }

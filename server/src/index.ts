@@ -27,6 +27,8 @@ import { initMessaging, messagingHooksRouter, messagingRouter } from './messagin
 import { initPhone, phoneRouter } from './phone.js';
 import { initSocial, socialRouter } from './social.js';
 import { androidRouter, initAndroid } from './android.js';
+import { initAgents } from './agents.js';
+import { initGithub } from './github.js';
 import { financeRouter, initFinance } from './finance.js';
 import { clearErrors, errorList, initErrors, logError } from './errors.js';
 import { approvalsRouter, initApprovals } from './approvals.js';
@@ -137,6 +139,8 @@ initApprovals(broadcast);
 initPhone({ broadcast, voice: () => currentVoice() });
 initSocial(broadcast);
 initAndroid(broadcast);
+initAgents(broadcast);
+initGithub();
 
 const app = express();
 // Dış servislerin çağırdığı webhooklar (Twilio, WhatsApp Business): kendi imza doğrulamaları var ve ham gövde

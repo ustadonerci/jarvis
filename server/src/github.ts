@@ -1,6 +1,12 @@
 // GitHub takibi: yeni ve hızla yıldız toplayan yapay zeka repolarını bulur, bir reponun Jarvis'e yetenek olarak
 // kurulabilir olup olmadığını inceler (SKILL.md, commands/, workflows/, .mcp.json, MCP paketi). Kurulumu kullanıcı
 // onaylarsa yetenek_kur yapar. GITHUB_TOKEN isteğe bağlı (anahtarsız: dakikada 10 arama).
+// Keşif: haftada bir son 7 günün yıldız toplayan beceri/MCP repoları aranır; kurulu olmayanlar öneri olarak saklanır
+// (KURULMAZ). Jarvis sohbette bunu söyler; kullanıcı isterse github_incele → yetenek_kur.
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { installedRepos } from './extensions.js';
 const API = 'https://api.github.com';
 
 async function gh<T = any>(path: string, accept = 'application/vnd.github+json'): Promise<T> {
@@ -58,6 +64,38 @@ export async function inspect(url: string) {
   };
 }
 
+// ---------------------------------------------------------------- Haftalık keşif
+
+const KESIF_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data', 'kesif.json');
+interface Kesif { at: string; oneriler: { repo: string; url: string; aciklama: string; yildiz: number }[] }
+const readKesif = (): Kesif | null => { try { return JSON.parse(fs.readFileSync(KESIF_FILE, 'utf8')); } catch { return null; } };
+
+async function discover(): Promise<Kesif> {
+  const list = await trending('"agent skills" OR "claude skills" OR "claude code" OR "mcp server" OR skill.md', 7);
+  const have = installedRepos();
+  const k: Kesif = { at: new Date().toISOString(), oneriler: list.filter((x: any) => !have.has(x.repo.toLowerCase())).slice(0, 6).map((x: any) => ({ repo: x.repo, url: x.url, aciklama: x.aciklama, yildiz: x.yildiz })) };
+  fs.mkdirSync(path.dirname(KESIF_FILE), { recursive: true });
+  fs.writeFileSync(KESIF_FILE, JSON.stringify(k, null, 2));
+  console.log(`[github] haftalık keşif: ${k.oneriler.length} yeni beceri/MCP reposu`);
+  return k;
+}
+
+export function initGithub() {
+  const tick = () => {
+    const k = readKesif();
+    if (k && Date.now() - Date.parse(k.at) < 7 * 86400_000) return;
+    discover().catch(e => console.warn(`[github] keşif başarısız: ${e?.message || e}`));
+  };
+  setTimeout(tick, 3 * 60_000).unref();
+  setInterval(tick, 6 * 3600_000).unref();
+}
+
+export function githubForPrompt(): string {
+  const k = readKesif();
+  if (!k?.oneriler.length) return 'henüz keşif yok';
+  return `${k.at.slice(0, 10)} keşfi: ${k.oneriler.length} yeni beceri/MCP reposu bekliyor (github_trend kesif: true ile listele)`;
+}
+
 export const GITHUB_TOOLS = [
   {
     type: 'function',
@@ -70,6 +108,7 @@ export const GITHUB_TOOLS = [
           konu: { type: 'string', description: 'Arama terimleri (boşsa yapay zeka/MCP/ajan)' },
           gun: { type: 'integer', description: 'Kaç gün içinde oluşturulmuş (varsayılan 14)' },
           dil: { type: 'string', description: 'Programlama dili filtresi, ör. TypeScript, Python' },
+          kesif: { type: 'boolean', description: 'true: haftalık otomatik keşfin bulduğu, henüz kurulu olmayan beceri/MCP repolarını getir' },
         },
       },
     },
@@ -88,6 +127,10 @@ export const isGithubTool = (n: string) => GITHUB_TOOLS.some(t => t.function.nam
 
 export async function runGithubTool(name: string, args: any, progress: (l: string) => void): Promise<string> {
   try {
+    if (name === 'github_trend' && args.kesif === true) {
+      const k = readKesif() ?? await discover();
+      return JSON.stringify({ kesif_tarihi: k.at.slice(0, 10), oneriler: k.oneriler, not: 'Kurulmadılar. İlgi çekenleri kısaca anlat; kullanıcı isterse github_incele, sonra onayla yetenek_kur.' });
+    }
     if (name === 'github_trend') {
       progress(`GitHub taranıyor${args.konu ? `: ${args.konu}` : ''}`);
       const list = await trending(args.konu ? String(args.konu) : undefined, Number(args.gun) || 14, args.dil ? String(args.dil) : undefined);

@@ -55,7 +55,11 @@ const isCrypto = (y: string) => /-(USD|USDT|TRY)$/.test(y);
 
 // ---------------------------------------------------------------- Veri
 
-export interface Series { sembol: string; ad: string; para: string; kapanis: number[]; tarih: number[]; fiyat: number; kaynak: string }
+export interface Series {
+  sembol: string; ad: string; para: string; kapanis: number[]; tarih: number[]; fiyat: number; kaynak: string;
+  /** Günlük açılış/yüksek/düşük/hacim (kapanışla aynı sırada); hesaplanan serilerde (gram altın) yok */
+  ohlc?: { acilis: number[]; yuksek: number[]; dusuk: number[]; hacim: number[] };
+}
 
 const cache = new Map<string, { at: number; s: Series }>();
 const TTL = 60_000;
@@ -79,12 +83,20 @@ async function yahoo(sym: string, range = '1y'): Promise<Series> {
   if (r?.status === 404 || j?.chart?.error?.code === 'Not Found') throw new NotFound(`"${sym}" Yahoo Finance'ta bulunamadı`);
   if (!r?.ok || !res) throw new Error(`Yahoo Finance cevap vermedi (${r?.status ?? 'bağlantı yok'})${j?.chart?.error?.description ? `: ${j.chart.error.description}` : ''}`);
   const ts: number[] = res.timestamp ?? [];
-  const cl: (number | null)[] = res.indicators?.quote?.[0]?.close ?? [];
-  const pairs = ts.map((t, i) => [t, cl[i]] as const).filter((p): p is readonly [number, number] => typeof p[1] === 'number');
-  if (pairs.length < 2) throw new NotFound(`"${sym}" için fiyat geçmişi yok`);
+  const q = res.indicators?.quote?.[0] ?? {};
+  const num = (a: any, i: number, d: number) => (typeof a?.[i] === 'number' ? a[i] : d);
+  const rows = ts.map((t, i) => ({ t, c: q.close?.[i] })).filter((r): r is { t: number; c: number } => typeof r.c === 'number');
+  if (rows.length < 2) throw new NotFound(`"${sym}" için fiyat geçmişi yok`);
+  const idx = ts.map((_, i) => i).filter(i => typeof q.close?.[i] === 'number');
   const meta = res.meta ?? {};
-  const fiyat = typeof meta.regularMarketPrice === 'number' ? meta.regularMarketPrice : pairs[pairs.length - 1][1];
-  return { sembol: sym, ad: meta.shortName || meta.longName || sym, para: meta.currency || '', kapanis: pairs.map(p => p[1]), tarih: pairs.map(p => p[0] * 1000), fiyat, kaynak: 'Yahoo Finance' };
+  const fiyat = typeof meta.regularMarketPrice === 'number' ? meta.regularMarketPrice : rows[rows.length - 1].c;
+  return {
+    sembol: sym, ad: meta.shortName || meta.longName || sym, para: meta.currency || '', kapanis: rows.map(r => r.c), tarih: rows.map(r => r.t * 1000), fiyat, kaynak: 'Yahoo Finance',
+    ohlc: {
+      acilis: idx.map(i => num(q.open, i, q.close[i])), yuksek: idx.map(i => num(q.high, i, q.close[i])),
+      dusuk: idx.map(i => num(q.low, i, q.close[i])), hacim: idx.map(i => num(q.volume, i, 0)),
+    },
+  };
 }
 
 /** Yahoo arama: şirket adı ya da eksik yazılmış koddan sembol bulur (Borsa İstanbul öncelikli) */
@@ -120,7 +132,10 @@ async function binance(sym: string): Promise<Series> {
     fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${pair}`, { signal: AbortSignal.timeout(10_000) }).then(r => r.json()),
   ]);
   if (!Array.isArray(k) || !k.length) throw new Error(`Binance'te ${pair} yok`);
-  return { sembol: sym, ad: base, para: 'USD', kapanis: k.map((x: any[]) => Number(x[4])), tarih: k.map((x: any[]) => Number(x[0])), fiyat: Number(t?.price) || Number(k[k.length - 1][4]), kaynak: 'Binance' };
+  return {
+    sembol: sym, ad: base, para: 'USD', kapanis: k.map((x: any[]) => Number(x[4])), tarih: k.map((x: any[]) => Number(x[0])), fiyat: Number(t?.price) || Number(k[k.length - 1][4]), kaynak: 'Binance',
+    ohlc: { acilis: k.map((x: any[]) => Number(x[1])), yuksek: k.map((x: any[]) => Number(x[2])), dusuk: k.map((x: any[]) => Number(x[3])), hacim: k.map((x: any[]) => Number(x[5])) },
+  };
 }
 
 export async function getSeries(raw: string): Promise<Series> {
@@ -241,6 +256,66 @@ export const round = (v: number | null | undefined, d?: number): number | null =
   return Number(v.toFixed(digits));
 };
 
+// ---------------------------------------------------------------- Fiyat yapısı (OHLC gerekir)
+
+/** Ortalama gerçek aralık (14): stop ve hedef mesafesi için */
+export function atr(h: number[], l: number[], c: number[], n = 14): number | null {
+  if (c.length <= n) return null;
+  const tr = c.slice(1).map((_, i) => Math.max(h[i + 1] - l[i + 1], Math.abs(h[i + 1] - c[i]), Math.abs(l[i + 1] - c[i])));
+  return tr.slice(-n).reduce((a, b) => a + b, 0) / n;
+}
+
+/** Salınım tepeleri/dipleri (2 sol 2 sağ): üstündekiler alış tarafı, altındakiler satış tarafı likiditesi (stopların birikebileceği yerler) */
+export function swings(h: number[], l: number[], look = 120) {
+  const tepe: number[] = [], dip: number[] = [];
+  const start = Math.max(2, h.length - look);
+  for (let i = start; i < h.length - 2; i++) {
+    if (h[i] > h[i - 1] && h[i] > h[i - 2] && h[i] >= h[i + 1] && h[i] >= h[i + 2]) tepe.push(h[i]);
+    if (l[i] < l[i - 1] && l[i] < l[i - 2] && l[i] <= l[i + 1] && l[i] <= l[i + 2]) dip.push(l[i]);
+  }
+  return { tepe, dip };
+}
+
+/** Doldurulmamış adil değer boşlukları (FVG): 3 mumluk dizide 1. mumun tepesiyle 3. mumun dibi arasındaki boşluk */
+export function fairValueGaps(h: number[], l: number[], look = 60) {
+  const out: { yon: 'yükseliş' | 'düşüş'; alt: number; ust: number; gun_once: number }[] = [];
+  const n = h.length;
+  for (let i = Math.max(2, n - look); i < n; i++) {
+    let gap: { yon: 'yükseliş' | 'düşüş'; alt: number; ust: number } | null = null;
+    if (l[i] > h[i - 2]) gap = { yon: 'yükseliş', alt: h[i - 2], ust: l[i] };
+    else if (h[i] < l[i - 2]) gap = { yon: 'düşüş', alt: h[i], ust: l[i - 2] };
+    if (!gap) continue;
+    // Sonraki mumlar boşluğa tamamen girdiyse dolmuş sayılır
+    let filled = false;
+    for (let j = i + 1; j < n && !filled; j++) filled = gap.yon === 'yükseliş' ? l[j] <= gap.alt : h[j] >= gap.ust;
+    if (!filled) out.push({ ...gap, gun_once: n - 1 - i });
+  }
+  return out;
+}
+
+/** Hacim profili: son günlerin hacmi fiyat aralıklarına dağıtılır. POC = en çok işlem gören fiyat; değer alanı = hacmin %70'i */
+export function volumeProfile(h: number[], l: number[], c: number[], v: number[], look = 120, bins = 24) {
+  const s = Math.max(0, c.length - look);
+  const lo = Math.min(...l.slice(s)), hi = Math.max(...h.slice(s));
+  if (!(hi > lo) || !v.slice(s).some(x => x > 0)) return null;
+  const step = (hi - lo) / bins;
+  const vol = new Array(bins).fill(0);
+  for (let i = s; i < c.length; i++) {
+    // Mumun hacmi kapsadığı aralıklara eşit dağıtılır
+    const a = Math.max(0, Math.floor((l[i] - lo) / step)), b = Math.min(bins - 1, Math.floor((h[i] - lo) / step));
+    for (let k = a; k <= b; k++) vol[k] += v[i] / (b - a + 1);
+  }
+  const poc = vol.indexOf(Math.max(...vol));
+  const total = vol.reduce((x, y) => x + y, 0);
+  let inArea = vol[poc], dn = poc, up = poc;
+  while (inArea < total * 0.7 && (dn > 0 || up < bins - 1)) {
+    const nd = dn > 0 ? vol[dn - 1] : -1, nu = up < bins - 1 ? vol[up + 1] : -1;
+    if (nu >= nd) inArea += vol[++up]; else inArea += vol[--dn];
+  }
+  const mid = (k: number) => lo + step * (k + 0.5);
+  return { poc: mid(poc), deger_alani_ust: lo + step * (up + 1), deger_alani_alt: lo + step * dn };
+}
+
 export type Signal = 'AL' | 'SAT' | 'KÂR AL' | 'TUT';
 
 export function analyze(s: Series, holding?: { maliyet: number }) {
@@ -282,6 +357,42 @@ export function analyze(s: Series, holding?: { maliyet: number }) {
     sinyal = 'KÂR AL';
     gerekce.push(`Pozisyon %${kar.toFixed(1)} kârda ve ivme zayıflıyor: kârın bir kısmını realize etmek düşünülebilir`);
   }
+  // Yapı: likidite seviyeleri, FVG, hacim profili, ATR'ye göre stop/hedef ve risk/ödül
+  let yapi: any = null, plan: any = null;
+  const o = s.ohlc;
+  if (o && o.yuksek.length === s.kapanis.length && o.yuksek.length > 30) {
+    const a = atr(o.yuksek, o.dusuk, s.kapanis);
+    const sw = swings(o.yuksek, o.dusuk);
+    const direnc = sw.tepe.filter(x => x > p).sort((x, y) => x - y).slice(0, 3);
+    const destek = sw.dip.filter(x => x < p).sort((x, y) => y - x).slice(0, 3);
+    const gaps = fairValueGaps(o.yuksek, o.dusuk).sort((x, y) => Math.abs((x.alt + x.ust) / 2 - p) - Math.abs((y.alt + y.ust) / 2 - p)).slice(0, 3);
+    const vp = volumeProfile(o.yuksek, o.dusuk, s.kapanis, o.hacim);
+    yapi = {
+      atr14: round(a), direncler_alis_likiditesi: direnc.map(x => round(x)), destekler_satis_likiditesi: destek.map(x => round(x)),
+      fvg: gaps.map(g => ({ yon: g.yon, alt: round(g.alt), ust: round(g.ust), gun_once: g.gun_once })),
+      hacim_profili: vp ? { poc: round(vp.poc), deger_alani_ust: round(vp.deger_alani_ust), deger_alani_alt: round(vp.deger_alani_alt), fiyat_konumu: p > vp.deger_alani_ust ? 'değer alanının üstünde' : p < vp.deger_alani_alt ? 'değer alanının altında' : 'değer alanı içinde' } : null,
+    };
+    if (vp) {
+      if (p > vp.deger_alani_ust) gerekce.push(`Fiyat hacim profilinin değer alanı üstünde (POC ${round(vp.poc)}): kabul görürse yükseliş sürer, geri dönerse POC'a çekilebilir`);
+      else if (p < vp.deger_alani_alt) gerekce.push(`Fiyat değer alanının altında (POC ${round(vp.poc)}): zayıflık; POC'a dönüş direnç olabilir`);
+    }
+    if (a) {
+      const yukari = sinyal !== 'SAT';
+      // Stop: en yakın destek/direncin yarım ATR ötesi; çok yakın ya da çok uzaksa 1,5 ATR
+      const nearStop = yukari ? (destek[0] !== undefined ? destek[0] - 0.5 * a : NaN) : (direnc[0] !== undefined ? direnc[0] + 0.5 * a : NaN);
+      const dist = Math.abs(p - nearStop);
+      const stop = Number.isFinite(nearStop) && dist >= 0.75 * a && dist <= 3 * a ? nearStop : yukari ? p - 1.5 * a : p + 1.5 * a;
+      const risk = Math.abs(p - stop);
+      const hedef1 = yukari ? (direnc[0] !== undefined && direnc[0] - p >= risk ? direnc[0] : p + 2 * risk) : (destek[0] !== undefined && p - destek[0] >= risk ? destek[0] : p - 2 * risk);
+      const hedef2 = yukari ? Math.max(hedef1, p + 3 * risk) : Math.min(hedef1, p - 3 * risk);
+      plan = {
+        yon: { AL: 'alış', TUT: 'bekle: yeni alış için net sinyal yok; pozisyon varsa koruma seviyeleri', 'KÂR AL': 'kârın bir kısmını al, kalanını stopla koru', SAT: 'satış / pozisyondan çık' }[sinyal],
+        giris: round(p), stop_loss: round(stop), hedef1: round(hedef1), hedef2: round(hedef2),
+        risk_odul: round(Math.abs(hedef1 - p) / risk, 2), stop_mesafesi_yuzde: round((risk / p) * 100, 2),
+        not: 'Kural tabanlı hesap (ATR, destek/direnç); yatırım tavsiyesi değildir. Pozisyon büyüklüğü: sermayenin %1–2\'sinden fazlasını tek stopla riske atma.',
+      };
+    }
+  }
   return {
     sembol: s.sembol, ad: s.ad, para: s.para, kaynak: s.kaynak,
     fiyat: round(p),
@@ -295,6 +406,8 @@ export function analyze(s: Series, holding?: { maliyet: number }) {
       en_buyuk_dusus_1y: round(maxDrawdown(c.slice(-253)), 1),
     },
     sinyal, puan, gerekce,
+    ...(yapi ? { yapi } : {}),
+    ...(plan ? { islem_plani: plan } : {}),
     ...(kar !== null ? { pozisyon_kar_yuzde: round(kar, 2) } : {}),
     // Son 10 işlem günü (grafik sahnesi bu sayılardan çizilir)
     son_kapanislar: s.tarih.slice(-10).map((t, i) => ({ tarih: new Date(t).toISOString().slice(0, 10), kapanis: round(s.kapanis.slice(-10)[i]) })),
@@ -413,7 +526,7 @@ export const FINANCE_TOOLS = [
     type: 'function',
     function: {
       name: 'piyasa_analiz',
-      description: "Bir hisse (BIST dahil), kripto, döviz, altın/gümüş ya da endeksin canlı fiyatını, günlük/haftalık/aylık/yıllık değişimini, teknik göstergelerini (RSI, MACD, SMA 20/50/200, Bollinger, oynaklık) ve gerekçeli Al/Sat/Tut sinyalini getirir. 'Bitcoin ne olur', 'THYAO alınır mı', 'gram altın kaç', 'dolar analizi' gibi isteklerde kullanılır.",
+      description: "Bir hisse (BIST dahil), kripto, döviz, altın/gümüş ya da endeksin canlı fiyatını, günlük/haftalık/aylık/yıllık değişimini, teknik göstergelerini (RSI, MACD, SMA 20/50/200, Bollinger, oynaklık) ve gerekçeli Al/Sat/Tut sinyalini, fiyat yapısını (destek/direnç = likidite seviyeleri, doldurulmamış FVG'ler, hacim profili POC ve değer alanı, ATR) ve işlem planını (giriş, stop-loss, hedef 1-2, risk/ödül) getirir. 'Bitcoin ne olur', 'THYAO alınır mı', 'gram altın kaç', 'dolar analizi' gibi isteklerde kullanılır.",
       parameters: {
         type: 'object',
         properties: {

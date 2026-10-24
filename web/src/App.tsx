@@ -579,6 +579,7 @@ export default function App() {
         // Ayarlar'dan anahtar kaydedildi: sunucu yeni değerlerle açılınca sayfa da baştan yüklensin (demo modu vb.)
         case 'restarting': setTimeout(() => location.reload(), 4000); break;
         case 'onay': setApprovalKey(k => k + 1); if (e.yeni) flash(`Onay bekliyor: ${e.yeni.baslik}`); break;
+        case 'gorev': setLinks(l => [...l.slice(-2), { id: Date.now(), baslik: '✅ Arka plan görevi bitti', aciklama: e.baslik, url: '' }]); break;
         case 'link': if (/^https:\/\//.test(e.url)) setLinks(l => [...l.slice(-2), { id: Date.now(), baslik: e.baslik, aciklama: e.aciklama, url: e.url, dugme: e.dugme }]); break;
         case 'alarm': flash(`🔔 ${e.ad}: ${e.fiyat.toLocaleString('tr-TR')} · hedef ${e.kosul === 'ust' ? '≥' : '≤'} ${e.hedef.toLocaleString('tr-TR')}`); break;
         case 'mesaj': flash(`${{ whatsapp: 'WhatsApp', telegram: 'Telegram', telefon: '📞 Telefon' }[e.platform]} · ${e.arama ? `${e.kisi} ${e.platform === 'telefon' ? e.metin : 'aradı'}` : `${e.kisi}: ${e.metin}`}`); break;
@@ -1190,7 +1191,7 @@ export default function App() {
             <div key={l.id} className="link-card">
               <div className="lc-head"><b>{l.baslik}</b><button aria-label="Kapat" onClick={() => setLinks(x => x.filter(y => y.id !== l.id))}>✕</button></div>
               {l.aciklama && <p>{l.aciklama}</p>}
-              <a className="lc-btn" href={l.url} target="_blank" rel="noopener noreferrer" onClick={() => setTimeout(() => setLinks(x => x.filter(y => y.id !== l.id)), 500)}>{l.dugme || 'Aç'}</a>
+              {l.url && <a className="lc-btn" href={l.url} target="_blank" rel="noopener noreferrer" onClick={() => setTimeout(() => setLinks(x => x.filter(y => y.id !== l.id)), 500)}>{l.dugme || 'Aç'}</a>}
             </div>
           ))}
         </div>

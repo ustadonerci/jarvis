@@ -3,7 +3,7 @@
 // arama, YouTube, hafıza, kitaplık…) her zaman, diğer gruplar yalnızca soruda (ya da kısa bir onay/devam cevabında,
 // önceki mesajlarda) ilgili bir kelime geçerse gönderilir. Talimatların o gruplara ait bölümleri de aynı şekilde.
 
-export type Group = 'gundem' | 'fal' | 'finans' | 'mesaj' | 'eposta' | 'github' | 'ajan' | 'sistem' | 'otomasyon' | 'telefon' | 'sms' | 'sosyal' | 'android' | 'site' | 'yetenek' | 'mcp';
+export type Group = 'gundem' | 'fal' | 'medya' | 'finans' | 'mesaj' | 'eposta' | 'github' | 'ajan' | 'sistem' | 'otomasyon' | 'telefon' | 'sms' | 'sosyal' | 'android' | 'site' | 'yetenek' | 'mcp';
 
 const fold = (s: string) => s.toLocaleLowerCase('tr')
   .replace(/[çğıöşü]/g, c => ({ ç: 'c', ğ: 'g', ı: 'i', ö: 'o', ş: 's', ü: 'u' })[c] ?? c);
@@ -13,14 +13,15 @@ const RULES: [Group, RegExp][] = [
   ['finans', /\b(borsa|hisse|bist|nasdaq|dolar|euro|avro|sterlin|doviz|(dolar|euro|avro|doviz) kuru|kurlar\b|altin|gumus|petrol|brent|kripto|bitcoin|btc|ethereum|eth|coin|portfoy|yatirim|fiyat|alarm|rsi|macd|teknik analiz|al(sam|ayim|mali)|sat(sam|ayim|mali)|thyao|aselsan|garanti)/],
   ['mesaj', /(whatsapp|watsap|vatsap|telegram|mesaj|yaz(ar misin|sana|in|di|dim|digim)|gonder|okunmamis|kim(ler)? (aradi|yazdi)|sohbet|geri al|herkesten sil|benden sil|duzelt)/],
   ['eposta', /(e-?posta|\bmail|gmail|outlook|gelen kutu|taslak|arsivle|cop kutu)/],
-  ['github', /(github|\brepo|trend)/],
-  ['ajan', /(uzman|ajan|detayli arastir|derinlemesine|rapor hazirla|strateji|plan hazirla)/],
+  ['github', /(github|\brepo|trend|kesif|kesfet|yeni yetenek|yeni beceri)/],
+  ['ajan', /(uzman|ajan|detayli arastir|derinlemesine|rapor|strateji|plan hazirla|arka planda|tasarim|dashboard|panel tasarla)/],
   ['sistem', /(bilgisayar|programi?|uygulama(yi|lari)? (kur|ac|kapat|kaldir|guncelle)|winget|komut|powershell|terminal|dosya|klasor|masaustu|\bdisk\b|\bram\b|islemci|sistem bilgi|kendi kod)/],
   ['otomasyon', /(webhook|n8n|zapier|make\.com|otomasyon|is akisi|kanala? paylas|paylasim yap|kendi kodunu|kodunu (duzelt|duzenle|oku))/],
   ['telefon', /(telefonla ara|\bara(r misin|yin|sana|\b)|arama yap|telefon et|arama kayit|kim aradi|twilio)/],
   ['sms', /(\bsms|kisa mesaj)/],
   ['sosyal', /(youtube|youtu\.be|instagram|insta\b|tiktok|twitter|x\.com|takip|kanal|reels|shorts|video(yu|lari)? (ozetle|ac))/],
   ['android', /(telefonuma|telefonumdan|telefonumda|play store|google play|apk|android|uygulama(yi)? (yukle|indir|sil|kaldir))/],
+  ['medya', /(resm(i|in)|resim|foto|gorsel(i|in)? (kirp|boyut|filtre|donustur)|boyutlandir|kirp|filtre|siyah beyaz|\.(jpe?g|png|webp|mp3|wav|m4a|mp4|mov|mkv|webm)\b|ses(i|ini)? (temizle|cikar)|gurultu|video(yu|nun)? (kes|kirp|sikistir|donustur)|gif|altyazi|ffmpeg)/],
   ['site', /(site(yi|sini)? (indir|arsivle|kaydet)|web sitesi(ni)? (indir|kaydet))/],
   ['yetenek', /(yetenek|beceri|skill|is akisi|workflow|repo|github\.com|ogren|seo|reklam|pazarlama|icerik|post|kampanya|tasarim|logo|marka|kurgu|montaj|senaryo|metin yaz|baslik yaz|analiz et|hazirla|olustur)/],
   ['mcp', /(\bmcp|topview|sunucu araci)/],
@@ -53,6 +54,7 @@ const SECTION_GROUP: Record<string, Group[]> = {
   'Uzman ajanlar': ['ajan', 'otomasyon'],
   'Bilgisayar kontrolü, otomasyon ve kendi kodun (ONAY KARTIYLA)': ['sistem', 'otomasyon', 'telefon', 'sms'],
   'Site indirme': ['site'],
+  'Medya işleme': ['medya'],
   'Mesajlar (Telegram ve WhatsApp)': ['mesaj'],
   'Sosyal medya (YouTube, Instagram, TikTok, X)': ['sosyal'],
   'Android telefon (Google Play)': ['android'],

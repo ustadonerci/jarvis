@@ -376,6 +376,9 @@ export function activateSuggestions(names: string[] | 'hepsi'): string[] {
   return list.map(x => x.ad);
 }
 
+/** Kurulu repoların owner/name listesi (küçük harf) */
+export const installedRepos = () => new Set(store.repos.map(r => r.url.replace('https://github.com/', '').split('/tree/')[0].toLowerCase()));
+
 export const pendingSuggestions = () => store.skills.filter(x => x.kaynak === 'takip' && !x.aktif).map(x => ({ ad: x.ad, aciklama: x.aciklama, kaynak: x.kaynakUrl }));
 
 export function extensionsForPrompt(): string {

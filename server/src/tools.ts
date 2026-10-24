@@ -11,7 +11,7 @@ import { isSearchTool, runSearchTool } from './search.js';
 import { isFinanceTool, runFinanceTool } from './finance.js';
 import { isEmailTool, runEmailTool } from './email.js';
 import { isGithubTool, runGithubTool } from './github.js';
-import { isAgentTool, runAgent } from './agents.js';
+import { isAgentTool, runAgentTool } from './agents.js';
 import { ERROR_TOOLS, isTransient, logError, runErrorTool } from './errors.js';
 import { APPROVAL_TOOLS, runApprovalTool } from './approvals.js';
 import { isSystemTool, runSystemTool } from './system.js';
@@ -20,6 +20,7 @@ import { isPhoneTool, runPhoneTool } from './phone.js';
 import { isSmsTool, runSmsTool } from './sms.js';
 import { isSocialTool, runSocialTool } from './social.js';
 import { isAndroidTool, runAndroidTool } from './android.js';
+import { isMediaTool, runMediaTool } from './media.js';
 import { isSiteTool, runSiteTool } from './sitedownload.js';
 import { addBook, addBookNote, fillInBackground, findBook, setBookStatus } from './library.js';
 
@@ -293,7 +294,7 @@ async function runToolOnce(name: string, rawArgs: string, progress: ToolProgress
   if (isFinanceTool(name)) return runFinanceTool(name, args, progress);
   if (isEmailTool(name)) return runEmailTool(name, args, progress);
   if (isGithubTool(name)) return runGithubTool(name, args, progress);
-  if (isAgentTool(name)) return runAgent(String(args.uzman ?? ''), String(args.gorev ?? ''), progress);
+  if (isAgentTool(name)) return runAgentTool(name, args, progress);
   if (name === ERROR_TOOLS[0].function.name) return runErrorTool(args);
   if (name === APPROVAL_TOOLS[0].function.name) return runApprovalTool(args);
   if (isSystemTool(name)) return runSystemTool(name, args, progress);
@@ -302,6 +303,7 @@ async function runToolOnce(name: string, rawArgs: string, progress: ToolProgress
   if (isSmsTool(name)) return runSmsTool(name, args, progress);
   if (isSocialTool(name)) return runSocialTool(name, args, progress);
   if (isAndroidTool(name)) return runAndroidTool(name, args, progress);
+  if (isMediaTool(name)) return runMediaTool(args, progress);
   if (isSiteTool(name)) return runSiteTool(args, progress);
   if (name === 'get_news') {
     progress('haber kaynakları taranıyor');
