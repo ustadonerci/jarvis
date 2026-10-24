@@ -3,7 +3,7 @@
 // arama, YouTube, hafıza, kitaplık…) her zaman, diğer gruplar yalnızca soruda (ya da kısa bir onay/devam cevabında,
 // önceki mesajlarda) ilgili bir kelime geçerse gönderilir. Talimatların o gruplara ait bölümleri de aynı şekilde.
 
-export type Group = 'gundem' | 'fal' | 'medya' | 'ses' | 'finans' | 'mesaj' | 'eposta' | 'github' | 'ajan' | 'sistem' | 'otomasyon' | 'telefon' | 'sms' | 'sosyal' | 'android' | 'site' | 'yetenek' | 'mcp';
+export type Group = 'gundem' | 'fal' | 'medya' | 'ses' | 'satin' | 'finans' | 'mesaj' | 'eposta' | 'github' | 'ajan' | 'sistem' | 'otomasyon' | 'telefon' | 'sms' | 'sosyal' | 'android' | 'site' | 'yetenek' | 'mcp';
 
 const fold = (s: string) => s.toLocaleLowerCase('tr')
   .replace(/[çğıöşü]/g, c => ({ ç: 'c', ğ: 'g', ı: 'i', ö: 'o', ş: 's', ü: 'u' })[c] ?? c);
@@ -23,6 +23,7 @@ const RULES: [Group, RegExp][] = [
   ['android', /(telefonuma|telefonumdan|telefonumda|play store|google play|apk|android|uygulama(yi)? (yukle|indir|sil|kaldir))/],
   ['medya', /(resm(i|in)|resim|foto|gorsel(i|in)? (kirp|boyut|filtre|donustur)|boyutlandir|kirp|filtre|siyah beyaz|\.(jpe?g|png|webp|mp3|wav|m4a|mp4|mov|mkv|webm)\b|ses(i|ini)? (temizle|cikar)|gurultu|video(yu|nun)? (kes|kirp|sikistir|donustur)|gif|altyazi|ffmpeg)/],
   ['ses', /(voicestudio|voice studio|ses(imi|ini)? (klonla|kopyala|degistir)|klon ses|ses klon|sesin(i)? (degistir|ayarla)|sesle konus|ses profil|ses modeli)/],
+  ['satin', /(satin al|satın al|abonelik|abone ol|hostinger|hosting|alan adi|domain|vps|siparis|odeme yap|paket al|fatura|yenile)/],
   ['site', /(site(yi|sini)? (indir|arsivle|kaydet)|web sitesi(ni)? (indir|kaydet))/],
   ['yetenek', /(yetenek|beceri|skill|is akisi|workflow|repo|github\.com|ogren|seo|reklam|pazarlama|icerik|post|kampanya|tasarim|logo|marka|kurgu|montaj|senaryo|metin yaz|baslik yaz|analiz et|hazirla|olustur)/],
   ['mcp', /(\bmcp|topview|sunucu araci)/],
@@ -55,6 +56,7 @@ const SECTION_GROUP: Record<string, Group[]> = {
   'Uzman ajanlar': ['ajan', 'otomasyon'],
   'Bilgisayar kontrolü, otomasyon ve kendi kodun (ONAY KARTIYLA)': ['sistem', 'otomasyon', 'telefon', 'sms'],
   'Site indirme': ['site'],
+  'Satın alma': ['satin'],
   'Medya işleme': ['medya'],
   'Ses klonlama (VoiceStudio)': ['ses'],
   'Mesajlar (Telegram ve WhatsApp)': ['mesaj'],
