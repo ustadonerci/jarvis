@@ -323,6 +323,8 @@ const AUTO_PACKAGES: Record<string, string[]> = {
     'anthropics/claude-code-security-review',
     'diegosouzapw/OmniRoute/tree/main/skills',
   ],
+  // skills.sh arama becerisi (yetenek_bul aracıyla birlikte: "şunun için beceri var mı?")
+  'find-skills': ['vercel-labs/skills/tree/main/skills/find-skills'],
 };
 const packageMark = (name: string) => path.join(DATA, `paket-${name}.kuruldu`);
 
@@ -471,7 +473,34 @@ export const EXT_TOOLS = [
       parameters: { type: 'object', properties: { url: { type: 'string', description: 'https://github.com/kullanici/repo' } }, required: ['url'] },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'yetenek_bul',
+      description: "İnternetteki açık beceri kataloğunda (skills.sh, find-skills) kurulmamış yeni beceri arar: kurulum sayısı ve kaynak repoyla. 'Şunun için beceri/yetenek var mı', 'kendini geliştir', 'X yapmayı öğren' isteklerinde ve yetenek_ara kurulu becerilerde bir şey bulamadığında kullan. Sonuçları söyle; kullanıcı isterse yetenek_kur ile kur.",
+      parameters: { type: 'object', properties: { sorgu: { type: 'string', description: 'İngilizce anahtar kelimeler, ör. "instagram reels", "trading bot", "seo audit"' } }, required: ['sorgu'] },
+    },
+  },
 ] as const;
+
+/** skills.sh arama API'si (npx skills find ile aynı); güvenilirlik için kurulum sayısı ve bilinen kaynaklar öne alınır */
+const TRUSTED = /^(anthropics|vercel-labs|microsoft|openai|google|cloudflare|supabase|obra)\//i;
+async function findSkills(q: string) {
+  const r = await fetch(`${process.env.SKILLS_API_URL || 'https://skills.sh'}/api/search?${new URLSearchParams({ q, limit: '15' })}`, { signal: AbortSignal.timeout(15_000) });
+  if (!r.ok) throw new Error(`skills.sh ${r.status}`);
+  const data: any = await r.json();
+  const have = installedRepos();
+  return (Array.isArray(data?.skills) ? data.skills : []).map((x: any) => {
+    const source = String(x.source ?? '').replace(/[^\w./-]/g, '');
+    return {
+      ad: String(x.name ?? x.id ?? '').slice(0, 80), kaynak: source, kurulum: Number(x.installs) || 0,
+      guvenilir: TRUSTED.test(source) || (Number(x.installs) || 0) >= 1000,
+      kurulu: have.has(source.toLowerCase()),
+      kur_url: source ? `https://github.com/${source}` : undefined,
+      sayfa: x.id ? `https://skills.sh/${String(x.id).replace(/[^\w./@-]/g, '')}` : undefined,
+    };
+  }).sort((a: any, b: any) => Number(b.guvenilir) - Number(a.guvenilir) || b.kurulum - a.kurulum).slice(0, 8);
+}
 
 export function mcpTools() {
   const out: any[] = [];
@@ -499,6 +528,19 @@ export async function runExtensionTool(name: string, args: any, progress: (l: st
     return JSON.stringify(scored.length
       ? { sonuclar: scored.map(({ s }) => ({ ad: s.ad, tur: s.tur, aciklama: s.aciklama.slice(0, 300) })) }
       : { sonuc: 'Uygun yetenek bulunamadı; başka (İngilizce) kelimelerle dene ya da kendin yap.' });
+  }
+  if (name === 'yetenek_bul') {
+    const q = String(args.sorgu ?? '').trim().slice(0, 100);
+    if (!q) return JSON.stringify({ hata: 'sorgu boş' });
+    progress(`skills.sh: ${q}`);
+    try {
+      const list = await findSkills(q);
+      return JSON.stringify(list.length
+        ? { sonuclar: list, not: 'Kurulum sayısı 100\'ün altındaki ve bilinmeyen kaynaklı becerileri önerirken dikkatli ol. Kullanıcı isterse yetenek_kur ile kur_url\'yi kur.' }
+        : { sonuc: 'Katalogda uygun beceri bulunamadı; başka İngilizce kelimeler dene ya da yetenek_olustur ile kendin yaz.' });
+    } catch (e: any) {
+      return JSON.stringify({ hata: `Beceri kataloğuna ulaşılamadı: ${String(e?.message || e).slice(0, 120)}` });
+    }
   }
   if (name === 'yetenek_kullan') {
     const q = String(args.ad ?? '').toLocaleLowerCase('tr').trim();
@@ -559,13 +601,16 @@ export async function runExtensionTool(name: string, args: any, progress: (l: st
 
 const GH = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:\/tree\/([\w./-]+?))?\/?$/;
 
+const safeDecode = (s: string) => { try { return decodeURIComponent(s); } catch { return s; } };
+
 /** Tek bir parçayı (link, git@ adresi, kullanici/repo) https://github.com/kullanici/repo[/tree/…] biçimine çevirir */
 function toRepoUrl(token: string, bare: boolean): string | null {
   const t = token.trim().replace(/^[<("'`]+|[>)"'`.,;]+$/g, '');
   const ssh = /^(?:ssh:\/\/)?git@github\.com[:/]([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/i.exec(t);
   if (ssh) return `https://github.com/${ssh[1]}/${ssh[2]}`;
   const web = /^(?:https?:\/\/)?(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:(\/tree\/[^?#\s]*[^?#\s/])\/?(?:[?#].*)?|(?:[/?#].*)?)$/i.exec(t);
-  if (web) return `https://github.com/${web[1]}/${web[2]}${web[3] ?? ''}`;
+  // Linkte kodlanmış "/" (skills%2Ffind-skills) ya da boşluk olabilir
+  if (web) return `https://github.com/${web[1]}/${web[2]}${web[3] ? safeDecode(web[3]) : ''}`;
   if (bare && /^[\w.-]+\/[\w.-]+$/.test(t) && !t.startsWith('.')) return `https://github.com/${t.replace(/\.git$/, '')}`;
   return null;
 }
@@ -575,7 +620,8 @@ function toRepoUrl(token: string, bare: boolean): string | null {
 export function extractRepoUrls(text: string): string[] {
   const out: string[] = [];
   for (const raw of text.split(/\r?\n|,/)) {
-    const line = raw.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, '').trim(); // madde işaretleri
+    const line = raw.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, '')
+      .replace(/([^\s(<"'`])(https?:\/\/)/gi, '$1 $2').trim(); // madde işaretleri; yazıya yapışık link ("Brand24https://…")
     if (!line) continue;
     const tokens = line.split(/\s+/);
     const cmd = /^(?:gh\s+repo\s+clone|git\s+clone)\s+/i.test(line);

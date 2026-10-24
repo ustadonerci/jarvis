@@ -23,6 +23,9 @@ import { isAndroidTool, runAndroidTool } from './android.js';
 import { isMediaTool, runMediaTool } from './media.js';
 import { isVoiceStudioTool, runVoiceStudioTool } from './voicestudio.js';
 import { isHostingerTool, runHostingerTool } from './hostinger.js';
+import { isReelsTool, runReelsTool } from './reels.js';
+import { isRobotTool, runRobotTool } from './robot.js';
+import { isBrand24Tool, runBrand24Tool } from './brand24.js';
 import { isSiteTool, runSiteTool } from './sitedownload.js';
 import { addBook, addBookNote, fillInBackground, findBook, setBookStatus } from './library.js';
 
@@ -308,6 +311,9 @@ async function runToolOnce(name: string, rawArgs: string, progress: ToolProgress
   if (isMediaTool(name)) return runMediaTool(args, progress);
   if (isVoiceStudioTool(name)) return runVoiceStudioTool(args);
   if (isHostingerTool(name)) return runHostingerTool(args, progress);
+  if (isReelsTool(name)) return runReelsTool(args, progress);
+  if (isRobotTool(name)) return runRobotTool(args, progress);
+  if (isBrand24Tool(name)) return runBrand24Tool(args, progress);
   if (isSiteTool(name)) return runSiteTool(args, progress);
   if (name === 'get_news') {
     progress('haber kaynakları taranıyor');

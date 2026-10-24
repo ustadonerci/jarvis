@@ -8,10 +8,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { safePath } from './system.js';
 
-const OUT_DIR = path.join(os.homedir(), 'Downloads', 'Jarvis-Medya');
+export const OUT_DIR = path.join(os.homedir(), 'Downloads', 'Jarvis-Medya');
 const WIN = process.platform === 'win32';
 
-function findFfmpeg(): string | null {
+export function findFfmpeg(): string | null {
   if (process.env.FFMPEG_PATH && fs.existsSync(process.env.FFMPEG_PATH)) return process.env.FFMPEG_PATH;
   const w = spawnSync(WIN ? 'where' : 'which', ['ffmpeg'], { encoding: 'utf8' });
   if (w.status === 0) return w.stdout.split(/\r?\n/)[0].trim();
@@ -19,7 +19,7 @@ function findFfmpeg(): string | null {
   return WIN && fs.existsSync(g) ? g : null;
 }
 
-const run = (exe: string, args: string[]) => new Promise<void>((resolve, reject) =>
+export const run = (exe: string, args: string[]) => new Promise<void>((resolve, reject) =>
   execFile(exe, args, { timeout: 15 * 60_000, maxBuffer: 16 * 1024 * 1024, windowsHide: true }, (err, _o, stderr) =>
     (err ? reject(new Error(String(stderr || err.message).split(/\r?\n/).filter(Boolean).slice(-3).join(' · ').slice(0, 300))) : resolve())));
 
