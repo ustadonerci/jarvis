@@ -26,7 +26,7 @@ import { HomePanel, HomeToast, getHome, homeAct, type HomeState } from './compon
 import type { Kontrol } from './hands/controller';
 import type { GezegenTur } from './hands/fx';
 import { emitCamera, getCameras, getRole, isCameraEvent, onCamera, setRole, toggleCameraPanel } from './lib/camera';
-import { type ElevenUsage, clearConversation, detectDevice, getDashboard, getHealth, getState, getVoices, metric, postAttention, postSleep, postWake, previewUrl, saveDevice, saveSettings, sendChat, setPhotoMode, stt, subscribe, token, clientId } from './lib/api';
+import { type ElevenUsage, clearConversation, cloneVoice, detectDevice, getDashboard, getHealth, getState, getVoices, metric, postAttention, postSleep, postWake, previewUrl, saveDevice, saveSettings, sendChat, setPhotoMode, stt, subscribe, token, clientId } from './lib/api';
 import { startClapListener, type ClapListener } from './lib/clap';
 import { shrinkImage } from './lib/image';
 import { recorderSupported, startRecording } from './lib/recorder';
@@ -822,6 +822,37 @@ export default function App() {
   const toggleHands = () => { voice.unlock(); setHands(h => (h ? null : 'kamera')); };
 
   // Kamera / galeri: Jarvis'in "gözü"
+  /** Ses dosyası (ya da ses içeren video) Jarvis'e verilince: temizlenip VoiceStudio'da klonlanır, Jarvis'in sesi olur */
+  const isAudioFile = (f: File) => f.type.startsWith('audio/') || /\.(mp3|wav|m4a|aac|ogg|opus|flac|wma|webm)$/i.test(f.name);
+  const onVoiceFile = async (f: File) => {
+    if (f.size > 60 * 1024 * 1024) return flash('Ses dosyası çok büyük (en fazla 60 MB; 10-30 saniyelik net bir kayıt yeterli).');
+    flash('Ses temizleniyor ve klonlanıyor… (birkaç saniye)');
+    try {
+      const r = await cloneVoice(f);
+      flash(`Yeni ses hazır: ${r.profil.name}${r.profil.temizlendi ? ' (gürültü temizlendi)' : ''}`);
+      setTimeout(() => speakLine('Yeni sesim bu efendim. Nasıl buldunuz?'), 400);
+    } catch (e: any) {
+      flash(e.message);
+    }
+  };
+  const onFile = (f: File | undefined) => { if (!f) return; if (isAudioFile(f)) onVoiceFile(f); else onPhoto(f); };
+  // Dosyayı Jarvis penceresine sürükleyip bırakma: ses → klon ses, resim → "Bu ne?"
+  const onFileRef = useRef(onFile);
+  onFileRef.current = onFile;
+  useEffect(() => {
+    const over = (e: DragEvent) => { if (e.dataTransfer?.types.includes('Files')) e.preventDefault(); };
+    const drop = (e: DragEvent) => {
+      const f = e.dataTransfer?.files?.[0];
+      if (!f) return;
+      e.preventDefault();
+      voice.unlock();
+      onFileRef.current(f);
+    };
+    window.addEventListener('dragover', over);
+    window.addEventListener('drop', drop);
+    return () => { window.removeEventListener('dragover', over); window.removeEventListener('drop', drop); };
+  }, []);
+
   const onPhoto = async (f: File | undefined) => {
     if (!f) return;
     try {
@@ -1173,7 +1204,7 @@ export default function App() {
           <button className="icon-btn cam live" onClick={openLiveCamera} aria-label="Canlı kamera" title="Canlı kamera">
             <svg viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="10" rx="2" /><path d="M16 11l5-3v8l-5-3z" /></svg>
           </button>
-          <button className="icon-btn cam" onClick={() => { voice.unlock(); fileRef.current?.click(); }} aria-label="Fotoğraf" title="Fotoğraf gönder">
+          <button className="icon-btn cam" onClick={() => { voice.unlock(); fileRef.current?.click(); }} aria-label="Fotoğraf ya da ses dosyası" title="Fotoğraf gönder ya da ses dosyası ver (Jarvis o sesle konuşur)">
             <svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>
           </button>
           <button className={'mic ' + (core === 'listening' ? 'live' : '')} onClick={toggleMic} aria-label="Konuş">
@@ -1380,7 +1411,7 @@ export default function App() {
 
       <AnimatePresence>{video && <VideoPanel key={video.id} video={video} onClose={closeVideo} />}</AnimatePresence>
 
-      <input ref={fileRef} type="file" accept="image/*" hidden onChange={e => { onPhoto(e.target.files?.[0]); e.target.value = ''; }} />
+      <input ref={fileRef} type="file" accept="image/*,audio/*,.mp3,.wav,.m4a,.ogg,.opus,.flac" hidden onChange={e => { onFile(e.target.files?.[0]); e.target.value = ''; }} />
       <Handoff info={handoff} />
 
       {showSleep && (

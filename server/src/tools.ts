@@ -21,6 +21,7 @@ import { isSmsTool, runSmsTool } from './sms.js';
 import { isSocialTool, runSocialTool } from './social.js';
 import { isAndroidTool, runAndroidTool } from './android.js';
 import { isMediaTool, runMediaTool } from './media.js';
+import { isVoiceStudioTool, runVoiceStudioTool } from './voicestudio.js';
 import { isSiteTool, runSiteTool } from './sitedownload.js';
 import { addBook, addBookNote, fillInBackground, findBook, setBookStatus } from './library.js';
 
@@ -304,6 +305,7 @@ async function runToolOnce(name: string, rawArgs: string, progress: ToolProgress
   if (isSocialTool(name)) return runSocialTool(name, args, progress);
   if (isAndroidTool(name)) return runAndroidTool(name, args, progress);
   if (isMediaTool(name)) return runMediaTool(args, progress);
+  if (isVoiceStudioTool(name)) return runVoiceStudioTool(args);
   if (isSiteTool(name)) return runSiteTool(args, progress);
   if (name === 'get_news') {
     progress('haber kaynakları taranıyor');

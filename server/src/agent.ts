@@ -12,6 +12,7 @@ import { GITHUB_TOOLS } from './github.js';
 import { agentTools } from './agents.js';
 import { githubForPrompt } from './github.js';
 import { MEDIA_TOOLS } from './media.js';
+import { VOICESTUDIO_TOOLS } from './voicestudio.js';
 import { ERROR_TOOLS, openErrorCount } from './errors.js';
 import { APPROVAL_TOOLS } from './approvals.js';
 import { SYSTEM_TOOLS } from './system.js';
@@ -371,7 +372,7 @@ export async function runJarvis(opts: RunOptions): Promise<JarvisReply> {
     ...(isBrief ? TOOLS : TOOLS.filter(t => t.function.name !== 'get_news')), ...SEARCH_TOOLS, ...ERROR_TOOLS, ...APPROVAL_TOOLS,
     ...pick('finans', FINANCE_TOOLS), ...pick('mesaj', MSG_TOOLS), ...pick('eposta', EMAIL_TOOLS), ...pick('github', GITHUB_TOOLS),
     ...pick('ajan', agentTools()), ...pick('sistem', SYSTEM_TOOLS), ...pick('otomasyon', AUTOMATION_TOOLS), ...pick('telefon', PHONE_TOOLS),
-    ...pick('sms', SMS_TOOLS), ...pick('sosyal', SOCIAL_TOOLS), ...pick('android', ANDROID_TOOLS), ...pick('site', SITE_TOOLS), ...pick('medya', MEDIA_TOOLS), ...pick('medya', SYSTEM_TOOLS.filter(t => t.function.name === 'dosya_listele' || t.function.name === 'uygulama_yonet' || t.function.name === 'uygulama_ara')),
+    ...pick('sms', SMS_TOOLS), ...pick('sosyal', SOCIAL_TOOLS), ...pick('android', ANDROID_TOOLS), ...pick('site', SITE_TOOLS), ...pick('medya', MEDIA_TOOLS), ...pick('ses', VOICESTUDIO_TOOLS), ...pick('medya', SYSTEM_TOOLS.filter(t => t.function.name === 'dosya_listele' || t.function.name === 'uygulama_yonet' || t.function.name === 'uygulama_ara')),
     ...pick('yetenek', EXT_TOOLS), ...pick('mcp', mcpTools()), ...pick('yetenek', mcpTools()),
   ].filter((t, i, a) => a.findIndex(x => x.function.name === t.function.name) === i);
   console.log(`[beyin] ${tools.length} araç · gruplar: ${[...groups].join(', ') || 'temel'}`);

@@ -28,6 +28,7 @@ import { initPhone, phoneRouter } from './phone.js';
 import { initSocial, socialRouter } from './social.js';
 import { androidRouter, initAndroid } from './android.js';
 import { initAgents } from './agents.js';
+import { VS_MODEL, initVoiceStudio, isVoiceStudio, registerVoiceSetter, vsClone, vsProfiles, vsUp } from './voicestudio.js';
 import { initGithub } from './github.js';
 import { financeRouter, initFinance } from './finance.js';
 import { clearErrors, errorList, initErrors, logError } from './errors.js';
@@ -89,6 +90,7 @@ function validVoice(v: VoiceSel | undefined): v is VoiceSel {
   // ElevenLabs: anahtar varsa ve ses kimliği biçimi doğruysa (sesler hesaptan gelir, npm run voices'tan değil)
   if (isEleven(v.model)) return elevenReady() && /^[A-Za-z0-9]{8,40}$/.test(v.voice);
   if (isAzure(v.model)) return azureReady() && AZURE_VOICES.some(a => a.voice === v.voice);
+  if (isVoiceStudio(v.model)) return /^[\w-]{4,40}$/.test(v.voice);
   if (isRoutedModel(v.model)) return false;
   const catalog = usableVoices();
   return !catalog.length || catalog.some(c => c.model === v.model && c.voice === v.voice);
@@ -141,6 +143,7 @@ initSocial(broadcast);
 initAndroid(broadcast);
 initAgents(broadcast);
 initGithub();
+initVoiceStudio();
 
 const app = express();
 // Dış servislerin çağırdığı webhooklar (Twilio, WhatsApp Business): kendi imza doğrulamaları var ve ham gövde
@@ -253,7 +256,9 @@ app.get('/api/voices', async (_req, res) => {
     gender: voiceGender(v.name, null, v.labels?.gender),
   }));
   const azureList = azureReady() ? AZURE_VOICES.map(a => ({ id: `${AZURE_MODEL}:${a.voice}`, model: AZURE_MODEL, voice: a.voice, label: a.label, provider: 'Azure', wpm: null, f0: null, gender: a.gender })) : [];
-  res.json({ voices: [...elevenList, ...azureList, ...list], current: currentVoice(), tested: loadCatalog().length, eleven: usage });
+  // VoiceStudio'daki ses profilleri (uygulama açıksa)
+  const vsList = (await vsProfiles().catch(() => [])).map(p => ({ id: `${VS_MODEL}:${p.id}`, model: VS_MODEL, voice: p.id, label: `${p.name} · VoiceStudio${p.kind === 'clone' ? ' (klon)' : ''}`, provider: 'VoiceStudio', wpm: null, f0: null, gender: voiceGender(p.name, null) }));
+  res.json({ voices: [...vsList, ...elevenList, ...azureList, ...list], current: currentVoice(), tested: loadCatalog().length, eleven: usage });
 });
 
 app.get('/api/voices/preview', async (req, res) => {
@@ -300,6 +305,31 @@ app.post('/api/settings', (req, res) => {
   saveState();
   broadcast(settingsEvent());
   res.json({ ok: true, voice: currentVoice(), sfx: sfx() });
+});
+
+// ---------- Ses klonlama (VoiceStudio): ekrandan gönderilen ses dosyası Jarvis'in sesi olur ----------
+function useClonedVoice(profileId: string) {
+  const sel: VoiceSel = { model: VS_MODEL, voice: profileId, speed: currentVoice().speed };
+  state.voice = sel;
+  saveState();
+  console.log(`[tts] seslendiren: ${voiceId(sel)} (klon ses)`);
+  warmOpening(sel).catch(() => {});
+  warmGreetings(sel);
+  broadcast(settingsEvent());
+}
+registerVoiceSetter(useClonedVoice);
+app.post('/api/ses-klonla', adminOnly, express.raw({ type: ['audio/*', 'video/*', 'application/octet-stream'], limit: '60mb' }), async (req, res) => {
+  if (!Buffer.isBuffer(req.body) || req.body.length < 4000) return res.status(400).json({ error: 'Ses dosyası boş ya da çok kısa' });
+  const ad = String(req.query.ad || '').trim().slice(0, 60) || `Jarvis sesi ${new Date().toLocaleDateString('tr-TR')}`;
+  const dosya = String(req.query.dosya || 'ses.webm').replace(/[^\w.\-]/g, '_');
+  try {
+    const p = await vsClone(req.body, dosya, ad);
+    useClonedVoice(p.id);
+    res.json({ ok: true, profil: p, voice: currentVoice() });
+  } catch (e: any) {
+    logError('ses klonlama', e);
+    res.status(502).json({ error: String(e?.message || e).slice(0, 300) });
+  }
 });
 
 // ---------- Kamera cihazları (WebRTC sinyali, aralıklı kare, kameraya_bak) ----------

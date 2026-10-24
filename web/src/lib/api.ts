@@ -269,3 +269,10 @@ export const getAndroid = () => android('');
 export const pairAndroid = (adres: string, kod: string) => android('/eslestir', { adres, kod });
 export const connectAndroid = (adres: string) => android('/baglan', { adres });
 export const setupAdb = () => android('/kur', {});
+
+/** Ses dosyasından klon ses (VoiceStudio): sunucu sesi temizler, profili oluşturur ve Jarvis'in sesi yapar */
+export async function cloneVoice(f: File, ad?: string): Promise<{ profil: { id: string; name: string; temizlendi: boolean } }> {
+  const q = new URLSearchParams({ dosya: f.name, ...(ad ? { ad } : {}) });
+  const r = await fetch(`/api/ses-klonla?${q}`, { method: 'POST', headers: { 'Content-Type': f.type || 'application/octet-stream', ...(token ? { 'x-jarvis-token': token } : {}) }, body: f });
+  return json(r);
+}
