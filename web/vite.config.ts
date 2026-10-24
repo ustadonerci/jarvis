@@ -95,6 +95,11 @@ export default defineConfig({
     // Telefon: sabit link (Tailscale, *.ts.net) ya da Cloudflare tüneli bu adreslerle gelir (Vite bilinmeyenleri engeller)
     allowedHosts: ['.trycloudflare.com', '.ts.net'],
     // xfwd: sunucu isteğin gerçekten bu bilgisayardan mı geldiğini görsün (Ayarlar → anahtarlar/yetenekler)
-    proxy: { '/api': { target: 'http://localhost:8787', changeOrigin: true, xfwd: true } },
+    // /twilio ve /hook: telefon görüşmeleri ve WhatsApp Business webhookları tünelden sunucuya ulaşsın
+    proxy: {
+      '/api': { target: 'http://localhost:8787', changeOrigin: true, xfwd: true },
+      '/twilio': { target: 'http://localhost:8787', changeOrigin: true, xfwd: true },
+      '/hook': { target: 'http://localhost:8787', changeOrigin: true, xfwd: true },
+    },
   },
 })

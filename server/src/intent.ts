@@ -17,7 +17,7 @@ const RULES: [Group, RegExp][] = [
   ['ajan', /(uzman|ajan|detayli arastir|derinlemesine|rapor|strateji|plan hazirla|arka planda|tasarim|dashboard|panel tasarla)/],
   ['sistem', /(bilgisayar|programi?|uygulama(yi|lari)? (kur|ac|kapat|kaldir|guncelle)|winget|komut|powershell|terminal|dosya|klasor|masaustu|\bdisk\b|\bram\b|islemci|sistem bilgi|kendi kod)/],
   ['otomasyon', /(webhook|n8n|zapier|make\.com|otomasyon|is akisi|kanala? paylas|paylasim yap|kendi kodunu|kodunu (duzelt|duzenle|oku))/],
-  ['telefon', /(telefonla ara|\bara(r misin|yin|sana|\b)|arama yap|telefon et|arama kayit|kim aradi|twilio)/],
+  ['telefon', /(telefonla ara|\bara(r misin|yin|sana|\b)|arama yap|telefon et|arama kayit|kim aradi|twilio|beni ara|hatirlat|uyandir|planli arama)/],
   ['sms', /(\bsms|kisa mesaj)/],
   ['sosyal', /(youtube|youtu\.be|instagram|insta\b|tiktok|twitter|x\.com|takip|kanal|reels|shorts|video(yu|lari)? (ozetle|ac))/],
   ['android', /(telefonuma|telefonumdan|telefonumda|play store|google play|apk|android|uygulama(yi)? (yukle|indir|sil|kaldir))/],
