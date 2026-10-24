@@ -325,6 +325,8 @@ const AUTO_PACKAGES: Record<string, string[]> = {
   ],
   // skills.sh arama becerisi (yetenek_bul aracıyla birlikte: "şunun için beceri var mı?")
   'find-skills': ['vercel-labs/skills/tree/main/skills/find-skills'],
+  // YouTube kanalı becerileri (senaryo, başlık/küçük resim, SEO, Shorts, bölümler, izlenme analizi…); yalnız talimat + yerel Python araçları
+  youtube: ['Jakeschincariol/youtube-agent-skill'],
 };
 const packageMark = (name: string) => path.join(DATA, `paket-${name}.kuruldu`);
 
