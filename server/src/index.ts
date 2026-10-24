@@ -562,7 +562,7 @@ app.get('/api/tts', async (req, res) => {
 });
 
 // ---------- Ses tanıma: MediaRecorder kaydı → RouteLLM ----------
-app.post('/api/stt', express.raw({ type: ['audio/*', 'application/octet-stream'], limit: '10mb' }), async (req, res) => {
+app.post('/api/stt', express.raw({ type: ['audio/*', 'application/octet-stream'], limit: '40mb' }), async (req, res) => {
   const mime = String(req.headers['content-type'] || '');
   if (!Buffer.isBuffer(req.body) || req.body.length < 1000) return res.status(400).json({ error: 'kayıt boş' });
   try {

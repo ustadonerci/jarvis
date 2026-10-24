@@ -354,14 +354,16 @@ export function speechRecognitionSupported() {
   return !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
 }
 
-export function createRecognizer(h: { onInterim(t: string): void; onFinal(t: string): void; onEnd(): void; onError(msg: string): void }): Recognizer | null {
+/** continuous: kullanıcı durdurana kadar dinler; tarayıcı kendi kapatırsa (sessizlik, ~60 sn sınırı) yeniden başlatır */
+export function createRecognizer(h: { onInterim(t: string): void; onFinal(t: string): void; onEnd(): void; onError(msg: string): void; continuous?: boolean }): Recognizer | null {
   const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
   if (!SR) return null;
   const rec = new SR();
   rec.lang = 'tr-TR';
   rec.interimResults = true;
-  rec.continuous = false;
+  rec.continuous = !!h.continuous;
   let finalText = '';
+  let stopped = false;
   rec.onresult = (e: any) => {
     let interim = '';
     for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -371,12 +373,19 @@ export function createRecognizer(h: { onInterim(t: string): void; onFinal(t: str
     }
     h.onInterim((finalText + ' ' + interim).trim());
   };
-  rec.onerror = (e: any) => { if (e.error !== 'no-speech' && e.error !== 'aborted') h.onError(e.error); };
+  rec.onerror = (e: any) => {
+    if (h.continuous && (e.error === 'not-allowed' || e.error === 'service-not-allowed' || e.error === 'audio-capture')) stopped = true;
+    if (e.error !== 'no-speech' && e.error !== 'aborted') h.onError(e.error);
+  };
   rec.onend = () => {
+    if (h.continuous && !stopped) {
+      if (finalText && !/\s$/.test(finalText)) finalText += ' ';
+      try { rec.start(); return; } catch { /* başlatılamadı: bitir */ }
+    }
     const t = finalText.trim();
     finalText = '';
     if (t) h.onFinal(t);
     h.onEnd();
   };
-  return { start: () => rec.start(), stop: () => rec.stop() };
+  return { start: () => { stopped = false; rec.start(); }, stop: () => { stopped = true; rec.stop(); } };
 }

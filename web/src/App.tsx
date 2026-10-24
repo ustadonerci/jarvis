@@ -29,7 +29,7 @@ import { emitCamera, getCameras, getRole, isCameraEvent, onCamera, setRole, togg
 import { type ElevenUsage, clearConversation, cloneVoice, uploadFile, detectDevice, getDashboard, getHealth, getState, getVoices, metric, postAttention, postSleep, postWake, previewUrl, saveDevice, saveSettings, sendChat, setPhotoMode, stt, subscribe, token, clientId } from './lib/api';
 import { startClapListener, type ClapListener } from './lib/clap';
 import { shrinkImage } from './lib/image';
-import { recorderSupported, startRecording } from './lib/recorder';
+import { recorderSupported, startRecording, warmMic } from './lib/recorder';
 import { Markdown } from './lib/markdown';
 import { createRecognizer, speechRecognitionSupported, voice } from './lib/speech';
 import { DEVICE_LABEL, type PersonaOption, type ThemeOption, type CoreState, type CurrencyCode, type Dashboard, type Device, type GreetingPeriod, type Health, type JarvisReply, type Sahne, type ServerEvent, type StoredMessage, type UiMode, type VoiceOption, type VoiceSel, type WakeConfig } from './lib/types';
@@ -693,6 +693,7 @@ export default function App() {
   // Web Speech API yalnızca yedek (iPhone'da güvenilir değil).
   const startWebSpeech = () => {
     const rec = createRecognizer({
+      continuous: true,
       onInterim: setInterim,
       onFinal: t => submit(t),
       onEnd: () => setCore(c => (c === 'listening' ? 'idle' : c)),
@@ -705,7 +706,8 @@ export default function App() {
     rec.start();
   };
 
-  // Asıl yol: mikrofon kaydı → RouteLLM ile yazıya çevirme. Konuşma bitince (sessizlik) kendiliğinden durur.
+  // Asıl yol: mikrofon kaydı → RouteLLM ile yazıya çevirme. Kullanıcı mikrofona (ya da boşluğa) tekrar basana kadar
+  // açık kalır: uzun konuşmada düşünmek için verilen aralar kaydı kesmez.
   const toggleMic = async () => {
     voice.unlock();
     if (core === 'listening') { recRef.current?.stop(); return; }
@@ -722,6 +724,7 @@ export default function App() {
     let sideDone: () => void = () => {};
     const sideEnded = new Promise<void>(r => { sideDone = r; });
     const side = ios ? null : createRecognizer({
+      continuous: true,
       onInterim: t => { if (t) setInterim(t); },
       onFinal: t => { webText = t; },
       onEnd: () => sideDone(),
@@ -734,8 +737,9 @@ export default function App() {
     try {
       recRef.current = await startRecording({
         sendSilent: true,
-        noSpeechMs: 8000,
-        maxMs: 25_000,
+        manual: true,
+        maxMs: 10 * 60_000, // emniyet: 10 dk
+        stream: clapRef.current?.stream,
         onStop: async (blob, info) => {
           recRef.current = null;
           const backup = sideText();
@@ -761,7 +765,7 @@ export default function App() {
           }
         },
       });
-      setInterim('dinliyorum… (bitince susun ya da mikrofona tekrar basın)');
+      setInterim('dinliyorum… (bitirince mikrofona tekrar basın)');
     } catch {
       // Mikrofon izni yok ya da kayıt başlamadı: Web Speech yedeğini dene.
       try { side?.stop(); } catch { /* yok */ }
@@ -1234,7 +1238,7 @@ export default function App() {
           <button className="icon-btn cam" onClick={() => { voice.unlock(); fileRef.current?.click(); }} aria-label="Fotoğraf ya da dosya gönder" title="Fotoğraf ya da dosya gönder (PDF, Word, video, ses…)">
             <svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>
           </button>
-          <button className={'mic ' + (core === 'listening' ? 'live' : '')} onClick={toggleMic} aria-label="Konuş">
+          <button className={'mic ' + (core === 'listening' ? 'live' : '')} onPointerDown={() => { if (core !== 'listening' && recorderSupported()) warmMic(); }} onClick={toggleMic} aria-label="Konuş">
             <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
           </button>
           {core === 'speaking' && <button className="icon-btn" onClick={stopPlayback} aria-label="Durdur">■</button>}

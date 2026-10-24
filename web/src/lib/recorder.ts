@@ -15,6 +15,30 @@ function pickMime(): string | undefined {
   return undefined;
 }
 
+// Mikrofon akışı bir süre açık tutulur: her basışta yeniden izin/başlatma (Windows'ta 0,3–1 sn) olmaz, ilk hece
+// kaçmaz. Son kullanımdan 2 dk sonra kapatılır (tarayıcının mikrofon işareti de söner).
+const MIC = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+let warm: MediaStream | null = null;
+let warmUsers = 0;
+let warmTimer: ReturnType<typeof setTimeout> | undefined;
+const live = (s: MediaStream | null) => !!s && s.getAudioTracks().some(t => t.readyState === 'live');
+
+/** Mikrofonu önceden aç (ör. düğmeye basılırken); başarısızsa sessizce geçer */
+export async function warmMic(): Promise<MediaStream | null> {
+  clearTimeout(warmTimer);
+  if (!live(warm)) warm = await navigator.mediaDevices.getUserMedia({ audio: MIC }).catch(() => null);
+  scheduleRelease();
+  return warm;
+}
+function scheduleRelease() {
+  clearTimeout(warmTimer);
+  warmTimer = setTimeout(() => {
+    if (warmUsers > 0) return scheduleRelease();
+    warm?.getTracks().forEach(t => t.stop());
+    warm = null;
+  }, 120_000);
+}
+
 export interface RecordingInfo {
   /** Konuşma (gürültü tabanının belirgin üstünde ses) algılandı mı */
   heard: boolean;
@@ -32,6 +56,8 @@ export async function startRecording(h: {
   noSpeechMs?: number;
   /** En uzun kayıt (varsayılan 15000 ms) */
   maxMs?: number;
+  /** Kullanıcı durdurana kadar kayıt: sessizlikte ya da konuşma yokken kendiliğinden kapanmaz (yalnızca maxMs) */
+  manual?: boolean;
   /**
    * Konuşma algılanmasa da kaydı gönder (mikrofon düğmesi). Masaüstü mikrofonları çoğu zaman kısık çeker; seviye
    * eşiğin altında kalınca kayıt eskiden sessizce atılıyordu ve Jarvis hiç cevap vermiyordu.
@@ -44,8 +70,10 @@ export async function startRecording(h: {
   ctx?: AudioContext;
 }): Promise<Recording> {
   const silenceMs = h.silenceMs ?? 1400, noSpeechMs = h.noSpeechMs ?? 6000, maxMs = h.maxMs ?? 15000;
-  const ownStream = !h.stream;
-  const stream = h.stream ?? (await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }));
+  const shared = h.stream ? null : await warmMic();
+  const ownStream = !h.stream && !shared;
+  const stream = h.stream ?? shared ?? (await navigator.mediaDevices.getUserMedia({ audio: MIC }));
+  if (shared) warmUsers++;
   const mime = pickMime();
   const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
   const chunks: Blob[] = [];
@@ -82,6 +110,7 @@ export async function startRecording(h: {
   rec.onstop = () => {
     source.disconnect();
     if (ownStream) stream.getTracks().forEach(t => t.stop());
+    if (shared) { warmUsers--; scheduleRelease(); }
     if (!h.ctx) ctx.close().catch(() => {});
     const has = chunks.length > 0 && (heard || !!h.sendSilent);
     h.onStop(has ? new Blob(chunks, { type: rec.mimeType || mime || 'audio/webm' }) : null, { heard, peak });
@@ -100,6 +129,7 @@ export async function startRecording(h: {
     // Konuşma: gürültü tabanının ~3 katı (en az 0,012). Eski sabit eşik (0,035) kısık mikrofonlarda hiç aşılmıyordu.
     const thr = Math.max(0.012, Math.min(0.05, floor * 3));
     if (!blind && now - t0 > 150 && rms > thr) { heard = true; lastVoice = now; }
+    if (h.manual) return;
     if ((heard && !blind && now - lastVoice > silenceMs) || (!heard && now - t0 > noSpeechMs) || (blind && now - t0 > noSpeechMs)) finish();
   };
   rec.start(250);

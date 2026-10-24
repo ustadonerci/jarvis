@@ -86,9 +86,10 @@ export async function saveSettings(patch: { voice?: VoiceSel; sfx?: boolean; wak
 
 /** Mikrofon kaydını RouteLLM ile yazıya çevirir. */
 export async function stt(audio: Blob): Promise<string> {
-  // Takılırsa ekran "anlıyorum…"da kalmasın
-  const r = await fetch('/api/stt', { method: 'POST', headers: { 'Content-Type': audio.type || 'audio/webm', ...(token ? { 'x-jarvis-token': token } : {}) }, body: audio, signal: AbortSignal.timeout(40_000) })
-    .catch(e => { throw new Error(e?.name === 'TimeoutError' ? 'ses tanıma 40 sn içinde cevap vermedi' : 'sunucuya ulaşılamadı'); });
+  // Takılırsa ekran "anlıyorum…"da kalmasın; uzun konuşmanın kaydı daha uzun sürer
+  const limit = 40_000 + Math.round(audio.size / 20);
+  const r = await fetch('/api/stt', { method: 'POST', headers: { 'Content-Type': audio.type || 'audio/webm', ...(token ? { 'x-jarvis-token': token } : {}) }, body: audio, signal: AbortSignal.timeout(limit) })
+    .catch(e => { throw new Error(e?.name === 'TimeoutError' ? `ses tanıma ${Math.round(limit / 1000)} sn içinde cevap vermedi` : 'sunucuya ulaşılamadı'); });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'ses yazıya çevrilemedi');
   return (await r.json()).text ?? '';
 }

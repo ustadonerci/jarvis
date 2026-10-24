@@ -28,7 +28,7 @@ async function viaDeepgram(audio: Buffer, mime: string): Promise<{ text: string;
     method: 'POST',
     headers: { Authorization: `Token ${process.env.DEEPGRAM_API_KEY}`, 'Content-Type': mime.split(';')[0] || 'audio/webm' },
     body: new Uint8Array(audio),
-    signal: AbortSignal.timeout(20_000),
+    signal: AbortSignal.timeout(limitMs(audio)),
   });
   if (!r.ok) throw new Error(`Deepgram ${r.status}: ${(await r.text()).slice(0, 120)}`);
   const j: any = await r.json();
@@ -40,11 +40,14 @@ async function viaWhisper(audio: Buffer, mime: string, format: string): Promise<
   form.append('file', new Blob([new Uint8Array(audio)], { type: mime }), `kayit.${format}`);
   form.append('model', model);
   form.append('language', 'tr');
-  const r = await fetch('https://api.openai.com/v1/audio/transcriptions', { method: 'POST', headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, body: form, signal: AbortSignal.timeout(30_000) });
+  const r = await fetch('https://api.openai.com/v1/audio/transcriptions', { method: 'POST', headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, body: form, signal: AbortSignal.timeout(limitMs(audio) + 10_000) });
   if (!r.ok) throw new Error(`OpenAI ${r.status}: ${(await r.text()).slice(0, 120)}`);
   const j: any = await r.json();
   return { text: String(j.text ?? '').trim(), model: `openai/${model}` };
 }
+
+/** Uzun kayıt (mikrofon kullanıcı kapatana kadar açık) daha uzun sürer: 20 sn + her ~20 KB için 1 sn */
+const limitMs = (audio: Buffer) => 20_000 + Math.round(audio.length / 20);
 
 export async function transcribe(audio: Buffer, mime: string): Promise<{ text: string; model: string; ms: number }> {
   const t0 = Date.now();
