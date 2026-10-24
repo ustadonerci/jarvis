@@ -263,13 +263,14 @@ export function subscribe(device: Device, onEvent: (e: ServerEvent) => void, onS
   return () => { closed = true; es?.close(); };
 }
 
-export interface AndroidData { adb: boolean; bagli: boolean; cihaz?: string; sonAdres?: string; hata?: string; mesaj?: string }
+export interface AndroidData { adb: boolean; bagli: boolean; cihaz?: string; usb?: boolean; yetkisiz?: boolean; sonAdres?: string; hata?: string; mesaj?: string }
 const android = (path: string, body?: object) =>
   fetch(`/api/android${path}`, { method: body ? 'POST' : 'GET', headers: headers(), body: body ? JSON.stringify(body) : undefined }).then(r => json<AndroidData>(r));
 export const getAndroid = () => android('');
 export const pairAndroid = (adres: string, kod: string) => android('/eslestir', { adres, kod });
 export const connectAndroid = (adres: string) => android('/baglan', { adres });
 export const setupAdb = () => android('/kur', {});
+export const importAndroidContacts = () => android('/rehber', {});
 
 /** Ses dosyasından klon ses (VoiceStudio): sunucu sesi temizler, profili oluşturur ve Jarvis'in sesi yapar */
 export async function cloneVoice(f: File, ad?: string): Promise<{ profil: { id: string; name: string; temizlendi: boolean } }> {

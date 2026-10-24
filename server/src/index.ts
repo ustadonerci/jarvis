@@ -28,6 +28,7 @@ import { initMessaging, messagingHooksRouter, messagingRouter, notifySelf } from
 import { registerReelsVoice } from './reels.js';
 import { initRobot } from './robot.js';
 import { importContacts, initContacts, parseContacts } from './contacts.js';
+import { initMailClean } from './mailclean.js';
 import { initPhone, phoneRouter } from './phone.js';
 import { initSocial, socialRouter } from './social.js';
 import { androidRouter, initAndroid } from './android.js';
@@ -146,6 +147,7 @@ initPhone({ broadcast, voice: () => currentVoice() });
 registerReelsVoice(() => currentVoice());
 initRobot({ broadcast, notify: notifySelf });
 initContacts(broadcast);
+initMailClean();
 initSocial(broadcast);
 initAndroid(broadcast);
 initAgents(broadcast);

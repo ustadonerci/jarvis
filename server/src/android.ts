@@ -68,6 +68,21 @@ function adb(args: string[], timeout = 20_000): Promise<{ ok: boolean; out: stri
   });
 }
 
+/** İkili çıktı (dosya okuma) için */
+function adbBuf(args: string[], timeout = 60_000): Promise<Buffer> {
+  const exe = ensureAdb();
+  return new Promise((resolve, reject) => {
+    execFile(exe, args, { timeout, maxBuffer: 50 * 1024 * 1024, windowsHide: true, encoding: 'buffer' }, (err, stdout) => (err ? reject(err) : resolve(stdout)));
+  });
+}
+
+/** USB'de telefon "Bu bilgisayara izin ver" sorusu onaylanmadıysa "unauthorized" görünür */
+async function unauthorized(): Promise<boolean> {
+  const r = await adb(['devices']);
+  return /\s(unauthorized|authorizing)\b/.test(r.out);
+}
+const USB_ALLOW = 'Telefonda "USB hata ayıklamaya izin verilsin mi?" sorusu çıktı: "Bu bilgisayara her zaman izin ver"i işaretleyip "İzin ver"e dokunun, sonra tekrar deneyin. Soru görünmüyorsa kabloyu çıkarıp takın.';
+
 interface Device { seri: string; model: string }
 async function devices(): Promise<Device[]> {
   const r = await adb(['devices', '-l']);
@@ -84,7 +99,8 @@ async function device(): Promise<Device> {
     await reconnect();
     list = await devices();
   }
-  if (!list.length) throw new Error('Telefon bağlı değil. Telefonda Kablosuz hata ayıklama açık mı, telefon ve bilgisayar aynı Wi-Fi\'de mi? İlk kez ise Ayarlar → Android telefon bölümünden eşleştirin.');
+  if (!list.length && await unauthorized()) throw new Error(USB_ALLOW);
+  if (!list.length) throw new Error('Telefon bağlı değil. USB kabloyla bağlıysanız telefonda USB hata ayıklama açık mı ve kablo veri kablosu mu? Kablosuz ise: Kablosuz hata ayıklama açık mı, telefon ve bilgisayar aynı Wi-Fi\'de mi? İlk kez ise Ayarlar → Android telefon bölümünden eşleştirin.');
   const pref = readCfg().cihaz;
   return list.find(d => d.seri === pref) ?? list[0];
 }
@@ -212,11 +228,12 @@ async function resolveInstalled(seri: string, q: string): Promise<{ paket: strin
 
 // ---------------------------------------------------------------- Durum
 
-export async function androidStatus(): Promise<{ adb: boolean; bagli: boolean; cihaz?: string; sonAdres?: string; hata?: string }> {
+export async function androidStatus(): Promise<{ adb: boolean; bagli: boolean; cihaz?: string; usb?: boolean; yetkisiz?: boolean; sonAdres?: string; hata?: string }> {
   if (!findAdb()) return { adb: false, bagli: false };
   try {
     const list = await devices();
-    return { adb: true, bagli: list.length > 0, cihaz: list[0]?.model, sonAdres: readCfg().sonAdres };
+    const yetkisiz = !list.length && await unauthorized();
+    return { adb: true, bagli: list.length > 0, cihaz: list[0]?.model, usb: list[0] ? !list[0].seri.includes(':') : undefined, yetkisiz, ...(yetkisiz ? { hata: USB_ALLOW } : {}), sonAdres: readCfg().sonAdres };
   } catch (e: any) {
     return { adb: true, bagli: false, hata: String(e?.message || e).slice(0, 160) };
   }
@@ -238,6 +255,25 @@ export async function androidDial(d: Device, numara: string): Promise<{ arandi: 
   const r2 = await adb(['-s', d.seri, 'shell', 'am', 'start', '-a', 'android.intent.action.DIAL', '-d', tel]);
   if (r2.ok && !/Error|Exception/i.test(r2.out)) return { arandi: false, cevirici: true };
   throw new Error(`Telefon arama başlatamadı: ${(r.out || r2.out).split('\n').pop()?.slice(0, 160)}`);
+}
+
+/**
+ * Telefon rehberini okur (ADB, USB ya da kablosuz). Önce rehber veritabanı (content query); telefon buna izin
+ * vermezse telefonda dışa aktarılmış en yeni .vcf dosyası (İndirilenler/Belgeler/kök) alınır.
+ */
+export async function readPhoneContacts(): Promise<{ cihaz: string; kaynak: string; satirlar?: { ad: string; numara: string; tur?: string }[]; vcf?: Buffer }> {
+  const d = await device();
+  const q = await adb(['-s', d.seri, 'shell', 'content', 'query', '--uri', 'content://com.android.contacts/data/phones', '--projection', 'display_name:data1:data2'], 60_000);
+  const TUR: Record<string, string> = { 1: 'Ev', 2: 'Cep', 3: 'İş', 7: 'Diğer' };
+  const satirlar = q.out.split(/\r?\n/).map(l => /^Row: \d+ display_name=(.*), data1=(.*), data2=(\w*)\s*$/.exec(l)).filter((m): m is RegExpExecArray => !!m)
+    .map(m => ({ ad: m[1].trim(), numara: m[2].trim(), tur: TUR[m[3]] })).filter(x => x.ad && x.ad !== 'NULL' && /\d{5,}/.test(x.numara.replace(/\D/g, '')));
+  if (satirlar.length) return { cihaz: d.model, kaynak: 'rehber veritabanı', satirlar };
+  if (!/No result found/i.test(q.out) && !/Permission|SecurityException|Error/i.test(q.out) && q.ok) return { cihaz: d.model, kaynak: 'rehber veritabanı', satirlar: [] };
+  // Yedek: telefonda dışa aktarılmış .vcf
+  const ls = await adb(['-s', d.seri, 'shell', 'ls -t /sdcard/Download/*.vcf /sdcard/Documents/*.vcf /sdcard/*.vcf 2>/dev/null']);
+  const file = ls.out.split(/\r?\n/).map(s => s.trim()).find(s => /^\/sdcard\/.+\.vcf$/i.test(s));
+  if (!file) throw new Error(`Telefon rehberine doğrudan erişime izin vermedi. Telefonda Kişiler → Kişileri yönet → İçe/dışa aktar → Dışa aktar (dahili depolama) yapın; Jarvis oluşan .vcf dosyasını kendisi alır. Sonra tekrar "rehberi telefondan al" deyin.`);
+  return { cihaz: d.model, kaynak: file, vcf: await adbBuf(['-s', d.seri, 'exec-out', 'cat', file]) };
 }
 
 let broadcast: (e: object) => void = () => {};
@@ -362,5 +398,6 @@ export function androidRouter(): Router {
   r.post('/api/android/eslestir', wrap(b => pair(String(b.adres ?? '').trim(), String(b.kod ?? '').trim())));
   r.post('/api/android/baglan', wrap(b => connect(String(b.adres ?? '').trim())));
   r.post('/api/android/kur', wrap(async () => { ensureAdb(); return 'adb hazır.'; }));
+  r.post('/api/android/rehber', wrap(async () => (await import('./contacts.js')).importFromPhone()));
   return r;
 }

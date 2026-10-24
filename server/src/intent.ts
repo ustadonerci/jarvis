@@ -12,7 +12,7 @@ const fold = (s: string) => s.toLocaleLowerCase('tr')
 const RULES: [Group, RegExp][] = [
   ['finans', /\b(borsa|hisse|bist|nasdaq|dolar|euro|avro|sterlin|doviz|(dolar|euro|avro|doviz) kuru|kurlar\b|altin|gumus|petrol|brent|kripto|bitcoin|btc|ethereum|eth|coin|portfoy|yatirim|fiyat|alarm|rsi|macd|teknik analiz|al(sam|ayim|mali)|sat(sam|ayim|mali)|thyao|aselsan|garanti|robot|alim ?satim|al-?sat|trading|trade|backtest|geriye donuk test|kagit (ustu|islem|mod)|binance)/],
   ['mesaj', /(whatsapp|watsap|vatsap|telegram|mesaj|yaz(ar misin|sana|in|di|dim|digim)|gonder|okunmamis|kim(ler)? (aradi|yazdi)|sohbet|geri al|herkesten sil|benden sil|duzelt)/],
-  ['eposta', /(e-?posta|\bmail|gmail|outlook|gelen kutu|taslak|arsivle|cop kutu)/],
+  ['eposta', /(e-?posta|\bmail|maillerim|gmail|outlook|gelen kutu|taslak|arsivle|cop kutu|abonelik(ten|lerden)? cik|spam|reklam (mail|e-?posta)|bulten)/],
   ['github', /(github|\brepo|trend|kesif|kesfet|yeni yetenek|yeni beceri)/],
   ['ajan', /(uzman|ajan|detayli arastir|derinlemesine|rapor|strateji|plan hazirla|arka planda|tasarim|dashboard|panel tasarla)/],
   ['sistem', /(bilgisayar|programi?|uygulama(yi|lari)? (kur|ac|kapat|kaldir|guncelle)|winget|komut|powershell|terminal|dosya|klasor|masaustu|\bdisk\b|\bram\b|islemci|sistem bilgi|kendi kod)/],

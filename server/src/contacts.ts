@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { androidDevice, androidDial } from './android.js';
+import { androidDevice, androidDial, readPhoneContacts } from './android.js';
 import { notifySelf } from './messaging.js';
 import { bridgeCall, bridgeReady, e164 } from './phone.js';
 
@@ -156,6 +156,25 @@ export function importContacts(list: Contact[], replace = false): { eklenen: num
 
 export function clearContacts() { save([]); }
 
+/** ADB ile bağlı telefondan rehberi alır ve Jarvis'in rehberine ekler */
+export async function importFromPhone(): Promise<string> {
+  const r = await readPhoneContacts();
+  let list: Contact[] = [];
+  if (r.vcf) list = contactsFromVcf(decodeText(r.vcf));
+  else {
+    const by = new Map<string, Contact>();
+    for (const s of r.satirlar ?? []) {
+      const c = by.get(s.ad) ?? { ad: s.ad.slice(0, 100), numaralar: [] };
+      if (!c.numaralar.some(n => numKey(n.numara) === numKey(s.numara))) c.numaralar.push({ numara: s.numara, ...(s.tur ? { tur: s.tur } : {}) });
+      by.set(s.ad, c);
+    }
+    list = [...by.values()];
+  }
+  if (!list.length) throw new Error(`${r.cihaz}: rehberde numaralı kişi bulunamadı.`);
+  const x = importContacts(list);
+  return `${r.cihaz} telefonundan rehber alındı (${r.kaynak}): ${x.eklenen} yeni, ${x.guncellenen} güncellendi · toplam ${x.toplam} kişi.`;
+}
+
 // ---------------------------------------------------------------- Arama (isimle)
 
 export const fold = (s: string) => s.toLocaleLowerCase('tr')
@@ -237,8 +256,8 @@ export const CONTACT_TOOLS = [
     type: 'function',
     function: {
       name: 'rehber',
-      description: "Telefon rehberi: bul (isimle kişi ve numaraları; 'Bilal'in numarası ne'), durum (kaç kişi kayıtlı), temizle (rehberi siler; yalnız kullanıcı açıkça isterse). Rehber CSV ya da .vcf dosyası Jarvis'e gönderilerek yüklenir.",
-      parameters: { type: 'object', properties: { islem: { type: 'string', enum: ['bul', 'durum', 'temizle'] }, isim: { type: 'string' } }, required: ['islem'] },
+      description: "Telefon rehberi: bul (isimle kişi ve numaraları; 'Bilal'in numarası ne'), durum (kaç kişi kayıtlı), telefondan_al (USB ya da kablosuz hata ayıklamayla bağlı Android telefondan rehberi çeker: 'telefonuma bağlan rehberi al'), temizle (rehberi siler; yalnız kullanıcı açıkça isterse). Rehber CSV ya da .vcf dosyası Jarvis'e gönderilerek yüklenir.",
+      parameters: { type: 'object', properties: { islem: { type: 'string', enum: ['bul', 'durum', 'telefondan_al', 'temizle'] }, isim: { type: 'string' } }, required: ['islem'] },
     },
   },
 ] as const;
@@ -254,6 +273,7 @@ export async function runContactTool(name: string, a: any, progress: (l: string)
     if (name === 'rehber') {
       if (a.islem === 'durum') return j({ kisi_sayisi: contactCount() });
       if (a.islem === 'temizle') { clearContacts(); return j({ ok: true, not: 'Rehber silindi.' }); }
+      if (a.islem === 'telefondan_al') { progress('telefondan rehber okunuyor'); return j({ ok: true, sonuc: await importFromPhone() }); }
       if (!contactCount()) return j(bos);
       const m = findContacts(String(a.isim ?? ''));
       return j(m.length ? { sonuclar: m.slice(0, 5).map(x => view(x.kisi)) } : { sonuc: `Rehberde "${a.isim}" bulunamadı.` });

@@ -38,7 +38,7 @@ function smtp(): { host: string; port: number; secure: boolean } {
   return pick(`smtp.${d}`, 465);
 }
 
-async function sendMail(o: { kime: string; konu: string; metin: string; inReplyTo?: string }): Promise<string> {
+export async function sendMail(o: { kime: string; konu: string; metin: string; inReplyTo?: string }): Promise<string> {
   const t = nodemailer.createTransport({ ...smtp(), auth: { user: addr(), pass: pass() }, connectionTimeout: 20_000, greetingTimeout: 20_000 });
   try {
     const r = await t.sendMail({ from: addr(), to: o.kime, subject: o.konu, text: o.metin, ...(o.inReplyTo ? { inReplyTo: o.inReplyTo, references: o.inReplyTo } : {}) });
@@ -50,7 +50,7 @@ async function sendMail(o: { kime: string; konu: string; metin: string; inReplyT
   }
 }
 
-async function withClient<T>(fn: (c: ImapFlow) => Promise<T>): Promise<T> {
+export async function withClient<T>(fn: (c: ImapFlow) => Promise<T>): Promise<T> {
   const client = new ImapFlow({ host: imapHost(), port: 993, secure: true, auth: { user: addr(), pass: pass() }, logger: false, socketTimeout: 30_000 });
   try {
     await client.connect();
@@ -68,7 +68,7 @@ async function withClient<T>(fn: (c: ImapFlow) => Promise<T>): Promise<T> {
 }
 
 /** Özel klasörü (Taslaklar, Çöp, Gönderilenler, Arşiv) dilden bağımsız bul */
-async function specialFolder(c: ImapFlow, use: '\\Drafts' | '\\Trash' | '\\Sent' | '\\Archive' | '\\All'): Promise<string | null> {
+export async function specialFolder(c: ImapFlow, use: '\\Drafts' | '\\Trash' | '\\Sent' | '\\Archive' | '\\All'): Promise<string | null> {
   const list = await c.list();
   return list.find(f => f.specialUse === use)?.path ?? null;
 }
@@ -78,7 +78,7 @@ const KLASORLER: Klasor[] = ['gelen', 'taslaklar', 'gonderilenler', 'cop', 'arsi
 const asKlasor = (v: unknown): Klasor => (KLASORLER.includes(v as Klasor) ? (v as Klasor) : 'gelen');
 
 /** Klasör adı → sunucudaki yolu. Arşiv: Gmail'de "Tüm Postalar", diğerlerinde Archive. */
-async function folderPath(c: ImapFlow, k: Klasor): Promise<string> {
+export async function folderPath(c: ImapFlow, k: Klasor): Promise<string> {
   if (k === 'gelen') return 'INBOX';
   const use = ({ taslaklar: '\\Drafts', gonderilenler: '\\Sent', cop: '\\Trash', arsiv: '\\Archive' } as const)[k];
   const p = await specialFolder(c, use) ?? (k === 'arsiv' ? await specialFolder(c, '\\All') : null);

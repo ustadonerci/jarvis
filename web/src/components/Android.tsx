@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { connectAndroid, getAndroid, pairAndroid, setupAdb, type AndroidData } from '../lib/api';
+import { connectAndroid, getAndroid, importAndroidContacts, pairAndroid, setupAdb, type AndroidData } from '../lib/api';
 
 /**
  * Ayarlar → Android telefon: kablosuz ADB eşleştirmesi. Bağlanınca Jarvis telefona Google Play'den uygulama yükler ve
@@ -20,15 +20,20 @@ export function AndroidSettings({ flash }: { flash(t: string): void }) {
   if (!d) return null;
   return (
     <>
-      <label>Android telefon · {d.bagli ? `bağlı (${d.cihaz})` : d.sonAdres ? 'eşleştirildi, şu an bağlı değil' : 'bağlı değil'}</label>
+      <label>Android telefon · {d.bagli ? `bağlı (${d.cihaz}${d.usb ? ', USB' : ''})` : d.yetkisiz ? 'USB kablo takılı, telefonda izin bekleniyor' : d.sonAdres ? 'eşleştirildi, şu an bağlı değil' : 'bağlı değil'}</label>
       <p className="muted small">Bağlanınca Jarvis'e "telefonuma X'i yükle" ya da "telefonumdan X'i sil" diyebilirsiniz: Google Play sayfasını telefonda açıp Yükle'ye basar ya da uygulamayı kaldırır. Her işlem onay kartıyla yapılır; ücretli uygulama satın almaz, sistem uygulamalarını kaldırmaz.</p>
       {!d.adb && (
         <div className="seg"><button disabled={busy} onClick={() => act(setupAdb())}>{busy ? 'Kuruluyor…' : 'Gerekli aracı kur (adb, bir kez)'}</button></div>
       )}
-      <div className="seg"><button className={help ? 'on' : ''} onClick={() => setHelp(h => !h)}>Nasıl eşleştiririm?</button></div>
+      <div className="seg">
+        <button className={help ? 'on' : ''} onClick={() => setHelp(h => !h)}>Nasıl bağlarım?</button>
+        {d.bagli && <button disabled={busy} onClick={() => act(importAndroidContacts())}>{busy ? 'Okunuyor…' : '📇 Rehberi telefondan al'}</button>}
+        <button disabled={busy} onClick={() => act(getAndroid())}>Yenile</button>
+      </div>
       {help && (
         <ol className="muted small android-help">
-          <li>Telefon ve bilgisayar aynı Wi-Fi'ye bağlı olsun.</li>
+          <li><b>USB kabloyla (en kolayı):</b> Geliştirici seçenekleri → <b>USB hata ayıklama</b> açık olsun, telefonu kabloyla bilgisayara takın, telefonda çıkan soruda <b>"Bu bilgisayara her zaman izin ver"</b>i işaretleyip <b>İzin ver</b>'e dokunun ve Yenile'ye basın. Eşleştirme kodu gerekmez.</li>
+          <li><b>Kablosuz için:</b> telefon ve bilgisayar aynı Wi-Fi'ye bağlı olsun.</li>
           <li>Telefonda <b>Ayarlar → Telefon hakkında</b> → <b>Yapı numarası</b>'na 7 kez dokunun ("Artık geliştiricisiniz" yazar).</li>
           <li><b>Ayarlar → Sistem → Geliştirici seçenekleri</b> → <b>Kablosuz hata ayıklama</b>'yı açın ve üstüne dokunun.</li>
           <li><b>Cihazı eşleştirme koduyla eşle</b>'ye dokunun. Çıkan <b>IP adresi ve bağlantı noktası</b> (ör. 192.168.1.23:37155) ile <b>6 haneli kodu</b> aşağıya yazıp Eşleştir'e basın.</li>
