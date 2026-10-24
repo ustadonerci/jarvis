@@ -580,7 +580,7 @@ export default function App() {
         case 'restarting': setTimeout(() => location.reload(), 4000); break;
         case 'onay': setApprovalKey(k => k + 1); if (e.yeni) flash(`Onay bekliyor: ${e.yeni.baslik}`); break;
         case 'gorev': setLinks(l => [...l.slice(-2), { id: Date.now(), baslik: '✅ Arka plan görevi bitti', aciklama: e.baslik, url: '' }]); break;
-        case 'link': if (/^https:\/\//.test(e.url)) setLinks(l => [...l.slice(-2), { id: Date.now(), baslik: e.baslik, aciklama: e.aciklama, url: e.url, dugme: e.dugme }]); break;
+        case 'link': if (/^(https:\/\/|tel:\+?\d{6,16}$)/.test(e.url)) setLinks(l => [...l.slice(-2), { id: Date.now(), baslik: e.baslik, aciklama: e.aciklama, url: e.url, dugme: e.dugme }]); break;
         case 'robot': flash(`🤖 ${e.metin}`); break;
         case 'alarm': flash(`🔔 ${e.ad}: ${e.fiyat.toLocaleString('tr-TR')} · hedef ${e.kosul === 'ust' ? '≥' : '≤'} ${e.hedef.toLocaleString('tr-TR')}`); break;
         case 'mesaj': flash(`${{ whatsapp: 'WhatsApp', telegram: 'Telegram', telefon: '📞 Telefon' }[e.platform]} · ${e.arama ? `${e.kisi} ${e.platform === 'telefon' ? e.metin : 'aradı'}` : `${e.kisi}: ${e.metin}`}`); break;
@@ -846,6 +846,8 @@ export default function App() {
     for (const [i, f] of files.entries()) {
       try {
         const r = await uploadFile(f, p => flash(`${files.length > 1 ? `${i + 1}/${files.length} · ` : ''}${f.name} yükleniyor… %${Math.round(p * 100)}`));
+        // Telefon rehberi: kişiler Jarvis'e alındı, yapay zekaya gönderilmez
+        if (r.rehber) { flash(`📇 Rehber yüklendi: ${r.rehber.eklenen} yeni${r.rehber.guncellenen ? `, ${r.rehber.guncellenen} güncellendi` : ''} · toplam ${r.rehber.toplam} kişi. "Bilal'i ara" diyebilirsiniz.`); continue; }
         yollar.push(r.yol);
       } catch (e: any) {
         flash(`${f.name}: ${e.message}`);
@@ -1253,7 +1255,7 @@ export default function App() {
             <div key={l.id} className="link-card">
               <div className="lc-head"><b>{l.baslik}</b><button aria-label="Kapat" onClick={() => setLinks(x => x.filter(y => y.id !== l.id))}>✕</button></div>
               {l.aciklama && <p>{l.aciklama}</p>}
-              {l.url && <a className="lc-btn" href={l.url} target="_blank" rel="noopener noreferrer" onClick={() => setTimeout(() => setLinks(x => x.filter(y => y.id !== l.id)), 500)}>{l.dugme || 'Aç'}</a>}
+              {l.url && <a className="lc-btn" href={l.url} target={l.url.startsWith('tel:') ? undefined : '_blank'} rel="noopener noreferrer" onClick={() => setTimeout(() => setLinks(x => x.filter(y => y.id !== l.id)), 500)}>{l.dugme || 'Aç'}</a>}
             </div>
           ))}
         </div>

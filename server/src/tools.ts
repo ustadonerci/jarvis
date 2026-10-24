@@ -26,6 +26,7 @@ import { isHostingerTool, runHostingerTool } from './hostinger.js';
 import { isReelsTool, runReelsTool } from './reels.js';
 import { isRobotTool, runRobotTool } from './robot.js';
 import { isBrand24Tool, runBrand24Tool } from './brand24.js';
+import { isContactTool, runContactTool } from './contacts.js';
 import { isSiteTool, runSiteTool } from './sitedownload.js';
 import { addBook, addBookNote, fillInBackground, findBook, setBookStatus } from './library.js';
 
@@ -314,6 +315,7 @@ async function runToolOnce(name: string, rawArgs: string, progress: ToolProgress
   if (isReelsTool(name)) return runReelsTool(args, progress);
   if (isRobotTool(name)) return runRobotTool(args, progress);
   if (isBrand24Tool(name)) return runBrand24Tool(args, progress);
+  if (isContactTool(name)) return runContactTool(name, args, progress);
   if (isSiteTool(name)) return runSiteTool(args, progress);
   if (name === 'get_news') {
     progress('haber kaynakları taranıyor');

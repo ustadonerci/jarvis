@@ -258,20 +258,41 @@ async function startCall(numara: string, id: string): Promise<string> {
   return `Arama başlatıldı (${numara}). Görüşme bitince özeti "arama kayıtları"nda.`;
 }
 
+// ---------------------------------------------------------------- Köprü arama (rehberden "X'i ara")
+
+/** Twilio önce kullanıcıyı arar; açınca kişiye bağlar. Karşı taraf Twilio numarasını görür. */
+const bridges = new Map<string, { numara: string; kisi: string; at: number }>();
+export const bridgeReady = () => phoneReady() && !!ownerNumber();
+export async function bridgeCall(numara: string, kisi: string): Promise<string> {
+  if (!bridgeReady()) throw new Error('Twilio ya da kullanıcının numarası ayarlı değil');
+  const id = randomUUID().slice(0, 12);
+  bridges.set(id, { numara, kisi, at: Date.now() });
+  for (const [k, v] of bridges) if (Date.now() - v.at > 30 * 60_000) bridges.delete(k);
+  const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid()}/Calls.json`, {
+    method: 'POST',
+    headers: { Authorization: `Basic ${Buffer.from(`${sid()}:${token()}`).toString('base64')}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ To: ownerNumber()!, From: from(), Url: `${base()}/twilio/kopru?id=${id}` }),
+  });
+  const j: any = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`Twilio: ${j.message || r.status}`);
+  console.log(`[telefon] köprü arama: ${user()} → ${kisi}`);
+  return `Önce sizin telefonunuz çalacak; açınca ${kisi} hattına bağlanacaksınız.`;
+}
+
 export const PHONE_TOOLS = [
   {
     type: 'function',
     function: {
       name: 'telefon_ara',
-      description: 'Kullanıcı adına telefonla arama yapar (Twilio). Jarvis karşı tarafa yapay zeka asistanı olduğunu söyler ve verilen amaçla konuşur. Onay kartı açar. Randevu sorma, bilgi alma, mesaj iletme gibi kısa işler için.',
+      description: 'JARVIS\'İN KENDİSİ karşı tarafla konuşsun diye arama yapar (Twilio): kendini yapay zeka asistanı olarak tanıtır ve verilen amaçla konuşur. Onay kartı açar. Randevu sorma, bilgi alma, mesaj iletme gibi kısa işler için. Kullanıcı yalnızca "Bilal\'i ara" diyorsa (kendisi konuşacak) bunu değil rehber_ara\'yı kullan.',
       parameters: {
         type: 'object',
         properties: {
-          numara: { type: 'string', description: 'Ör. 0532 123 45 67 ya da +4915…' },
+          numara: { type: 'string', description: 'Ör. 0532 123 45 67 ya da +4915… (boşsa kisi rehberde aranır)' },
           kisi: { type: 'string', description: 'Aranan kişi/kurum adı' },
           amac: { type: 'string', description: 'Ne söylenecek / ne öğrenilecek; açık ve kısa' },
         },
-        required: ['numara', 'amac'],
+        required: ['amac'],
       },
     },
   },
@@ -335,8 +356,13 @@ export async function runPhoneTool(name: string, args: any): Promise<string> {
     return JSON.stringify({ aramalar: list.map(r => (args.dokum ? r : { ...r, dokum: undefined })) });
   }
   if (!phoneReady()) return JSON.stringify({ hata: 'Telefon ayarlı değil: Ayarlar → API anahtarlarına TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER ve PUBLIC_URL (https tünel adresi) girilmeli.' });
-  const numara = e164(String(args.numara ?? ''));
-  if (!numara) return JSON.stringify({ hata: 'Telefon numarası anlaşılamadı (ör. 0532 123 45 67 ya da +49…).' });
+  let numara = e164(String(args.numara ?? ''));
+  if (!numara && args.kisi) {
+    const { findContacts, bestNumber } = await import('./contacts.js');
+    const hit = findContacts(String(args.kisi))[0];
+    if (hit) { numara = e164(bestNumber(hit.kisi)); args.kisi = hit.kisi.ad; }
+  }
+  if (!numara) return JSON.stringify({ hata: 'Telefon numarası anlaşılamadı (ör. 0532 123 45 67 ya da +49…); rehberde de bulunamadı.' });
   const amac = String(args.amac ?? '').trim().slice(0, 500);
   if (!amac) return JSON.stringify({ hata: 'Aramanın amacı boş' });
   const id = randomUUID().slice(0, 8);
@@ -397,6 +423,12 @@ export function phoneRouter(): Router {
       logError('telefon', e);
       res.type('text/xml').send(await hangup('Üzgünüm, bir sorun oluştu. Mesajınızı ilettim, iyi günler.'));
     }
+  });
+  r.post('/twilio/kopru', async (req, res) => {
+    const k = bridges.get(String(req.query.id ?? ''));
+    if (!k) return res.type('text/xml').send(await hangup('Arama isteği bulunamadı.'));
+    bridges.delete(String(req.query.id));
+    res.type('text/xml').send(`<?xml version="1.0" encoding="UTF-8"?><Response>${await say(`${k.kisi} aranıyor.`)}<Dial callerId="${xml(from())}" timeout="40" answerOnBridge="true"><Number>${xml(k.numara)}</Number></Dial></Response>`);
   });
   r.post('/twilio/durum', async (req, res) => {
     res.sendStatus(204);

@@ -222,6 +222,24 @@ export async function androidStatus(): Promise<{ adb: boolean; bagli: boolean; c
   }
 }
 
+/** ADB ile bağlı telefon var mı (yeniden bağlanmayı da dener); yoksa null */
+export async function androidDevice(): Promise<Device | null> {
+  if (!findAdb()) return null;
+  return device().catch(() => null);
+}
+
+/** Telefondan numarayı arar (kullanıcının kendi hattı). Bazı telefonlar doğrudan aramaya izin vermez: o zaman
+ *  numara çevirici ekranında hazır açılır, kullanıcı yeşil tuşa basar. */
+export async function androidDial(d: Device, numara: string): Promise<{ arandi: boolean; cevirici: boolean }> {
+  const tel = `tel:${numara.replace(/[^\d+]/g, '')}`;
+  await adb(['-s', d.seri, 'shell', 'input', 'keyevent', 'KEYCODE_WAKEUP']).catch(() => null);
+  const r = await adb(['-s', d.seri, 'shell', 'am', 'start', '-a', 'android.intent.action.CALL', '-d', tel]);
+  if (r.ok && !/Error|Exception|Permission Denial|not allowed/i.test(r.out)) return { arandi: true, cevirici: false };
+  const r2 = await adb(['-s', d.seri, 'shell', 'am', 'start', '-a', 'android.intent.action.DIAL', '-d', tel]);
+  if (r2.ok && !/Error|Exception/i.test(r2.out)) return { arandi: false, cevirici: true };
+  throw new Error(`Telefon arama başlatamadı: ${(r.out || r2.out).split('\n').pop()?.slice(0, 160)}`);
+}
+
 let broadcast: (e: object) => void = () => {};
 
 /** ADB olmadan: Play linkini ekranlara düğme olarak ve WhatsApp'a gönderir */

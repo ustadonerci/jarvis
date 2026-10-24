@@ -279,7 +279,7 @@ export async function cloneVoice(f: File, ad?: string): Promise<{ profil: { id: 
 }
 
 /** Dosyayı bilgisayara (İndirilenler\\Jarvis-Gelen) yükler; ilerleme 0-1 arası bildirilir */
-export function uploadFile(f: File, onProgress?: (p: number) => void): Promise<{ yol: string; ad: string; kb: number }> {
+export function uploadFile(f: File, onProgress?: (p: number) => void): Promise<{ yol: string; ad: string; kb: number; rehber?: { eklenen: number; guncellenen: number; toplam: number } }> {
   return new Promise((resolve, reject) => {
     const x = new XMLHttpRequest();
     x.open('POST', `/api/dosya-yukle?ad=${encodeURIComponent(f.name)}`);

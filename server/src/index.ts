@@ -27,6 +27,7 @@ import { extensionsRouter, initExtensions } from './extensions.js';
 import { initMessaging, messagingHooksRouter, messagingRouter, notifySelf } from './messaging.js';
 import { registerReelsVoice } from './reels.js';
 import { initRobot } from './robot.js';
+import { importContacts, initContacts, parseContacts } from './contacts.js';
 import { initPhone, phoneRouter } from './phone.js';
 import { initSocial, socialRouter } from './social.js';
 import { androidRouter, initAndroid } from './android.js';
@@ -144,6 +145,7 @@ initApprovals(broadcast);
 initPhone({ broadcast, voice: () => currentVoice() });
 registerReelsVoice(() => currentVoice());
 initRobot({ broadcast, notify: notifySelf });
+initContacts(broadcast);
 initSocial(broadcast);
 initAndroid(broadcast);
 initAgents(broadcast);
@@ -326,6 +328,11 @@ app.post('/api/dosya-yukle', adminOnly, express.raw({ type: () => true, limit: '
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
   let file = path.join(UPLOAD_DIR, `${stem}${ext}`);
   for (let i = 2; fs.existsSync(file); i++) file = path.join(UPLOAD_DIR, `${stem} (${i})${ext}`);
+  // Telefon rehberi (CSV / vCard): kişiler Jarvis'in rehberine alınır; dosyanın kendisi diske yazılmaz, yapay zekaya gitmez
+  if (/^\.(csv|vcf)$/.test(ext)) {
+    const kisiler = parseContacts(req.body, raw);
+    if (kisiler.length) return res.json({ ok: true, ad: raw, rehber: importContacts(kisiler) });
+  }
   fs.writeFileSync(file, req.body);
   const rel = path.relative(os.homedir(), file).split(path.sep).join('/');
   console.log(`[dosya] alındı: ${rel} (${Math.round(req.body.length / 1024)} KB)`);
