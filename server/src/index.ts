@@ -4,6 +4,7 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { runJarvis } from './agent.js';
 import { BRIEF_OPENING, BRIEF_TRIGGER } from './brief.js';
@@ -305,6 +306,26 @@ app.post('/api/settings', (req, res) => {
   saveState();
   broadcast(settingsEvent());
   res.json({ ok: true, voice: currentVoice(), sfx: sfx() });
+});
+
+// ---------- Dosya yükleme (telefondan ya da başka cihazdan): İndirilenler\Jarvis-Gelen'e kaydedilir ----------
+// İçerik türü ne olursa olsun ham bayt olarak gelir (istemci application/octet-stream gönderir; .json dosyası JSON
+// ayrıştırıcısına takılmasın). Dosya adı sadeleştirilir, var olan dosyanın üstüne yazılmaz.
+const UPLOAD_DIR = path.join(os.homedir(), 'Downloads', 'Jarvis-Gelen');
+app.post('/api/dosya-yukle', adminOnly, express.raw({ type: () => true, limit: '200mb' }), (req, res) => {
+  if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: 'Dosya boş' });
+  const raw = path.basename(String(req.query.ad || 'dosya')).normalize('NFC');
+  const ext = path.extname(raw).toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 10);
+  // Çalıştırılabilir dosyalar kaydedilmez (yanlışlıkla açılmasın)
+  if (/^\.(exe|msi|bat|cmd|com|scr|ps1|vbs|js|jse|wsf|lnk|hta|cpl|reg)$/.test(ext)) return res.status(415).json({ error: 'Güvenlik için program/betik dosyaları kabul edilmiyor' });
+  const stem = path.basename(raw, path.extname(raw)).replace(/[^\p{L}\p{N} ._-]+/gu, '_').trim().slice(0, 80) || 'dosya';
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+  let file = path.join(UPLOAD_DIR, `${stem}${ext}`);
+  for (let i = 2; fs.existsSync(file); i++) file = path.join(UPLOAD_DIR, `${stem} (${i})${ext}`);
+  fs.writeFileSync(file, req.body);
+  const rel = path.relative(os.homedir(), file).split(path.sep).join('/');
+  console.log(`[dosya] alındı: ${rel} (${Math.round(req.body.length / 1024)} KB)`);
+  res.json({ ok: true, yol: rel, ad: path.basename(file), kb: Math.round(req.body.length / 1024) });
 });
 
 // ---------- Ses klonlama (VoiceStudio): ekrandan gönderilen ses dosyası Jarvis'in sesi olur ----------

@@ -276,3 +276,22 @@ export async function cloneVoice(f: File, ad?: string): Promise<{ profil: { id: 
   const r = await fetch(`/api/ses-klonla?${q}`, { method: 'POST', headers: { 'Content-Type': f.type || 'application/octet-stream', ...(token ? { 'x-jarvis-token': token } : {}) }, body: f });
   return json(r);
 }
+
+/** Dosyayı bilgisayara (İndirilenler\\Jarvis-Gelen) yükler; ilerleme 0-1 arası bildirilir */
+export function uploadFile(f: File, onProgress?: (p: number) => void): Promise<{ yol: string; ad: string; kb: number }> {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open('POST', `/api/dosya-yukle?ad=${encodeURIComponent(f.name)}`);
+    x.setRequestHeader('Content-Type', 'application/octet-stream');
+    if (token) x.setRequestHeader('x-jarvis-token', token);
+    x.upload.onprogress = e => e.lengthComputable && onProgress?.(e.loaded / e.total);
+    x.onload = () => {
+      let j: any = {};
+      try { j = JSON.parse(x.responseText); } catch { /* boş */ }
+      if (x.status >= 200 && x.status < 300) resolve(j);
+      else reject(new Error(j.error || (x.status === 413 ? 'Dosya çok büyük' : `yüklenemedi (${x.status})`)));
+    };
+    x.onerror = () => reject(new Error('bağlantı koptu'));
+    x.send(f);
+  });
+}
