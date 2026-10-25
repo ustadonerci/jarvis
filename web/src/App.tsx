@@ -131,6 +131,8 @@ export default function App() {
   const [voiceSel, setVoiceSel] = useState<VoiceSel | null>(null);
   // Konuşma tonu ve renk teması (tüm cihazlarda ortak; sunucuda saklanır)
   const [persona, setPersona] = useState('profesyonel');
+  const [hiz, setHiz] = useState<'hizli' | 'dengeli'>('hizli');
+  const [hizliModel, setHizliModel] = useState<string | null>(null);
   const [personas, setPersonas] = useState<PersonaOption[]>([]);
   const [theme, setTheme] = useState('jarvis');
   const [themes, setThemes] = useState<ThemeOption[]>([]);
@@ -455,6 +457,8 @@ export default function App() {
         setWake(s.wake);
         setUi(s.ui ?? 'mark1');
         if (s.persona) setPersona(s.persona);
+        if (s.hiz) setHiz(s.hiz);
+        setHizliModel(s.hizliModel ?? null);
         setPersonas(s.personas ?? []);
         if (s.theme) setTheme(s.theme);
         setThemes(s.themes ?? []);
@@ -567,6 +571,7 @@ export default function App() {
           if (e.ui) setUi(e.ui);
           if (e.persona) setPersona(e.persona);
           if (e.theme) setTheme(e.theme);
+          if (e.hiz) setHiz(e.hiz);
           setMode(e.photoMode);
           setVoiceSel(e.voice);
           setSfxOn(e.sfx);
@@ -1299,6 +1304,12 @@ export default function App() {
                       </button>
                     ))}
                   </div>
+                  <label>Cevap hızı</label>
+                  <div className="seg">
+                    <button className={hiz === 'hizli' ? 'on' : ''} onClick={() => saveSettings({ hiz: 'hizli' }).then(() => flash('Hızlı mod: kısa sürede cevap')).catch(e => flash(e.message))}>⚡ Hızlı</button>
+                    <button className={hiz === 'dengeli' ? 'on' : ''} onClick={() => saveSettings({ hiz: 'dengeli' }).then(() => flash('Dengeli mod: zor sorularda daha uzun düşünebilir')).catch(e => flash(e.message))}>🧠 Dengeli</button>
+                  </div>
+                  <p className="muted small">Hızlı: her soruda hızlı model{hizliModel ? ` (${hizliModel})` : ''}, cevap birkaç saniyede başlar. Dengeli: soru zorsa daha güçlü ve yavaş bir model seçilir.</p>
                   <label>Konuşma tonu (tüm cihazlarda)</label>
                   <div className="seg">
                     {personas.map(p => (

@@ -28,6 +28,7 @@ import { SMS_TOOLS } from './sms.js';
 import { SOCIAL_TOOLS, socialForPrompt } from './social.js';
 import { ANDROID_TOOLS, androidForPrompt } from './android.js';
 import { detectGroups, trimPrompt, type Group } from './intent.js';
+import { chatModel, markBroken } from './brain.js';
 import { SITE_TOOLS } from './sitedownload.js';
 import { findNewsById } from './news.js';
 import { resolveFastPhoto, resolveSlowPhoto, type PhotoMode } from './photos.js';
@@ -49,7 +50,7 @@ const VISION_MODEL = process.env.VISION_MODEL || CHAT_MODEL;
 const normalizeTr = (s: string) => s.toLocaleLowerCase('tr').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 const isOpening = (s: Sahne) => normalizeTr(s.ses).startsWith(normalizeTr(BRIEF_OPENING));
 
-function contextVars(device: Device, prevDevice: Device | null) {
+export function contextVars(device: Device, prevDevice: Device | null) {
   const now = new Date();
   const tz = 'Europe/Istanbul';
   return {
@@ -72,6 +73,18 @@ function contextVars(device: Device, prevDevice: Device | null) {
     webhooklar: webhooksForPrompt(),
     telefon: phoneReady() ? 'ayarlı' : 'ayarlı değil',
   };
+}
+
+/** Soruda geçen gruplara göre modele sunulan araçlar (temel araçlar her zaman) */
+export function toolsFor(groups: Set<Group>, isBrief = false): any[] {
+  const pick = (g: Group, t: readonly any[]) => (groups.has(g) ? t : []);
+  return [
+    ...(isBrief ? TOOLS : TOOLS.filter(t => t.function.name !== 'get_news')), ...SEARCH_TOOLS, ...ERROR_TOOLS, ...APPROVAL_TOOLS,
+    ...pick('finans', FINANCE_TOOLS), ...pick('mesaj', MSG_TOOLS), ...pick('eposta', EMAIL_TOOLS), ...pick('github', GITHUB_TOOLS),
+    ...pick('ajan', agentTools()), ...pick('sistem', SYSTEM_TOOLS), ...pick('otomasyon', AUTOMATION_TOOLS), ...pick('telefon', PHONE_TOOLS),
+    ...pick('sms', SMS_TOOLS), ...pick('sosyal', SOCIAL_TOOLS), ...pick('android', ANDROID_TOOLS), ...pick('site', SITE_TOOLS), ...pick('medya', MEDIA_TOOLS), ...pick('ses', VOICESTUDIO_TOOLS), ...pick('satin', HOSTINGER_TOOLS), ...pick('finans', ROBOT_TOOLS), ...pick('medya', REELS_TOOLS), ...pick('marka', BRAND24_TOOLS), ...pick('telefon', CONTACT_TOOLS), ...pick('eposta', MAILCLEAN_TOOLS), ...pick('medya', SYSTEM_TOOLS.filter(t => t.function.name === 'dosya_listele' || t.function.name === 'uygulama_yonet' || t.function.name === 'uygulama_ara')),
+    ...pick('yetenek', EXT_TOOLS), ...pick('mcp', mcpTools()), ...pick('yetenek', mcpTools()),
+  ].filter((t, i, a) => a.findIndex(x => x.function.name === t.function.name) === i);
 }
 
 export function extractJson(text: string): any | null {
@@ -369,18 +382,11 @@ export async function runJarvis(opts: RunOptions): Promise<JarvisReply> {
     ...history.slice(-12).map(m => ({ role: m.role, content: m.text }) as ChatMessage),
     { role: 'user', content: userContent },
   ];
-  const model = opts.image ? VISION_MODEL : CHAT_MODEL;
+  let model = opts.image ? VISION_MODEL : chatModel();
 
   // Komut yoksa haber aracı hiç sunulmaz: Jarvis kendiliğinden gündem anlatamaz. Diğer araçlar her zaman açık.
   // Her aracın çıktısı toolText'e eklenir; verifyVisual sayı/grafik/harita/alıntı görsellerini bu gerçek veriyle doğrular.
-  const pick = (g: Group, t: readonly any[]) => (groups.has(g) ? t : []);
-  const tools = [
-    ...(isBrief ? TOOLS : TOOLS.filter(t => t.function.name !== 'get_news')), ...SEARCH_TOOLS, ...ERROR_TOOLS, ...APPROVAL_TOOLS,
-    ...pick('finans', FINANCE_TOOLS), ...pick('mesaj', MSG_TOOLS), ...pick('eposta', EMAIL_TOOLS), ...pick('github', GITHUB_TOOLS),
-    ...pick('ajan', agentTools()), ...pick('sistem', SYSTEM_TOOLS), ...pick('otomasyon', AUTOMATION_TOOLS), ...pick('telefon', PHONE_TOOLS),
-    ...pick('sms', SMS_TOOLS), ...pick('sosyal', SOCIAL_TOOLS), ...pick('android', ANDROID_TOOLS), ...pick('site', SITE_TOOLS), ...pick('medya', MEDIA_TOOLS), ...pick('ses', VOICESTUDIO_TOOLS), ...pick('satin', HOSTINGER_TOOLS), ...pick('finans', ROBOT_TOOLS), ...pick('medya', REELS_TOOLS), ...pick('marka', BRAND24_TOOLS), ...pick('telefon', CONTACT_TOOLS), ...pick('eposta', MAILCLEAN_TOOLS), ...pick('medya', SYSTEM_TOOLS.filter(t => t.function.name === 'dosya_listele' || t.function.name === 'uygulama_yonet' || t.function.name === 'uygulama_ara')),
-    ...pick('yetenek', EXT_TOOLS), ...pick('mcp', mcpTools()), ...pick('yetenek', mcpTools()),
-  ].filter((t, i, a) => a.findIndex(x => x.function.name === t.function.name) === i);
+  const tools = toolsFor(groups, isBrief);
   console.log(`[beyin] ${tools.length} araç · gruplar: ${[...groups].join(', ') || 'temel'}`);
   let forceNews = isBrief;
   let retriedJson = false;
@@ -396,6 +402,12 @@ export async function runJarvis(opts: RunOptions): Promise<JarvisReply> {
     } catch (e) {
       if (forceNews && e instanceof RouteLLMError && e.status === 400) {
         forceNews = false; // sağlayıcı zorunlu tool_choice'u desteklemiyorsa 'auto' ile tekrar dene
+        round--;
+        continue;
+      }
+      // Hızlı model hesapta yok ya da isteği kabul etmedi: bir sonrakine (en sonda CHAT_MODEL) geç
+      if (!opts.image && e instanceof RouteLLMError && e.status >= 400 && e.status < 500 && e.status !== 429 && markBroken(model)) {
+        model = chatModel();
         round--;
         continue;
       }

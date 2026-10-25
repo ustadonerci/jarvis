@@ -29,6 +29,7 @@ import { registerReelsVoice } from './reels.js';
 import { initRobot } from './robot.js';
 import { importContacts, initContacts, parseContacts } from './contacts.js';
 import { initMailClean } from './mailclean.js';
+import { defaultHiz, fastModel, getHiz, initBrain, setHiz, type Hiz } from './brain.js';
 import { initPhone, phoneRouter } from './phone.js';
 import { initSocial, socialRouter } from './social.js';
 import { androidRouter, initAndroid } from './android.js';
@@ -64,6 +65,8 @@ interface State {
   voice?: VoiceSel;
   /** "Jarvis efekti": sahne geçiş sesi */
   sfx?: boolean;
+  /** Cevap hızı: hızlı model ya da route-llm yönlendiricisi */
+  hiz?: Hiz;
   /** İki alkışla uyanma ayarları (tüm cihazlarda ortak) */
   wake?: WakeConfig;
   /** Konuşma tonu (persona) */
@@ -148,6 +151,8 @@ registerReelsVoice(() => currentVoice());
 initRobot({ broadcast, notify: notifySelf });
 initContacts(broadcast);
 initMailClean();
+setHiz(state.hiz ?? defaultHiz());
+initBrain();
 initSocial(broadcast);
 initAndroid(broadcast);
 initAgents(broadcast);
@@ -196,7 +201,7 @@ app.get('/api/events', (req, res) => {
 const uiMode = () => state.ui ?? 'mark1';
 const persona = () => state.persona ?? 'profesyonel';
 const theme = () => state.theme ?? 'jarvis';
-const settingsEvent = () => ({ type: 'settings', photoMode: state.photoMode, voice: currentVoice(), sfx: sfx(), wake: wakeCfg(), ui: uiMode(), persona: persona(), theme: theme() });
+const settingsEvent = () => ({ type: 'settings', photoMode: state.photoMode, voice: currentVoice(), sfx: sfx(), hiz: getHiz(), wake: wakeCfg(), ui: uiMode(), persona: persona(), theme: theme() });
 
 app.get('/api/state', (_req, res) => {
   res.json({
@@ -218,6 +223,8 @@ app.get('/api/state', (_req, res) => {
     userName: process.env.USER_NAME || '',
     mock: MOCK,
     model: CHAT_MODEL,
+    hiz: getHiz(),
+    hizliModel: fastModel(),
     online: presence(),
   });
 });
@@ -284,6 +291,7 @@ app.get('/api/voices/preview', async (req, res) => {
 app.post('/api/settings', (req, res) => {
   if (req.body.photoMode === 'haber' || req.body.photoMode === 'video') state.photoMode = req.body.photoMode;
   if (typeof req.body.sfx === 'boolean') state.sfx = req.body.sfx;
+  if (req.body.hiz === 'hizli' || req.body.hiz === 'dengeli') { state.hiz = req.body.hiz; setHiz(req.body.hiz); console.log(`[beyin] hız: ${req.body.hiz}`); }
   if (req.body.ui === 'mark1' || req.body.ui === 'mark2') state.ui = req.body.ui;
   if (isTheme(req.body.theme)) state.theme = req.body.theme;
   if (isPersona(req.body.persona) && req.body.persona !== persona()) {

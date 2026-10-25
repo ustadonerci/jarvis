@@ -84,12 +84,13 @@ export async function transcribe(audio: Buffer, mime: string): Promise<{ text: s
 
   const resp = await routellm<ChatResponse>('/chat/completions', {
     model: STT_MODEL,
+    temperature: 0,
     messages: [
       {
         role: 'user',
         content: [
           { type: 'input_audio', input_audio: { data: audio.toString('base64'), format } },
-          { type: 'text', text: 'Bu Türkçe konuşmayı kelimesi kelimesine yazıya dök. Sadece duyduğun metni yaz; tırnak, açıklama ya da başlık ekleme. Konuşma yoksa hiçbir şey yazma.' },
+          { type: 'text', text: 'Bu, Jarvis adlı sesli asistana Türkçe söylenmiş bir komut ya da soru. Kelimesi kelimesine yazıya dök: kişi adlarını, sayıları, saatleri, para birimlerini ve uygulama/marka adlarını (WhatsApp, YouTube, Bitcoin, Trendyol…) doğru yaz; Türkçe karakterleri (ç, ğ, ı, İ, ö, ş, ü) kullan. Sadece duyduğun metni yaz; tırnak, açıklama ya da başlık ekleme, cümleyi düzeltme ya da tamamlama. Konuşma yoksa hiçbir şey yazma.' },
         ],
       },
     ],
