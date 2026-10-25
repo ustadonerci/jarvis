@@ -131,7 +131,7 @@ export default function App() {
   const [voiceSel, setVoiceSel] = useState<VoiceSel | null>(null);
   // Konuşma tonu ve renk teması (tüm cihazlarda ortak; sunucuda saklanır)
   const [persona, setPersona] = useState('profesyonel');
-  const [hiz, setHiz] = useState<'hizli' | 'dengeli'>('hizli');
+  const [hiz, setHiz] = useState<'hizli' | 'dengeli'>('dengeli');
   const [hizliModel, setHizliModel] = useState<string | null>(null);
   const [personas, setPersonas] = useState<PersonaOption[]>([]);
   const [theme, setTheme] = useState('jarvis');

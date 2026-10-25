@@ -7,12 +7,12 @@ import { CHAT_MODEL, MOCK, routellm } from './routellm.js';
 export type Hiz = 'hizli' | 'dengeli';
 const CANDIDATES = [...(process.env.FAST_MODEL ? [process.env.FAST_MODEL] : []), 'gpt-4.1-mini', 'gemini-2.5-flash', 'gpt-5-mini', 'claude-haiku-4-5', 'gpt-4o-mini'];
 
-let mode: Hiz = 'hizli';
+let mode: Hiz = 'dengeli';
 let available: Set<string> | null = null;
 const broken = new Set<string>();
 
-/** Varsayılan: CHAT_MODEL .env'de elle değiştirilmediyse hızlı */
-export const defaultHiz = (): Hiz => (CHAT_MODEL === 'route-llm' ? 'hizli' : 'dengeli');
+/** Varsayılan dengeli (route-llm): hızlı model bazı sorularda aracı çağırmadan alakasız cevap verdi; Ayarlar'dan açılır */
+export const defaultHiz = (): Hiz => 'dengeli';
 export const setHiz = (h: Hiz) => { mode = h; };
 export const getHiz = () => mode;
 

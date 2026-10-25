@@ -87,6 +87,18 @@ export function toolsFor(groups: Set<Group>, isBrief = false): any[] {
   ].filter((t, i, a) => a.findIndex(x => x.function.name === t.function.name) === i);
 }
 
+const foldTr = (s: string) => s.toLocaleLowerCase('tr').replace(/[çğıöşü]/g, c => ({ ç: 'c', ğ: 'g', ı: 'i', ö: 'o', ş: 's', ü: 'u' })[c] ?? c);
+/**
+ * Net isteklerde ilk turda aracı zorunlu kıl: model bazen aracı çağırmadan alakasız cevap veriyordu (ör. "hava durumu"
+ * deyince kendini tanıtmak). Yalnızca kalıp açıkça eşleşirse; aksi hâlde model serbest.
+ */
+export function forcedTool(text: string): string | null {
+  const t = foldTr(text);
+  if (/\bhava\b(?! ?(yolu|yollari|alani|limani|kirliligi|kuvvet|sahasi|araci))|havadurumu|hava ?durum|yagmur (yag|var)|kar yag|kac derece|sicaklik kac|semsiye/.test(t) && !/\b(havale|havalandir)/.test(t)) return 'get_weather';
+  if (/\b(dolar|euro|avro|sterlin|doviz|kurlar)\b/.test(t) && /(kac|ne kadar|ne oldu|nedir|fiyat|kuru)\b/.test(t) && !/(analiz|al(sam|ayim|inir)|sat(sam|ayim)|grafik|teknik|portfoy|alarm)/.test(t)) return 'get_markets';
+  return null;
+}
+
 export function extractJson(text: string): any | null {
   if (!text) return null;
   const cleaned = text.replace(/```(?:json)?/gi, '');
@@ -388,11 +400,12 @@ export async function runJarvis(opts: RunOptions): Promise<JarvisReply> {
   // Her aracın çıktısı toolText'e eklenir; verifyVisual sayı/grafik/harita/alıntı görsellerini bu gerçek veriyle doğrular.
   const tools = toolsFor(groups, isBrief);
   console.log(`[beyin] ${tools.length} araç · gruplar: ${[...groups].join(', ') || 'temel'}`);
-  let forceNews = isBrief;
+  let force: string | null = isBrief ? 'get_news' : opts.image ? null : forcedTool(text);
+  if (force && force !== 'get_news') console.log(`[beyin] zorunlu araç: ${force}`);
   let retriedJson = false;
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
-    const body: any = { model, messages, tools, tool_choice: forceNews ? { type: 'function', function: { name: 'get_news' } } : 'auto' };
+    const body: any = { model, messages, tools, tool_choice: force ? { type: 'function', function: { name: force } } : 'auto' };
     log(round === 0 ? 'düşünüyor' : 'cevabı hazırlıyor');
 
     const parser = new SceneStream();
@@ -400,8 +413,8 @@ export async function runJarvis(opts: RunOptions): Promise<JarvisReply> {
     try {
       res = await routellmStream(body, (_d, full) => parser.push(full).forEach(enqueue));
     } catch (e) {
-      if (forceNews && e instanceof RouteLLMError && e.status === 400) {
-        forceNews = false; // sağlayıcı zorunlu tool_choice'u desteklemiyorsa 'auto' ile tekrar dene
+      if (force && e instanceof RouteLLMError && e.status === 400) {
+        force = null; // sağlayıcı zorunlu tool_choice'u desteklemiyorsa 'auto' ile tekrar dene
         round--;
         continue;
       }
@@ -413,7 +426,7 @@ export async function runJarvis(opts: RunOptions): Promise<JarvisReply> {
       }
       throw e;
     }
-    forceNews = false;
+    force = null;
     if (res.model && res.model !== modelUsed) console.log(`[beyin] istenen: ${model} → çalışan: ${res.model}`);
     modelUsed = res.model ?? modelUsed;
     console.log(`[zaman] tur ${round + 1} · ilk token ${res.firstTokenMs ?? '—'} ms · bitiş ${res.totalMs} ms · ${res.tool_calls.length ? 'araç: ' + res.tool_calls.map(c => c.function.name).join(', ') : res.content.length + ' karakter'}`);
