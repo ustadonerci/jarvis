@@ -28,6 +28,7 @@ import { isRobotTool, runRobotTool } from './robot.js';
 import { isBrand24Tool, runBrand24Tool } from './brand24.js';
 import { isContactTool, runContactTool } from './contacts.js';
 import { isMailCleanTool, runMailCleanTool } from './mailclean.js';
+import { isMicDiagTool, runMicDiagTool } from './micdiag.js';
 import { isSiteTool, runSiteTool } from './sitedownload.js';
 import { addBook, addBookNote, fillInBackground, findBook, setBookStatus } from './library.js';
 
@@ -318,6 +319,7 @@ async function runToolOnce(name: string, rawArgs: string, progress: ToolProgress
   if (isBrand24Tool(name)) return runBrand24Tool(args, progress);
   if (isContactTool(name)) return runContactTool(name, args, progress);
   if (isMailCleanTool(name)) return runMailCleanTool(args, progress);
+  if (isMicDiagTool(name)) return runMicDiagTool(args, progress);
   if (isSiteTool(name)) return runSiteTool(args, progress);
   if (name === 'get_news') {
     progress('haber kaynakları taranıyor');

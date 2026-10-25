@@ -299,3 +299,8 @@ export function uploadFile(f: File, onProgress?: (p: number) => void): Promise<{
     x.send(f);
   });
 }
+
+// ---------- Mikrofon: Windows ayarları ----------
+export interface MicReport { windows: boolean; cihazlar: { ad: string; arayuz: string; durum: string; varsayilan: boolean; supheli: boolean }[]; varsayilan?: string; erisim: { uygulamalar?: string; masaustu_uygulamalari?: string; sistem?: string }; sorunlar: string[]; oneriler: string[] }
+export const checkWindowsMic = () => fetch('/api/mikrofon-kontrol', { headers: headers() }).then(r => json<MicReport>(r));
+export const openMicSettings = (ne: 'kayit' | 'gizlilik') => fetch('/api/mikrofon-ayar-ac', { method: 'POST', headers: headers(), body: JSON.stringify({ ne }) }).then(r => json<{ ok: boolean }>(r));

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { stt } from '../lib/api';
+import { checkWindowsMic, openMicSettings, stt, type MicReport } from '../lib/api';
 import { listMics, micDevice, micInfo, setMicDevice, startRecording } from '../lib/recorder';
 import { createRecognizer } from '../lib/speech';
 
@@ -20,6 +20,10 @@ export function MicTest({ flash }: { flash(t: string): void }) {
   const [live, setLive] = useState('');
   const [r, setR] = useState<Result | null>(null);
   const urlRef = useRef('');
+  const [win, setWin] = useState<MicReport | null>(null);
+  const [winBusy, setWinBusy] = useState(false);
+  const checkWin = () => { setWinBusy(true); checkWindowsMic().then(setWin).catch(e => flash(e.message)).finally(() => setWinBusy(false)); };
+  const open = (ne: 'kayit' | 'gizlilik') => openMicSettings(ne).then(() => flash(ne === 'kayit' ? 'Windows Ses → Kayıt penceresi açıldı' : 'Mikrofon gizlilik ayarı açıldı')).catch(e => flash(e.message));
   useEffect(() => () => { if (urlRef.current) URL.revokeObjectURL(urlRef.current); }, []);
 
   const load = () => listMics().then(setMics).catch(() => flash('Mikrofon listesi alınamadı: tarayıcıda mikrofon izni verilmeli.'));
@@ -80,6 +84,22 @@ export function MicTest({ flash }: { flash(t: string): void }) {
               {m.supheli ? '⚠️ ' : '🎤 '}{m.ad}
             </button>
           ))}
+        </div>
+      )}
+      <div className="seg">
+        <button disabled={winBusy} onClick={checkWin}>{winBusy ? 'Okunuyor…' : '🖥️ Windows mikrofon ayarlarını kontrol et'}</button>
+        <button onClick={() => open('kayit')}>Kayıt ayarlarını aç</button>
+      </div>
+      {win && (
+        <div className="mic-result">
+          {!win.windows && <p className="muted small">{win.oneriler[0]}</p>}
+          {win.windows && <p className="small">Varsayılan kayıt cihazı: <b>{win.varsayilan ?? 'bulunamadı'}</b> · uygulama erişimi: <b>{win.erisim.uygulamalar ?? '?'}</b> · masaüstü uygulamaları: <b>{win.erisim.masaustu_uygulamalari ?? '?'}</b></p>}
+          {win.cihazlar.map((c, i) => (
+            <p key={i} className={c.supheli && c.durum === 'etkin' ? 'warn small' : 'small'}>{c.varsayilan ? '⭐' : c.supheli ? '⚠️' : '🎤'} {c.ad}{c.arayuz ? ` (${c.arayuz})` : ''} · {c.durum}{c.varsayilan ? ' · VARSAYILAN' : ''}{c.supheli ? ' · mikrofon değil, bilgisayarın sesini kaydeder' : ''}</p>
+          ))}
+          {win.sorunlar.map((s, i) => <p key={`s${i}`} className="warn small">⚠️ {s}</p>)}
+          {win.oneriler.map((s, i) => <p key={`o${i}`} className="small">👉 {s}</p>)}
+          {win.windows && (win.erisim.uygulamalar === 'KAPALI' || win.erisim.masaustu_uygulamalari === 'KAPALI' || win.erisim.sistem === 'KAPALI') && <div className="seg"><button onClick={() => open('gizlilik')}>Mikrofon izinlerini aç</button></div>}
         </div>
       )}
       <div className="seg">

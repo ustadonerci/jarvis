@@ -29,6 +29,7 @@ import { registerReelsVoice } from './reels.js';
 import { initRobot } from './robot.js';
 import { importContacts, initContacts, parseContacts } from './contacts.js';
 import { initMailClean } from './mailclean.js';
+import { checkMic, openPrivacySettings, openRecordingSettings } from './micdiag.js';
 import { defaultHiz, fastModel, getHiz, initBrain, setHiz, type Hiz } from './brain.js';
 import { initPhone, phoneRouter } from './phone.js';
 import { initSocial, socialRouter } from './social.js';
@@ -347,6 +348,15 @@ app.post('/api/dosya-yukle', adminOnly, express.raw({ type: () => true, limit: '
   const rel = path.relative(os.homedir(), file).split(path.sep).join('/');
   console.log(`[dosya] alındı: ${rel} (${Math.round(req.body.length / 1024)} KB)`);
   res.json({ ok: true, yol: rel, ad: path.basename(file), kb: Math.round(req.body.length / 1024) });
+});
+
+// ---------- Mikrofon: Windows ayarları (Ayarlar → Mikrofon · test). Yalnız bu bilgisayardan (pencere burada açılır) ----------
+app.get('/api/mikrofon-kontrol', adminOnly, async (_req, res) => {
+  try { res.json(await checkMic()); } catch (e: any) { res.status(500).json({ error: String(e?.message || e) }); }
+});
+app.post('/api/mikrofon-ayar-ac', adminOnly, (req, res) => {
+  if (!isLocalRequest(req)) return res.status(403).json({ error: 'Windows ayarları yalnızca bilgisayarın kendisinden açılabilir.' });
+  res.json({ ok: req.body?.ne === 'gizlilik' ? openPrivacySettings() : openRecordingSettings() });
 });
 
 // ---------- Ses klonlama (VoiceStudio): ekrandan gönderilen ses dosyası Jarvis'in sesi olur ----------
