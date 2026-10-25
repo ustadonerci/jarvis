@@ -337,3 +337,45 @@ export async function buildDashboard(opts: { devices: Device[]; model: string })
     system: { routellm_ms: ping?.ok ? ping.ms : null, routellm_ok: !!ping?.ok, devices_online: opts.devices, model: opts.model },
   };
 }
+
+// ---------- Günlük tahmin (yarın, hafta, başka şehir) ----------
+// Pano yalnızca bugünü gösterir; "yarın hava nasıl", "hafta sonu Ankara'da yağmur var mı" için 7 günlük tahmin.
+export interface DayForecast { tarih: string; gun: string; durum: string; en_yuksek: number | null; en_dusuk: number | null; yagis_olasiligi: number | null; ruzgar: number | null }
+
+async function geocode(name: string): Promise<{ ad: string; lat: number; lon: number } | null> {
+  const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=5&language=tr&format=json`, { signal: AbortSignal.timeout(FETCH_TIMEOUT) });
+  if (!r.ok) return null;
+  const j: any = await r.json();
+  const list: any[] = j.results ?? [];
+  // Türkiye'deki eşleşme öncelikli (ör. "Bolu", "Ordu")
+  const hit = list.find(x => x.country_code === 'TR') ?? list[0];
+  return hit ? { ad: [hit.name, hit.country_code === 'TR' ? hit.admin1 !== hit.name ? hit.admin1 : '' : hit.country].filter(Boolean).join(', '), lat: hit.latitude, lon: hit.longitude } : null;
+}
+
+const forecastCache = new Map<string, { at: number; v: { sehir: string; gunler: DayForecast[] } }>();
+export async function getForecast(sehir?: string): Promise<{ sehir: string; gunler: DayForecast[] } | null> {
+  const key = (sehir ?? '').toLocaleLowerCase('tr').trim();
+  const hit = forecastCache.get(key);
+  if (hit && Date.now() - hit.at < TEN_MIN) return hit.v;
+  let place = { ad: process.env.WEATHER_CITY || 'İstanbul', lat: Number(process.env.WEATHER_LAT || 41.01), lon: Number(process.env.WEATHER_LON || 28.98) };
+  if (key) {
+    const g = await geocode(sehir!).catch(() => null);
+    if (!g) return null;
+    place = g;
+  }
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${place.lat}&longitude=${place.lon}` +
+    '&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code,wind_speed_10m_max&timezone=Europe/Istanbul&forecast_days=7';
+  const r = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT) });
+  if (!r.ok) return null;
+  const d: any = (await r.json()).daily ?? {};
+  const gunler: DayForecast[] = (d.time ?? []).map((t: string, i: number) => ({
+    tarih: t,
+    gun: i === 0 ? 'bugün' : i === 1 ? 'yarın' : new Date(`${t}T12:00:00+03:00`).toLocaleDateString('tr-TR', { weekday: 'long', timeZone: 'Europe/Istanbul' }),
+    durum: describeWeather(num(d.weather_code?.[i]) ?? -1)[0],
+    en_yuksek: num(d.temperature_2m_max?.[i]), en_dusuk: num(d.temperature_2m_min?.[i]),
+    yagis_olasiligi: num(d.precipitation_probability_max?.[i]), ruzgar: num(d.wind_speed_10m_max?.[i]),
+  }));
+  const v = { sehir: place.ad, gunler };
+  forecastCache.set(key, { at: Date.now(), v });
+  return v;
+}

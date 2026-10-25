@@ -1,5 +1,5 @@
 import { getNews, type GetNewsArgs } from './news.js';
-import { getMarkets, getWeather } from './dashboard.js';
+import { getForecast, getMarkets, getWeather } from './dashboard.js';
 import { wikiLookup } from './wiki.js';
 import { addMemory, removeMemory } from './profile.js';
 import { checkVideo, findHighlights, latestFromChannel, searchVideos, videoIdFrom } from './youtube.js';
@@ -67,8 +67,8 @@ export const TOOLS = [
     type: 'function',
     function: {
       name: 'get_weather',
-      description: 'Kullanıcının şehri için anlık hava durumu ve bugünün tahmini (sıcaklık, hissedilen, en yüksek/en düşük, yağış olasılığı, rüzgâr).',
-      parameters: { type: 'object', properties: {} },
+      description: "Hava durumu: anlık hava, bugünün saatlik tahmini ve 7 GÜNLÜK tahmin (yarın, hafta sonu, belirli bir gün). 'Yarın hava nasıl', 'hafta sonu yağmur var mı', 'Ankara'da hava' gibi her hava sorusunda kullan. Şehir söylenmezse kullanıcının şehri.",
+      parameters: { type: 'object', properties: { sehir: { type: 'string', description: 'Başka bir şehir/ilçe sorulduysa (ör. "Ankara", "Bodrum")' } } },
     },
   },
   {
@@ -335,9 +335,11 @@ async function runToolOnce(name: string, rawArgs: string, progress: ToolProgress
     return JSON.stringify(m ?? { error: 'Piyasa verisi şu an alınamıyor. Rakam söyleme.' });
   }
   if (name === 'get_weather') {
-    progress('hava durumu alınıyor');
-    const w = await getWeather();
-    return JSON.stringify(w ?? { error: 'Hava durumu şu an alınamıyor. Rakam söyleme.' });
+    const sehir = String(args.sehir ?? '').trim();
+    progress(`hava durumu alınıyor${sehir ? `: ${sehir}` : ''}`);
+    const [w, f] = await Promise.all([sehir ? Promise.resolve(null) : getWeather(), getForecast(sehir || undefined).catch(() => null)]);
+    if (!w && !f) return JSON.stringify({ error: sehir ? `"${sehir}" için hava durumu bulunamadı. Rakam söyleme.` : 'Hava durumu şu an alınamıyor. Rakam söyleme.' });
+    return JSON.stringify({ ...(w ?? {}), ...(f ? { tahmin_sehir: f.sehir, gunluk_tahmin: f.gunler } : {}), not: 'Soru yarın ya da başka bir gün içinse gunluk_tahmin\'deki o günü anlat (gun alanı: bugün, yarın, gün adı).' });
   }
   if (name === 'wiki_lookup') {
     const baslik = String(args.baslik ?? args.title ?? '');

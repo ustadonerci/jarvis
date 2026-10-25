@@ -101,6 +101,6 @@ export async function transcribe(audio: Buffer, mime: string): Promise<{ text: s
   // Sessiz kayıtta model bazen kendi talimatını geri döndürüyor ("Türkçeyi kelimesi kelimesine yazıya dök"):
   // bu, kullanıcının sözü değil. Boş say (istemci "Sizi duyamadım" der).
   const f = text.toLocaleLowerCase('tr');
-  if (/kelimesi kelimesine|yazıya dök|duyduğun metni|konuşma yok|ses yok|^\W*$/.test(f)) text = '';
+  if (/kelimesi kelimesine|yazıya dök|duyduğun metni|konuşma yok|ses yok|sesli asistana|komut ya da soru|türkçe karakter|marka adlarını|^\W*$/.test(f)) text = '';
   return { text, model: resp.model ?? STT_MODEL, ms: Date.now() - t0 };
 }
