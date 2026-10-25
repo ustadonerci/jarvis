@@ -20,6 +20,7 @@ import { UnauthorizedError, type OAuthClientProvider } from '@modelcontextprotoc
 import type { OAuthClientInformationMixed, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
 import { adminOnly } from './keys.js';
 import { logError } from './errors.js';
+import { propose } from './approvals.js';
 
 const run = promisify(execFile);
 const DATA = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
@@ -301,7 +302,9 @@ const onPath = (cmd: string) => spawnSync(WIN ? 'where' : 'which', [cmd], { enco
 
 /** Çalışan bir Python (Windows'ta Microsoft Store kısayolu sahte "python" olabilir: sürümü sorulur) */
 function findPython(): string[] | null {
-  for (const c of WIN ? [['py', '-3'], ['python'], ['python3']] : [['python3'], ['python']]) {
+  // Yeni kurulan Python bu süreçte PATH'te olmayabilir: kullanıcı kurulum klasörü de denenir
+  const local = WIN ? (() => { try { const d = path.join(process.env.LOCALAPPDATA ?? '', 'Programs', 'Python'); return fs.readdirSync(d).filter(x => /^Python3\d+$/.test(x)).sort().reverse().map(x => [path.join(d, x, 'python.exe')]); } catch { return []; } })() : [];
+  for (const c of WIN ? [['py', '-3'], ['python'], ['python3'], ...local] : [['python3'], ['python']]) {
     const r = spawnSync(c[0], [...c.slice(1), '--version'], { encoding: 'utf8', windowsHide: true, timeout: 15_000 });
     if (r.status === 0 && /Python 3\.(1\d|[89])/.test(`${r.stdout}${r.stderr}`)) return c;
   }
@@ -348,11 +351,21 @@ export async function resolveCommand(s: McpServer) {
     return;
   }
   if (!/^[\w.-]+$/.test(cmd)) throw new Error(`"${cmd}" komutu bulunamadı.`);
+  // Dil/çalışma ortamı komutları paket deposunda aranmaz (PyPI'de "php" adlı alakasız bir paket bile var)
+  const RUNTIME: Record<string, string> = {
+    php: 'PHP gerekiyor ve bu sunucu bir PHP/Laravel projesinin içinde çalışır (ör. "php artisan …"); Jarvis için uygun değil. Ayarlar → Yetenekler\'den kaldırabilirsiniz.',
+    composer: 'PHP Composer gerekiyor; bu sunucu bir PHP projesi içindir.', docker: 'Docker Desktop gerekiyor (https://www.docker.com/products/docker-desktop). Kurduktan sonra sunucuyu tekrar açın.',
+    java: 'Java gerekiyor (winget install EclipseAdoptium.Temurin.21.JRE).', ruby: 'Ruby gerekiyor.', go: 'Go gerekiyor.', dotnet: '.NET gerekiyor (winget install Microsoft.DotNet.SDK.8).',
+    cargo: 'Rust gerekiyor.', deno: 'Deno gerekiyor (winget install DenoLand.Deno).', bun: 'Bun gerekiyor (winget install Oven-sh.Bun).', bash: 'Bu sunucu Linux/macOS kabuğu (bash) içindir.', sh: 'Bu sunucu Linux/macOS kabuğu içindir.',
+  };
+  if (RUNTIME[cmd.toLowerCase()]) throw new Error(`"${cmd}" bulunamadı: ${RUNTIME[cmd.toLowerCase()]}`);
+  // Paket deposunda aynı adlı başka (kötü niyetli) bir paket olabilir: yalnızca reponun kendisi o paketi işaret ediyorsa kur
+  const evidence = repoMentions(s, cmd);
   const py = findPython();
   const already = py && pythonScript(py, cmd);
   if (already) { s.komut = already; save(); return; }
-  if (await registryHas(`https://pypi.org/pypi/${encodeURIComponent(cmd)}/json`)) {
-    if (!py) throw new Error(`"${cmd}" bir Python programı ama bilgisayarda Python yok. Python kurun: winget install Python.Python.3.12 (ya da Jarvis'e "Python kur" deyin), sonra sunucuyu tekrar açın.`);
+  if (evidence.pip && await registryHas(`https://pypi.org/pypi/${encodeURIComponent(cmd)}/json`)) {
+    if (!py) { offerPython(s); throw new Error(`"${cmd}" bir Python programı ama bilgisayarda Python yok. Ekrandaki onay kartını onaylarsanız Jarvis Python'u kurar ve sunucuyu kendisi açar.`); }
     installing.add(s.id); changed();
     try {
       console.log(`[yetenek] ${s.ad}: pip install ${cmd}`);
@@ -365,13 +378,55 @@ export async function resolveCommand(s: McpServer) {
     console.log(`[yetenek] ${s.ad}: ${cmd} → ${p}`);
     return;
   }
-  if (await registryHas(`https://registry.npmjs.org/${encodeURIComponent(cmd)}`)) {
+  if (evidence.npm && await registryHas(`https://registry.npmjs.org/${encodeURIComponent(cmd)}`)) {
     s.argumanlar = ['-y', cmd, ...(s.argumanlar ?? [])];
     s.komut = 'npx';
     save();
     return;
   }
-  throw new Error(`"${cmd}" komutu bu bilgisayarda yok ve PyPI/npm'de de bulunamadı. Sunucunun kurulum talimatına bakın.`);
+  throw new Error(`"${cmd}" komutu bu bilgisayarda yok${evidence.pip || evidence.npm ? ' ve paket deposunda bulunamadı' : '; reponun talimatında nasıl kurulacağı yazmıyor'}. Sunucunun kurulum sayfasına bakın.`);
+}
+
+/** Repo (README, pyproject, package.json, kurulum dosyaları) bu komutun paketini nasıl kurduğunu söylüyor mu? Elle eklenen sunucuda kullanıcı yazdığı için kabul. */
+export function repoMentions(s: McpServer, cmd: string): { pip: boolean; npm: boolean } {
+  const dir = s.repo ? path.join(REPOS, s.repo) : s.cwd;
+  if (!dir || !fs.existsSync(dir)) return { pip: true, npm: true };
+  const e = cmd.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  let text = '';
+  for (const f of walk(dir).filter(f => /(readme[^/\\]*|pyproject\.toml|package\.json|setup\.(py|cfg)|\.mcp\.json|mcp\.json|install[^/\\]*\.md)$/i.test(f)).slice(0, 40)) {
+    try { text += fs.readFileSync(f, 'utf8').slice(0, 200_000) + '\n'; } catch { /* atla */ }
+  }
+  return {
+    pip: new RegExp(`(pip3? install( -U| --upgrade| --user)* ${e}\\b|pipx install ${e}\\b|uv tool install ${e}\\b|uvx ${e}\\b|name\\s*=\\s*["']${e}["'])`, 'i').test(text),
+    npm: new RegExp(`(npm (i|install)( -g| --global)* ${e}\\b|npx( -y)? ${e}\\b|"name"\\s*:\\s*"${e}")`, 'i').test(text),
+  };
+}
+
+/** Python kurulumu için onay kartı (aynı sunucu için bu çalışmada bir kez) */
+const pythonOffered = new Set<string>();
+function offerPython(s: McpServer) {
+  if (!WIN || pythonOffered.has(s.id)) return;
+  pythonOffered.add(s.id);
+  propose('uygulama', `Python kur (${s.ad} MCP sunucusu için)`, 'winget install -e --id Python.Python.3.12 --scope user', `"${s.ad}" bir Python programı. Onaylarsanız Python 3.12 (python.org, resmî) kurulur ve sunucu kendiliğinden açılır. Birkaç dakika sürer.`, async () => {
+    await run('winget', ['install', '-e', '--id', 'Python.Python.3.12', '--scope', 'user', '--accept-package-agreements', '--accept-source-agreements', '--silent'], { timeout: 20 * 60_000, windowsHide: true });
+    if (!findPython()) return 'Python kuruldu ama henüz bulunamadı; Jarvis\'i yeniden başlatıp sunucuyu tekrar açın.';
+    if (s.aktif) enableServer(s);
+    return `Python kuruldu; ${s.ad} sunucusu açılıyor.`;
+  });
+}
+
+/** Derleme gereken (node-gyp) npm paketleri için C++ derleme araçları kurulum kartı */
+const buildToolsOffered = new Set<string>();
+function offerBuildTools(s: McpServer) {
+  if (!WIN || buildToolsOffered.has(s.id)) return;
+  buildToolsOffered.add(s.id);
+  propose('uygulama', `C++ derleme araçlarını kur (${s.ad} için)`, 'winget install Microsoft.VisualStudio.2022.BuildTools (C++ masaüstü geliştirme)', `"${s.ad}" kurulurken derleme gereken bir paket var (ör. better-sqlite3) ve bilgisayarda derleme araçları yok. Onaylarsanız Microsoft'un resmî Build Tools paketi kurulur (yaklaşık 2-4 GB, 10-20 dakika) ve sunucu tekrar kurulur.`, async () => {
+    await run('winget', ['install', '-e', '--id', 'Microsoft.VisualStudio.2022.BuildTools', '--accept-package-agreements', '--accept-source-agreements', '--override', '--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended'], { timeout: 60 * 60_000, windowsHide: true });
+    s.kurulum = 'npm';
+    save();
+    if (s.aktif) enableServer(s);
+    return `Derleme araçları kuruldu; ${s.ad} tekrar kuruluyor.`;
+  });
 }
 
 /** Node MCP paketi: bağımlılıkları kur, gerekiyorsa derle. */
@@ -400,7 +455,11 @@ async function enableServer(s: McpServer) {
     if (s.kurulum === 'npm') await installNode(s);
     await connect(s);
   } catch (e: any) {
-    live.set(s.id, { error: `kurulum başarısız: ${String(e?.stderr || e?.message || e).slice(-300)}` });
+    const msg = String(e?.stderr || e?.message || e);
+    if (/gyp ERR|node-gyp|MSBuild|Visual Studio|prebuild-install/i.test(msg)) {
+      offerBuildTools(s);
+      live.set(s.id, { error: 'kurulum başarısız: derleme gereken bir paket var (ör. better-sqlite3) ve bilgisayarda C++ derleme araçları yok. Ekrandaki onay kartıyla kurulabilir (2-4 GB) ya da bu sunucuyu kaldırabilirsiniz.' });
+    } else live.set(s.id, { error: `kurulum başarısız: ${msg.slice(-300)}` });
   }
   changed();
 }
