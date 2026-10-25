@@ -5,7 +5,7 @@
 // - GitHub'dan kurulum: repo server/data/eklentiler altına klonlanır, içindeki SKILL.md, commands/ ve workflows/
 //   Markdown'ları, .mcp.json ve Node MCP paketleri bulunur. MCP sunucuları bilgisayarda program çalıştırdığı için
 //   kapalı eklenir; kullanıcı Ayarlar'dan açar.
-import { execFile } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -15,6 +15,7 @@ import express, { type Router } from 'express';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { UnauthorizedError, type OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import type { OAuthClientInformationMixed, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
 import { adminOnly } from './keys.js';
@@ -228,9 +229,12 @@ async function connect(s: McpServer) {
       if (!s.url) throw new Error('adres yok');
       const headers = Object.fromEntries(Object.entries(s.basliklar ?? {}).map(([k, v]) => [k, expand(String(v))]));
       // Sunucu giriş isterse (OAuth) yetki adresi kaydedilir; kullanıcı Ayarlar'dan "Giriş yap" ile tamamlar
-      const transport = new StreamableHTTPClientTransport(new URL(expand(s.url)), { requestInit: { headers }, authProvider: oauthProvider(s) });
+      const url = new URL(expand(s.url));
+      const sseOnly = /\/sse\/?$/.test(url.pathname);
+      const transport = new StreamableHTTPClientTransport(url, { requestInit: { headers }, authProvider: oauthProvider(s) });
       authTransports.set(s.id, transport);
       try {
+        if (sseOnly) throw new Error('SSE adresi');
         await client.connect(transport);
       } catch (e) {
         if (e instanceof UnauthorizedError || pendingAuth.has(s.id)) {
@@ -239,11 +243,31 @@ async function connect(s: McpServer) {
           changed();
           return;
         }
-        throw e;
+        // Eski tür sunucular yalnız SSE konuşur ("Bad Request", 404/405): aynı adresle (ve …/sse ile) SSE dene
+        const first = String((e as any)?.message || e);
+        await client.close().catch(() => {});
+        let ok = false;
+        for (const u of sseOnly ? [url] : [url, new URL(url.pathname.replace(/\/(mcp)?\/?$/, '') + '/sse' + url.search, url)]) {
+          try {
+            // Başlık (anahtar) varsa SSE bağlantısına da eklenir; Headers nesnesi düz nesneye yayılamaz
+            const sseFetch = (i: any, init: any) => { const h = new Headers(init?.headers); for (const [k, v] of Object.entries(headers)) h.set(k, v); return fetch(i, { ...init, headers: h }); };
+            await client.connect(new SSEClientTransport(u, { requestInit: { headers }, ...(Object.keys(headers).length ? { eventSourceInit: { fetch: sseFetch } as any } : {}) }));
+            console.log(`[yetenek] MCP SSE ile bağlandı: ${s.ad} (${u.pathname})`);
+            ok = true;
+            break;
+          } catch (e2: any) {
+            await client.close().catch(() => {}); // başarısız denemeden kalan bağlantı sonraki adresi engellemesin
+            console.warn(`[yetenek] ${s.ad}: SSE ${u.pathname} olmadı · ${String(e2?.message || e2).slice(0, 80)}`);
+          }
+        }
+        if (!ok) throw new Error(/400|Bad Request/i.test(first)
+          ? `Sunucu isteği reddetti (${first.slice(0, 120)}). Adres yanlış olabilir (çoğunlukla …/mcp ya da …/sse ile biter) ya da sunucu bir anahtar/başlık istiyor; sunucunun kurulum sayfasına bakın.`
+          : first);
       }
       pendingAuth.delete(s.id);
     } else {
       if (!s.komut) throw new Error('komut yok');
+      await resolveCommand(s);
       const env = { ...getDefaultEnvironment(), ...netEnv(), ...Object.fromEntries(Object.entries(s.env ?? {}).map(([k, v]) => [k, expand(v, s.cwd)])) };
       const transport = new StdioClientTransport({
         command: expand(s.komut, s.cwd),
@@ -269,6 +293,85 @@ async function connect(s: McpServer) {
     logError(`mcp:${s.ad}`, live.get(s.id)?.error ?? e);
   }
   rebuildIndex();
+}
+
+// ---------------------------------------------------------------- Komut bulunamazsa ("'mcptoon' is not recognized")
+
+const onPath = (cmd: string) => spawnSync(WIN ? 'where' : 'which', [cmd], { encoding: 'utf8', windowsHide: true }).status === 0;
+
+/** Çalışan bir Python (Windows'ta Microsoft Store kısayolu sahte "python" olabilir: sürümü sorulur) */
+function findPython(): string[] | null {
+  for (const c of WIN ? [['py', '-3'], ['python'], ['python3']] : [['python3'], ['python']]) {
+    const r = spawnSync(c[0], [...c.slice(1), '--version'], { encoding: 'utf8', windowsHide: true, timeout: 15_000 });
+    if (r.status === 0 && /Python 3\.(1\d|[89])/.test(`${r.stdout}${r.stderr}`)) return c;
+  }
+  return null;
+}
+
+/** pip'in kurduğu komutun tam yolu (Scripts klasörleri PATH'te olmayabilir) */
+function pythonScript(py: string[], name: string): string | null {
+  const r = spawnSync(py[0], [...py.slice(1), '-c', "import sysconfig,os;print(sysconfig.get_path('scripts'));print(sysconfig.get_path('scripts', os.name+'_user'))"], { encoding: 'utf8', windowsHide: true });
+  for (const dir of String(r.stdout ?? '').split(/\r?\n/).map(x => x.trim()).filter(Boolean)) {
+    for (const f of WIN ? [`${name}.exe`, `${name}.cmd`, `${name}.bat`, name] : [name]) {
+      const p = path.join(dir, f);
+      if (fs.existsSync(p)) return p;
+    }
+  }
+  return null;
+}
+
+async function registryHas(url: string) {
+  const r = await fetch(url, { signal: AbortSignal.timeout(15_000) }).catch(() => null);
+  return !!r?.ok;
+}
+
+/**
+ * MCP sunucusunun komutu bilgisayarda yoksa (ör. "mcptoon serve", "uvx …"): Python paketi ise pip ile kurulur ve tam
+ * yolu kullanılır; npm paketi ise npx ile çalıştırılır. Kullanıcı sunucuyu kendisi açtığı için kurulum (npm install
+ * gibi) ayrıca sorulmaz. Bulunan yol kaydedilir; sonraki açılışta tekrar aranmaz.
+ */
+export async function resolveCommand(s: McpServer) {
+  const cmd = s.komut!;
+  if (path.isAbsolute(cmd) ? fs.existsSync(cmd) : onPath(cmd)) return;
+  // uvx yoksa: uv'yi pip ile kurup "python -m uv tool run …"
+  if (cmd === 'uvx' || cmd === 'uv') {
+    const py = findPython();
+    if (!py) throw new Error(`"${cmd}" (uv) ve Python bulunamadı. Python kurun: winget install Python.Python.3.12 (ya da Jarvis'e "Python kur" deyin), sonra sunucuyu tekrar açın.`);
+    installing.add(s.id); changed();
+    try {
+      console.log(`[yetenek] ${s.ad}: uv kuruluyor (pip)`);
+      await run(py[0], [...py.slice(1), '-m', 'pip', 'install', '--user', '--quiet', 'uv'], { timeout: 10 * 60_000, windowsHide: true });
+    } finally { installing.delete(s.id); }
+    s.argumanlar = [...py.slice(1), '-m', 'uv', ...(cmd === 'uvx' ? ['tool', 'run'] : []), ...(s.argumanlar ?? [])];
+    s.komut = py[0];
+    save();
+    return;
+  }
+  if (!/^[\w.-]+$/.test(cmd)) throw new Error(`"${cmd}" komutu bulunamadı.`);
+  const py = findPython();
+  const already = py && pythonScript(py, cmd);
+  if (already) { s.komut = already; save(); return; }
+  if (await registryHas(`https://pypi.org/pypi/${encodeURIComponent(cmd)}/json`)) {
+    if (!py) throw new Error(`"${cmd}" bir Python programı ama bilgisayarda Python yok. Python kurun: winget install Python.Python.3.12 (ya da Jarvis'e "Python kur" deyin), sonra sunucuyu tekrar açın.`);
+    installing.add(s.id); changed();
+    try {
+      console.log(`[yetenek] ${s.ad}: pip install ${cmd}`);
+      await run(py[0], [...py.slice(1), '-m', 'pip', 'install', '--user', '--quiet', '--disable-pip-version-check', cmd], { timeout: 10 * 60_000, windowsHide: true });
+    } finally { installing.delete(s.id); }
+    const p = pythonScript(py, cmd);
+    if (!p) throw new Error(`"${cmd}" kuruldu ama komutu bulunamadı; Jarvis'i yeniden başlatıp tekrar deneyin.`);
+    s.komut = p;
+    save();
+    console.log(`[yetenek] ${s.ad}: ${cmd} → ${p}`);
+    return;
+  }
+  if (await registryHas(`https://registry.npmjs.org/${encodeURIComponent(cmd)}`)) {
+    s.argumanlar = ['-y', cmd, ...(s.argumanlar ?? [])];
+    s.komut = 'npx';
+    save();
+    return;
+  }
+  throw new Error(`"${cmd}" komutu bu bilgisayarda yok ve PyPI/npm'de de bulunamadı. Sunucunun kurulum talimatına bakın.`);
 }
 
 /** Node MCP paketi: bağımlılıkları kur, gerekiyorsa derle. */
