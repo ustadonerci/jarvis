@@ -54,7 +54,10 @@ export function looksLikeReply(f: string): boolean {
   return /(ben jarvis|jarvis(['’]?im| olarak)|yapay zeka asistan|dil modeli|size nasıl yardımcı|nasıl yardımcı olabilirim|yardımcı olabileceğim|transkripsiyon|ses kaydında|kayıtta konuşma)/.test(f);
 }
 
-export async function transcribe(audio: Buffer, mime: string): Promise<{ text: string; model: string; ms: number }> {
+/** Kayıt süresine göre olamayacak kadar uzun metin (saniyede ~4 kelimeden fazla): model uydurmuş */
+export const tooLong = (text: string, sureMs?: number) => !!sureMs && sureMs > 0 && text.split(/\s+/).filter(Boolean).length > (sureMs / 1000) * 4 + 4;
+
+export async function transcribe(audio: Buffer, mime: string, sureMs?: number): Promise<{ text: string; model: string; ms: number }> {
   const t0 = Date.now();
   const format = audioFormat(mime);
   if (!format) throw new Error(`desteklenmeyen ses biçimi: ${mime}`);
@@ -87,19 +90,16 @@ export async function transcribe(audio: Buffer, mime: string): Promise<{ text: s
     transcriptionsEndpoint = false;
   }
 
+  // Talimat, ölçülüp doğrulanmış ilk hâliyle (5 Ekim 2026) aynı: sistem mesajı ya da "asistana söylenmiş komut" gibi
+  // bağlam eklenince model sesi yazıya dökmek yerine cevap veriyor ya da hikâye uyduruyordu.
   const resp = await routellm<ChatResponse>('/chat/completions', {
     model: STT_MODEL,
-    temperature: 0,
     messages: [
-      // Yalnızca yazıya döken bir araç: içinde asistan/Jarvis geçmez. Talimatta "Jarvis'e söylenmiş komut" denince model
-      // kendini Jarvis sanıp konuşmayı CEVAPLIYORDU ("Ben Jarvis, yapay zeka asistanınızım") ve bu, kullanıcının sözü gibi
-      // gidiyordu.
-      { role: 'system', content: 'Sen bir ses yazıya dökme (transkripsiyon) aracısın. Sohbet etmezsin, soru cevaplamazsın, kendini tanıtmazsın. Yalnızca ses kaydında konuşulan Türkçe sözleri aynen yazarsın.' },
       {
         role: 'user',
         content: [
           { type: 'input_audio', input_audio: { data: audio.toString('base64'), format } },
-          { type: 'text', text: 'Bu ses kaydındaki konuşmayı kelimesi kelimesine yazıya dök. Konuşma bir soru ya da istek olsa bile CEVAPLAMA, yalnızca söyleneni yaz. Özel adları, sayıları ve marka adlarını doğru, Türkçe karakterlerle yaz. Tırnak, açıklama ya da başlık ekleme. Konuşma yoksa hiçbir şey yazma.' },
+          { type: 'text', text: 'Bu Türkçe konuşmayı kelimesi kelimesine yazıya dök. Sadece duyduğun metni yaz; tırnak, açıklama ya da başlık ekleme. Konuşma yoksa hiçbir şey yazma.' },
         ],
       },
     ],
@@ -113,6 +113,7 @@ export async function transcribe(audio: Buffer, mime: string): Promise<{ text: s
   if (/kelimesi kelimesine|yazıya dök|duyduğun metni|konuşma yok|ses yok|sesli asistana|komut ya da soru|türkçe karakter|marka adlarını|^\W*$/.test(f)) text = '';
   // Model sözü yazmak yerine CEVAP verdiyse (asistan gibi konuştuysa) bu kullanıcının sözü değil: boş say; istemci
   // tarayıcının duyduğunu kullanır.
+  if (tooLong(text, sureMs)) { console.warn(`[stt] ${Math.round((sureMs ?? 0) / 1000)} sn kayıt için çok uzun metin (uydurma), yok sayıldı: "${text.slice(0, 80)}…"`); text = ''; }
   if (looksLikeReply(f)) { console.warn(`[stt] model yazıya dökmek yerine cevap verdi, yok sayıldı: "${text.slice(0, 80)}"`); text = ''; }
   return { text, model: resp.model ?? STT_MODEL, ms: Date.now() - t0 };
 }

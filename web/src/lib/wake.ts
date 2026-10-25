@@ -189,10 +189,10 @@ export function listenForCommand(o: {
     noSpeechMs: o.ms,
     silenceMs: 700,
     maxMs: o.ms + 2000, // pencerenin sonunda başlayan "uyan jarvis" yarıda kesilmesin
-    onStop: blob => {
+    onStop: (blob, info) => {
       if (done) return;
       if (!blob) return report('routellm', '', true);
-      stt(blob).then(t => report('routellm', t, true)).catch(() => report('routellm', '', true));
+      stt(blob, info.ms).then(t => report('routellm', t, true)).catch(() => report('routellm', '', true));
     },
   })
     .then(rec => (done ? rec.stop() : stops.push(() => rec.stop())))

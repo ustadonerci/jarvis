@@ -44,6 +44,8 @@ export interface RecordingInfo {
   heard: boolean;
   /** Kayıttaki en yüksek ses seviyesi (0–1 arası RMS). Çok düşükse mikrofon seviyesi kısık ya da yanlış mikrofon. */
   peak: number;
+  /** Kaydın süresi (ms): ses tanımanın uydurduğu uzun metni ayıklamak için */
+  ms: number;
 }
 
 export async function startRecording(h: {
@@ -113,7 +115,7 @@ export async function startRecording(h: {
     if (shared) { warmUsers--; scheduleRelease(); }
     if (!h.ctx) ctx.close().catch(() => {});
     const has = chunks.length > 0 && (heard || !!h.sendSilent);
-    h.onStop(has ? new Blob(chunks, { type: rec.mimeType || mime || 'audio/webm' }) : null, { heard, peak });
+    h.onStop(has ? new Blob(chunks, { type: rec.mimeType || mime || 'audio/webm' }) : null, { heard, peak, ms: Math.round(performance.now() - t0) });
   };
 
   const tick = () => {

@@ -760,8 +760,11 @@ export default function App() {
           setInterim('anlıyorum…');
           let text = '';
           let err = '';
-          try { text = blob ? await stt(blob) : ''; } catch (e: any) { err = e.message; }
-          if (!text) text = await backup; // sunucu tanıyamadıysa tarayıcının duyduğu
+          try { text = blob ? await stt(blob, info.ms) : ''; } catch (e: any) { err = e.message; }
+          const web = await backup;
+          // Sunucu tanıyamadıysa ya da tarayıcının duyduğundan çok daha uzun (uydurma) bir metin döndüyse tarayıcınınki
+          const words = (s: string) => s.split(/\s+/).filter(Boolean).length;
+          if (!text || (web && words(text) > words(web) * 2 + 5)) text = web || text;
           setInterim('');
           if (text) submit(text);
           else {

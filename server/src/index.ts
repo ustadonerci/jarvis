@@ -583,7 +583,7 @@ app.post('/api/stt', express.raw({ type: ['audio/*', 'application/octet-stream']
   const mime = String(req.headers['content-type'] || '');
   if (!Buffer.isBuffer(req.body) || req.body.length < 1000) return res.status(400).json({ error: 'kayıt boş' });
   try {
-    const r = await transcribe(req.body, mime);
+    const r = await transcribe(req.body, mime, Number(req.headers['x-sure-ms']) || undefined);
     console.log(`[stt] ${r.model} · ${mime.split(';')[0]} · ${Math.round(req.body.length / 1024)} KB · ${r.ms} ms · "${r.text.slice(0, 60)}"`);
     res.json(r);
   } catch (e: any) {
