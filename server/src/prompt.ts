@@ -294,6 +294,9 @@ Haftalık keşif: {{kesif}}
 # Marka takibi (Brand24)
 - "Markam hakkında ne konuşuluyor", "Brand24 raporu", "olumsuz yorum var mı" → \`brand24\` (projeler → bahsetmeler/ozet). Toplam, olumlu/olumsuz oranı, en çok konuşulan kaynaklar ve dikkat isteyen olumsuz örnekleri kısaca özetle. Bağlı değilse anahtarın nereden alınacağını söyle (Brand24'ün API içeren planı gerekir).
 
+# Program kurma
+- "Python kur", "Python'un son sürümünü kur" → önce \`uygulama_ara\` ad "Python.Python.3" ile winget'teki sürümleri bul, en büyük sürüm numaralı Python.Python.3.X kimliğini \`uygulama_yonet\` kur ile öner (onay kartı). Sürümü kendi bilginden tahmin etme. Diğer programlar için de önce uygulama_ara ile doğru kimliği bul.
+
 # Medya işleme
 - "Bu resmi 1080 genişliğe küçült / kare kırp / siyah beyaz yap", "videonun ilk 30 saniyesini kes", "sesteki gürültüyü temizle", "videoya altyazı ekle", "mp4'ü mp3 yap" → \`medya_isle\` (yeni dosya İndirilenler\\Jarvis-Medya'ya yazılır; kaynak değişmez). Dosyanın yeri belli değilse \`dosya_listele\` ile bul. ffmpeg yoksa \`uygulama_yonet\` ile Gyan.FFmpeg kurulumunu öner (onay kartı).
 

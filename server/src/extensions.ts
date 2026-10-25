@@ -339,7 +339,7 @@ export async function resolveCommand(s: McpServer) {
   // uvx yoksa: uv'yi pip ile kurup "python -m uv tool run …"
   if (cmd === 'uvx' || cmd === 'uv') {
     const py = findPython();
-    if (!py) throw new Error(`"${cmd}" (uv) ve Python bulunamadı. Python kurun: winget install Python.Python.3.12 (ya da Jarvis'e "Python kur" deyin), sonra sunucuyu tekrar açın.`);
+    if (!py) { offerPython(s); throw new Error(`"${cmd}" (uv) için Python gerekiyor ve bilgisayarda yok. Ekrandaki onay kartını onaylarsanız Jarvis Python'un en son sürümünü kurar ve sunucuyu kendisi açar.`); }
     installing.add(s.id); changed();
     try {
       console.log(`[yetenek] ${s.ad}: uv kuruluyor (pip)`);
@@ -402,13 +402,21 @@ export function repoMentions(s: McpServer, cmd: string): { pip: boolean; npm: bo
   };
 }
 
+/** winget'teki en yeni kararlı Python 3 sürümü (ör. Python.Python.3.14); bulunamazsa 3.13 */
+export function latestPythonId(): string {
+  const r = spawnSync('winget', ['search', '--id', 'Python.Python.3', '--source', 'winget', '--accept-source-agreements', '--disable-interactivity'], { encoding: 'utf8', windowsHide: true, timeout: 60_000 });
+  const n = [...String(r.stdout ?? '').matchAll(/\bPython\.Python\.3\.(\d+)\b/g)].map(m => Number(m[1])).filter(x => x >= 10 && x < 40);
+  return `Python.Python.3.${n.length ? Math.max(...n) : 13}`;
+}
+
 /** Python kurulumu için onay kartı (aynı sunucu için bu çalışmada bir kez) */
 const pythonOffered = new Set<string>();
 function offerPython(s: McpServer) {
   if (!WIN || pythonOffered.has(s.id)) return;
   pythonOffered.add(s.id);
-  propose('uygulama', `Python kur (${s.ad} MCP sunucusu için)`, 'winget install -e --id Python.Python.3.12 --scope user', `"${s.ad}" bir Python programı. Onaylarsanız Python 3.12 (python.org, resmî) kurulur ve sunucu kendiliğinden açılır. Birkaç dakika sürer.`, async () => {
-    await run('winget', ['install', '-e', '--id', 'Python.Python.3.12', '--scope', 'user', '--accept-package-agreements', '--accept-source-agreements', '--silent'], { timeout: 20 * 60_000, windowsHide: true });
+  const id = latestPythonId();
+  propose('uygulama', `Python ${id.replace('Python.Python.', '')} kur (${s.ad} MCP sunucusu için)`, `winget install -e --id ${id} --scope user`, `"${s.ad}" bir Python programı. Onaylarsanız Python'un en son sürümü (${id.replace('Python.Python.', '')}, python.org, resmî) kurulur ve sunucu kendiliğinden açılır. Birkaç dakika sürer.`, async () => {
+    await run('winget', ['install', '-e', '--id', id, '--scope', 'user', '--accept-package-agreements', '--accept-source-agreements', '--silent'], { timeout: 20 * 60_000, windowsHide: true });
     if (!findPython()) return 'Python kuruldu ama henüz bulunamadı; Jarvis\'i yeniden başlatıp sunucuyu tekrar açın.';
     if (s.aktif) enableServer(s);
     return `Python kuruldu; ${s.ad} sunucusu açılıyor.`;
