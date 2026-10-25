@@ -7,6 +7,7 @@
 //  - enerjisinin büyük kısmı 2–8 kHz'de (kapı çarpması ve konuşmanın gövdesi alçak frekansta),
 //  - ~150 ms içinde sönüyor (konuşma ve müzik sürer).
 // Desen: iki alkış arası 200–700 ms ve ardından 400 ms içinde üçüncüsü yoksa → çift alkış. Sonra 3 sn bekleme.
+import { micConstraints } from './recorder';
 
 export interface ClapFrame {
   /** ms (performance.now) */
@@ -208,7 +209,8 @@ export async function startClapListener(
   ev: ClapEvents,
   paused: () => boolean,
 ): Promise<ClapListener> {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints({ echoCancellation: false, noiseSuppression: false, autoGainControl: false }) })
+    .catch(() => navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } }));
   const src = ctx.createMediaStreamSource(stream);
   const an = ctx.createAnalyser();
   // 2048 örnek (48 kHz'de 43 ms): rAF bir kare kaçırsa (33 ms) bile alkışın başlangıcı bir pencerenin içinde kalır.

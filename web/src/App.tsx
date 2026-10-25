@@ -29,7 +29,8 @@ import { emitCamera, getCameras, getRole, isCameraEvent, onCamera, setRole, togg
 import { type ElevenUsage, clearConversation, cloneVoice, uploadFile, detectDevice, getDashboard, getHealth, getState, getVoices, metric, postAttention, postSleep, postWake, previewUrl, saveDevice, saveSettings, sendChat, setPhotoMode, stt, subscribe, token, clientId } from './lib/api';
 import { startClapListener, type ClapListener } from './lib/clap';
 import { shrinkImage } from './lib/image';
-import { recorderSupported, startRecording, warmMic } from './lib/recorder';
+import { micInfo, recorderSupported, startRecording, suspiciousMic, warmMic } from './lib/recorder';
+import { MicTest } from './components/MicTest';
 import { Markdown } from './lib/markdown';
 import { createRecognizer, speechRecognitionSupported, voice } from './lib/speech';
 import { DEVICE_LABEL, type PersonaOption, type ThemeOption, type CoreState, type CurrencyCode, type Dashboard, type Device, type GreetingPeriod, type Health, type JarvisReply, type Sahne, type ServerEvent, type StoredMessage, type UiMode, type VoiceOption, type VoiceSel, type WakeConfig } from './lib/types';
@@ -743,8 +744,7 @@ export default function App() {
       recRef.current = await startRecording({
         sendSilent: true,
         manual: true,
-        maxMs: 10 * 60_000, // emniyet: 10 dk
-        stream: clapRef.current?.stream,
+        maxMs: 10 * 60_000, // emniyet: 10 dk (Ayarlar'da seçilen mikrofon; alkış dinleyicisinin akışı değil)
         onStop: async (blob, info) => {
           recRef.current = null;
           const backup = sideText();
@@ -774,6 +774,9 @@ export default function App() {
         },
       });
       setInterim('dinliyorum… (bitirince mikrofona tekrar basın)');
+      // Bilgisayarın kendi sesini kaydeden giriş (Stereo Karışımı vb.) seçiliyse Jarvis kullanıcıyı değil çalan sesi duyar
+      const lbl = micInfo()?.label ?? '';
+      if (suspiciousMic(lbl)) flash(`Dikkat: "${lbl}" bir mikrofon değil, bilgisayarın sesini kaydediyor. Ayarlar → Mikrofon · test bölümünden mikrofonunuzu seçin.`);
     } catch {
       // Mikrofon izni yok ya da kayıt başlamadı: Web Speech yedeğini dene.
       try { side?.stop(); } catch { /* yok */ }
@@ -1323,6 +1326,7 @@ export default function App() {
                     ))}
                   </div>
                   <p className="muted small">Ton hem konuşma üslubunu hem de seslendirmeyi değiştirir. Doğruluk ve onay kuralları her tonda aynıdır.</p>
+                  <MicTest flash={flash} />
                   <KeySettings flash={flash} />
                   <PortfolioSettings flash={flash} />
                   <MessagingSettings flash={flash} />

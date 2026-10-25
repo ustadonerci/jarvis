@@ -18,6 +18,43 @@ function pickMime(): string | undefined {
 // Mikrofon akışı bir süre açık tutulur: her basışta yeniden izin/başlatma (Windows'ta 0,3–1 sn) olmaz, ilk hece
 // kaçmaz. Son kullanımdan 2 dk sonra kapatılır (tarayıcının mikrofon işareti de söner).
 const MIC = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+
+// Seçili mikrofon (Ayarlar → Mikrofon testi). Windows bazen "Stereo Karışımı" gibi bilgisayarın kendi sesini kaydeden
+// bir girişi varsayılan yapıyor: Jarvis kullanıcı yerine çalan videoyu/sesi duyuyordu. Seçim bu tarayıcıda saklanır.
+const MIC_KEY = 'jarvis-mic';
+export function micDevice(): string {
+  try { return localStorage.getItem(MIC_KEY) || ''; } catch { return ''; }
+}
+/** Seçili cihaz (varsa) + verilen işleme ayarları */
+export function micConstraints(extra: MediaTrackConstraints = MIC): MediaTrackConstraints {
+  const id = micDevice();
+  return { ...extra, ...(id ? { deviceId: { exact: id } } : {}) };
+}
+async function openMic(): Promise<MediaStream> {
+  try { return await navigator.mediaDevices.getUserMedia({ audio: micConstraints() }); }
+  catch (e: any) {
+    // Seçili cihaz takılı değilse varsayılana dön
+    if (micDevice() && /Overconstrained|NotFound/i.test(String(e?.name))) return navigator.mediaDevices.getUserMedia({ audio: MIC });
+    throw e;
+  }
+}
+export function setMicDevice(id: string) {
+  try { id ? localStorage.setItem(MIC_KEY, id) : localStorage.removeItem(MIC_KEY); } catch { /* yok */ }
+  if (warmUsers === 0) { warm?.getTracks().forEach(t => t.stop()); warm = null; }
+}
+/** Bilgisayarın kendi sesini kaydeden (mikrofon olmayan) girişler */
+export const suspiciousMic = (label: string) => /stereo|karışım|karisim|\bmix\b|mixage|cable|virtual|sanal|loopback|voicemeeter|what u hear|wave out|monitor of/i.test(label);
+export async function listMics(): Promise<{ id: string; ad: string; supheli: boolean }[]> {
+  await warmMic(); // izin verilmeden cihaz adları boş gelir
+  const all = await navigator.mediaDevices.enumerateDevices();
+  return all.filter(d => d.kind === 'audioinput' && d.deviceId !== 'communications')
+    .map(d => ({ id: d.deviceId === 'default' ? '' : d.deviceId, ad: d.label || 'Mikrofon', supheli: suspiciousMic(d.label) }));
+}
+/** Açık mikrofon akışının ayarları (test ekranı için) */
+export function micInfo(): MediaTrackSettings & { label?: string } | null {
+  const t = warm?.getAudioTracks()[0];
+  return t ? { ...t.getSettings(), label: t.label } : null;
+}
 let warm: MediaStream | null = null;
 let warmUsers = 0;
 let warmTimer: ReturnType<typeof setTimeout> | undefined;
@@ -26,7 +63,7 @@ const live = (s: MediaStream | null) => !!s && s.getAudioTracks().some(t => t.re
 /** Mikrofonu önceden aç (ör. düğmeye basılırken); başarısızsa sessizce geçer */
 export async function warmMic(): Promise<MediaStream | null> {
   clearTimeout(warmTimer);
-  if (!live(warm)) warm = await navigator.mediaDevices.getUserMedia({ audio: MIC }).catch(() => null);
+  if (!live(warm)) warm = await openMic().catch(() => null);
   scheduleRelease();
   return warm;
 }
@@ -74,7 +111,7 @@ export async function startRecording(h: {
   const silenceMs = h.silenceMs ?? 1400, noSpeechMs = h.noSpeechMs ?? 6000, maxMs = h.maxMs ?? 15000;
   const shared = h.stream ? null : await warmMic();
   const ownStream = !h.stream && !shared;
-  const stream = h.stream ?? shared ?? (await navigator.mediaDevices.getUserMedia({ audio: MIC }));
+  const stream = h.stream ?? shared ?? (await openMic());
   if (shared) warmUsers++;
   const mime = pickMime();
   const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);

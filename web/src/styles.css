@@ -880,3 +880,10 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .link-card p { margin: 6px 0 10px; color: var(--muted); line-height: 1.4; }
 .link-card .lc-btn { display: block; text-align: center; padding: 10px; border-radius: 8px; border: 1px solid var(--accent); background: rgba(var(--accent-rgb), 0.15); color: var(--accent); font-weight: 700; text-decoration: none; }
 @media (max-width: 560px) { .link-cards { left: 12px; right: 12px; width: auto; bottom: 150px; } }
+
+/* Ayarlar → Mikrofon testi */
+.mic-meter { height: 8px; border-radius: 4px; background: rgba(127,127,127,.25); overflow: hidden; margin: 6px 0; }
+.mic-meter i { display: block; height: 100%; background: var(--accent, #4de1ff); transition: width .05s linear; }
+.mic-result { display: grid; gap: 4px; margin: 6px 0 10px; }
+.mic-result p { margin: 0; overflow-wrap: anywhere; }
+.mic-list button { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
