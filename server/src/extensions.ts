@@ -499,7 +499,34 @@ const AUTO_PACKAGES: Record<string, string[]> = {
   youtube: ['Jakeschincariol/youtube-agent-skill'],
   // Yapay zeka kokan metni ("sadece X değil, Y", tumturaklı kapanışlar…) insan yazısı gibi düzeltir; yalnız talimat
   humanizer: ['blader/humanizer'],
+  // Video: Remotion'un resmî becerileri; After Effects'i yöneten MCP (After Effects kurulu olmalı; MCP kapalı gelir)
+  video: ['remotion-dev/skills', 'TheLlamainator/after-effects-mcp'],
 };
+
+/**
+ * Kullanıcının istediği uzak (barındırılan) MCP sunucuları: bir kez, KAPALI eklenir. Açınca hesapla giriş istenir
+ * (Ayarlar → Yetenekler → "Giriş yap"); üretimler o hesabın kredisinden düşer.
+ */
+const AUTO_SERVERS: { key: string; ad: string; url: string }[] = [
+  // Resmî: https://docs.heygen.com/docs/heygen-remote-mcp-server
+  { key: 'heygen', ad: 'HeyGen', url: 'https://mcp.heygen.com/mcp/v1/' },
+  // Higgsfield'ın barındırılan bağlantısı (OAuth)
+  { key: 'higgsfield', ad: 'Higgsfield', url: 'https://mcp.higgsfield.ai/mcp' },
+];
+function autoAddServers() {
+  let added = 0;
+  for (const a of AUTO_SERVERS) {
+    const mark = path.join(DATA, `sunucu-${a.key}.eklendi`);
+    if (fs.existsSync(mark)) continue;
+    if (!store.servers.some(x => x.url === a.url)) {
+      store.servers.push({ id: randomUUID().slice(0, 8), ad: a.ad, aktif: false, tur: 'http', url: a.url });
+      added++;
+    }
+    fs.mkdirSync(DATA, { recursive: true });
+    fs.writeFileSync(mark, new Date().toISOString());
+  }
+  if (added) { save(); changed(); console.log(`[yetenek] ${added} uzak MCP sunucusu eklendi (kapalı)`); }
+}
 const packageMark = (name: string) => path.join(DATA, `paket-${name}.kuruldu`);
 
 async function autoInstallPackages() {
@@ -516,6 +543,7 @@ async function autoInstallPackages() {
 
 export function initExtensions(b: (e: object) => void) {
   broadcast = b;
+  autoAddServers();
   for (const s of store.servers) if (s.aktif) enableServer(s);
   // Sunucu açılışını bekletmesin
   setTimeout(() => autoInstallPackages().catch(e => console.warn('[yetenek] paket kurulamadı:', e)), 5000);
