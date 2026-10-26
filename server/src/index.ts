@@ -38,6 +38,7 @@ import { initAgents } from './agents.js';
 import { VS_MODEL, initVoiceStudio, isVoiceStudio, registerVoiceSetter, vsClone, vsProfiles, vsUp } from './voicestudio.js';
 import { initGithub } from './github.js';
 import { financeRouter, initFinance } from './finance.js';
+import { exchangesRouter } from './exchanges.js';
 import { clearErrors, errorList, initErrors, logError } from './errors.js';
 import { approvalsRouter, initApprovals } from './approvals.js';
 import { automationRouter } from './automation.js';
@@ -398,6 +399,7 @@ app.use(messagingRouter());
 
 // ---------- Finans: portföy ve fiyat alarmları ----------
 app.use(financeRouter());
+app.use(exchangesRouter());
 
 // ---------- Onay kartları ve otomasyon (webhook) ----------
 app.use(approvalsRouter());

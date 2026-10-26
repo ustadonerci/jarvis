@@ -114,7 +114,7 @@ export const addMemory = (text: string) => fetch('/api/memory', { method: 'POST'
 export const deleteMemory = (id: string) => fetch(`/api/memory/${encodeURIComponent(id)}`, { method: 'DELETE', headers: headers() }).then(r => json<{ memory: MemoryItem[] }>(r));
 
 // ---------- Ayarlar → API anahtarları ve Yetenekler ----------
-export interface KeyView { name: string; label: string; hint: string; secret: boolean; set: boolean; value: string }
+export interface KeyView { name: string; label: string; hint: string; secret: boolean; set: boolean; value: string; borsa?: string }
 export interface KeysData { fields: KeyView[]; custom: KeyView[] }
 export const getKeys = () => fetch('/api/keys', { headers: headers() }).then(r => json<KeysData>(r));
 export const saveKeys = (values: Record<string, string>) =>
@@ -304,3 +304,8 @@ export function uploadFile(f: File, onProgress?: (p: number) => void): Promise<{
 export interface MicReport { windows: boolean; cihazlar: { ad: string; arayuz: string; durum: string; varsayilan: boolean; supheli: boolean }[]; varsayilan?: string; erisim: { uygulamalar?: string; masaustu_uygulamalari?: string; sistem?: string }; sorunlar: string[]; oneriler: string[] }
 export const checkWindowsMic = () => fetch('/api/mikrofon-kontrol', { headers: headers() }).then(r => json<MicReport>(r));
 export const openMicSettings = (ne: 'kayit' | 'gizlilik') => fetch('/api/mikrofon-ayar-ac', { method: 'POST', headers: headers(), body: JSON.stringify({ ne }) }).then(r => json<{ ok: boolean }>(r));
+
+// ---------- Borsalar (Ayarlar → Borsalar kartları) ----------
+export interface ExchangeView { id: string; ad: string; hazir: boolean; deneysel: boolean; not?: string }
+export const getExchanges = () => fetch('/api/borsalar', { headers: headers() }).then(r => json<{ borsalar: ExchangeView[] }>(r));
+export const testExchange = (id: string) => fetch(`/api/borsalar/${id}/test`, { method: 'POST', headers: headers() }).then(r => json<{ ok: boolean; borsa: string; bakiye: { varlik: string; serbest: number; kilitli: number }[] }>(r));

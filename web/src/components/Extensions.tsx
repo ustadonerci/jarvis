@@ -89,7 +89,7 @@ export function KeySettings({ flash }: { flash(t: string): void }) {
         ) : <p className="muted small">yükleniyor…</p>
       ) : (
         <div className="keys">
-          {data.fields.map(field)}
+          {data.fields.filter(f => !f.borsa).map(field)}
           {data.custom.map(field)}
           <form className="memory-add" onSubmit={e => { e.preventDefault(); addCustom(); }}>
             <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Başka anahtar ekle (ör. GITHUB_TOKEN)" maxLength={64} />

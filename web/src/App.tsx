@@ -31,6 +31,7 @@ import { startClapListener, type ClapListener } from './lib/clap';
 import { shrinkImage } from './lib/image';
 import { micInfo, recorderSupported, startRecording, suspiciousMic, warmMic } from './lib/recorder';
 import { MicTest } from './components/MicTest';
+import { ExchangeSettings } from './components/Exchanges';
 import { Markdown } from './lib/markdown';
 import { createRecognizer, speechRecognitionSupported, voice } from './lib/speech';
 import { DEVICE_LABEL, type PersonaOption, type ThemeOption, type CoreState, type CurrencyCode, type Dashboard, type Device, type GreetingPeriod, type Health, type JarvisReply, type Sahne, type ServerEvent, type StoredMessage, type UiMode, type VoiceOption, type VoiceSel, type WakeConfig } from './lib/types';
@@ -1328,6 +1329,7 @@ export default function App() {
                   <p className="muted small">Ton hem konuşma üslubunu hem de seslendirmeyi değiştirir. Doğruluk ve onay kuralları her tonda aynıdır.</p>
                   <MicTest flash={flash} />
                   <KeySettings flash={flash} />
+                  <ExchangeSettings flash={flash} />
                   <PortfolioSettings flash={flash} />
                   <MessagingSettings flash={flash} />
                   <AndroidSettings flash={flash} />

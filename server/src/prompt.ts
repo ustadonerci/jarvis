@@ -283,6 +283,7 @@ Haftalık keşif: {{kesif}}
 - "Bilal'in numarası ne" → \`rehber\` bul. Rehber boşsa CSV ya da .vcf dışa aktarıp Jarvis'e dosya olarak göndermesini söyle. Rehberdeki numaraları başkalarına söyleme/gönderme.
 
 # Borsa robotu
+- "Borsalardaki bakiyem", "BtcTurk'te ne kadar param var" → \`borsa_bakiye\` (Binance, BtcTurk, OKX TR, Bitlo; yalnız okur). Anahtar yoksa Ayarlar → Borsalar kartından girmesini söyle; anahtarı sohbete yazmasın.
 - "Otomatik alım satım yap", "robotu başlat/durdur", "robot ne durumda", "bu strateji kazandırır mı" → \`borsa_robotu\`. Varsayılan KÂĞIT mod: sanal bakiyeyle gerçek piyasa fiyatlarında simülasyon (BIST, ABD hissesi, kripto, altın). Bunu açıkça söyle; "para kazandı" deme, "sanal bakiyede" de.
 - Robotu ilk kez kurarken semboller, işlem başı tutar ve günlük zarar sınırını sor ya da varsayılanları söyle; önerince test_et ile sembolün son 1 yıldaki sonucunu (getiri, kazanma oranı, en büyük düşüş, al-tut karşılaştırması) göster.
 - CANLI mod yalnız kripto ve Binance; canli_ac onay kartı açar. Kullanıcıya Binance'te ÇEKİM İZNİ KAPALI, yalnız Spot Trading açık bir anahtar oluşturup Ayarlar → Anahtarlar'a girmesini söyle; anahtarı sohbete yazmasın. Önce birkaç gün kâğıt modda denemesini öner. BIST'te canlı otomatik işlem yok (aracı kurum API'si gerekir); bunu dürüstçe söyle.

@@ -20,6 +20,7 @@ import { BRAND24_TOOLS } from './brand24.js';
 import { CONTACT_TOOLS } from './contacts.js';
 import { MAILCLEAN_TOOLS } from './mailclean.js';
 import { MICDIAG_TOOLS } from './micdiag.js';
+import { EXCHANGE_TOOLS } from './exchanges.js';
 import { ERROR_TOOLS, openErrorCount } from './errors.js';
 import { APPROVAL_TOOLS } from './approvals.js';
 import { SYSTEM_TOOLS } from './system.js';
@@ -83,7 +84,7 @@ export function toolsFor(groups: Set<Group>, isBrief = false): any[] {
     ...(isBrief ? TOOLS : TOOLS.filter(t => t.function.name !== 'get_news')), ...SEARCH_TOOLS, ...ERROR_TOOLS, ...APPROVAL_TOOLS,
     ...pick('finans', FINANCE_TOOLS), ...pick('mesaj', MSG_TOOLS), ...pick('eposta', EMAIL_TOOLS), ...pick('github', GITHUB_TOOLS),
     ...pick('ajan', agentTools()), ...pick('sistem', SYSTEM_TOOLS), ...pick('otomasyon', AUTOMATION_TOOLS), ...pick('telefon', PHONE_TOOLS),
-    ...pick('sms', SMS_TOOLS), ...pick('sosyal', SOCIAL_TOOLS), ...pick('android', ANDROID_TOOLS), ...pick('site', SITE_TOOLS), ...pick('medya', MEDIA_TOOLS), ...pick('ses', VOICESTUDIO_TOOLS), ...pick('satin', HOSTINGER_TOOLS), ...pick('finans', ROBOT_TOOLS), ...pick('medya', REELS_TOOLS), ...pick('marka', BRAND24_TOOLS), ...pick('telefon', CONTACT_TOOLS), ...pick('eposta', MAILCLEAN_TOOLS), ...pick('sistem', MICDIAG_TOOLS), ...pick('medya', SYSTEM_TOOLS.filter(t => t.function.name === 'dosya_listele' || t.function.name === 'uygulama_yonet' || t.function.name === 'uygulama_ara')),
+    ...pick('sms', SMS_TOOLS), ...pick('sosyal', SOCIAL_TOOLS), ...pick('android', ANDROID_TOOLS), ...pick('site', SITE_TOOLS), ...pick('medya', MEDIA_TOOLS), ...pick('ses', VOICESTUDIO_TOOLS), ...pick('satin', HOSTINGER_TOOLS), ...pick('finans', ROBOT_TOOLS), ...pick('finans', EXCHANGE_TOOLS), ...pick('medya', REELS_TOOLS), ...pick('marka', BRAND24_TOOLS), ...pick('telefon', CONTACT_TOOLS), ...pick('eposta', MAILCLEAN_TOOLS), ...pick('sistem', MICDIAG_TOOLS), ...pick('medya', SYSTEM_TOOLS.filter(t => t.function.name === 'dosya_listele' || t.function.name === 'uygulama_yonet' || t.function.name === 'uygulama_ara')),
     ...pick('yetenek', EXT_TOOLS), ...pick('mcp', mcpTools()), ...pick('yetenek', mcpTools()),
   ].filter((t, i, a) => a.findIndex(x => x.function.name === t.function.name) === i);
 }

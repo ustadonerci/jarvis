@@ -9,7 +9,7 @@ const SRC = path.dirname(fileURLToPath(import.meta.url));
 const ENV_FILE = path.join(SRC, '..', '.env');
 const ENV_EXAMPLE = path.join(SRC, '..', '.env.example');
 
-export interface KeyField { name: string; label: string; hint: string; secret: boolean }
+export interface KeyField { name: string; label: string; hint: string; secret: boolean; /** Ayarlar → Borsalar kartında gösterilir (genel listede değil) */ borsa?: string }
 
 /** Arayüzde her zaman görünen alanlar */
 export const KEY_FIELDS: KeyField[] = [
@@ -24,9 +24,17 @@ export const KEY_FIELDS: KeyField[] = [
   { name: 'WHATSAPP_VERIFY_TOKEN', label: 'WhatsApp webhook doğrulama anahtarı', hint: 'Kendiniz uydurun (uzun, rastgele); Meta webhook ayarına da aynısını yazın', secret: true },
   { name: 'WHATSAPP_APP_SECRET', label: 'Meta uygulama gizli anahtarı', hint: 'App settings → Basic → App secret. Gelen mesajların gerçekten Meta\'dan geldiğini doğrular', secret: true },
   { name: 'HOSTINGER_API_TOKEN', label: 'Hostinger API anahtarı', hint: 'İsteğe bağlı: Jarvis Hostinger\'dan satın alma/abonelik yapsın (her işlem onay kartıyla). hPanel → Hesap → API', secret: true },
-  { name: 'BINANCE_API_KEY', label: 'Binance API anahtarı (borsa robotu)', hint: 'İsteğe bağlı: robotun CANLI modu için. Binance → API Yönetimi: yalnız "Spot Trading" açık, ÇEKİM izni KAPALI anahtar oluşturun (çekim izni açık anahtar reddedilir)', secret: true },
-  { name: 'BINANCE_API_SECRET', label: 'Binance API gizli anahtarı', hint: 'Binance anahtarıyla birlikte verilen Secret Key', secret: true },
-  { name: 'ROBOT_CANLI_MAX', label: 'Robot canlı işlem başı üst sınır (USDT)', hint: 'İsteğe bağlı, varsayılan 100: canlı robot tek işlemde bundan fazla harcamaz', secret: false },
+  { name: 'BINANCE_API_KEY', label: 'API Key', hint: 'Binance → API Yönetimi: yalnız "Spot Trading" (ve okuma) açık, ÇEKİM izni KAPALI anahtar oluşturun (çekim izni açık anahtar robotta reddedilir)', secret: true, borsa: 'binance' },
+  { name: 'BINANCE_API_SECRET', label: 'Secret Key', hint: 'Anahtarla birlikte bir kez gösterilen gizli anahtar', secret: true, borsa: 'binance' },
+  { name: 'ROBOT_CANLI_MAX', label: 'Robot canlı işlem başı üst sınır (USDT)', hint: 'İsteğe bağlı, varsayılan 100: canlı robot tek işlemde bundan fazla harcamaz', secret: false, borsa: 'binance' },
+  { name: 'BTCTURK_API_KEY', label: 'Public Key', hint: 'BtcTurk → Hesabım → API Erişimi: yalnız "Okuma" (ve gerekiyorsa "İşlem") yetkisi, ÇEKİM yetkisi KAPALI; IP adresi olarak bu bilgisayarın internet IP\'sini girin', secret: true, borsa: 'btcturk' },
+  { name: 'BTCTURK_API_SECRET', label: 'Private Key', hint: 'API anahtarıyla birlikte verilen gizli anahtar', secret: true, borsa: 'btcturk' },
+  { name: 'OKX_API_KEY', label: 'API Key', hint: 'OKX TR → Profil → API: yalnız "Okuma" (ve gerekiyorsa "İşlem") izni, ÇEKİM izni KAPALI', secret: true, borsa: 'okx' },
+  { name: 'OKX_API_SECRET', label: 'Secret Key', hint: 'Anahtarla birlikte verilen gizli anahtar', secret: true, borsa: 'okx' },
+  { name: 'OKX_API_PASSPHRASE', label: 'Passphrase (API şifresi)', hint: 'API anahtarını oluştururken kendi belirlediğiniz şifre', secret: true, borsa: 'okx' },
+  { name: 'OKX_API_URL', label: 'API adresi', hint: 'Boş: https://www.okx.com. Bağlantı testi bölge hatası verirse OKX TR\'nin size verdiği API adresini yazın', secret: false, borsa: 'okx' },
+  { name: 'BITLO_API_KEY', label: 'Public Key', hint: 'Bitlo API anahtarı (Bitlo müşteri hizmetlerinden ya da hesap ayarlarından); ÇEKİM yetkisi olmasın', secret: true, borsa: 'bitlo' },
+  { name: 'BITLO_API_SECRET', label: 'Private Key', hint: 'Bitlo gizli anahtarı', secret: true, borsa: 'bitlo' },
   { name: 'BRAND24_API_KEY', label: 'Brand24 API anahtarı', hint: 'İsteğe bağlı: marka takibi. app.brand24.com → Hesap → Entegrasyonlar → API (yönetici hakkı ve API içeren plan gerekir)', secret: true },
   { name: 'HOSTINGER_LIMIT', label: 'Hostinger tek sipariş sınırı', hint: 'İsteğe bağlı: bu tutarın (sipariş para biriminde, ör. 50) üstündeki siparişleri Jarvis reddeder', secret: false },
   { name: 'TWILIO_ACCOUNT_SID', label: 'Twilio Account SID', hint: 'İsteğe bağlı: telefon aramaları. console.twilio.com ana sayfası', secret: false },

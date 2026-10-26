@@ -887,3 +887,11 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .mic-result { display: grid; gap: 4px; margin: 6px 0 10px; }
 .mic-result p { margin: 0; overflow-wrap: anywhere; }
 .mic-list button { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Ayarlar → Borsalar: açılır kartlar */
+.ext-boxes { display: grid; gap: 8px; margin-bottom: 10px; }
+.borsa-card > summary em.ok { color: var(--ok, #3ddc84); }
+.borsa-card > :not(summary) { margin-left: 12px; margin-right: 12px; }
+.borsa-card > .seg { margin-bottom: 10px; }
+.borsa-bakiye { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 2px 12px; margin-bottom: 10px; }
+.borsa-bakiye p { margin: 0; overflow-wrap: anywhere; }
