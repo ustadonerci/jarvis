@@ -16,7 +16,7 @@ import { adminOnly, isLocalRequest } from './keys.js';
 import { phoneStatus, setPublicUrl } from './phone.js';
 import { propose } from './approvals.js';
 import { HELP, handleRemote } from './remote.js';
-import { randomInt } from 'node:crypto';
+import { createHash, randomInt } from 'node:crypto';
 
 const DATA = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
 const MSG_FILE = path.join(DATA, 'mesajlar.json');
@@ -41,6 +41,7 @@ interface Cfg {
   talimat: string;
   /** Uzaktan komut: eşleştirilmiş Telegram sohbeti (kullanıcının kendi sohbeti) */
   telegramSahip?: string;
+  telegramSonSelam?: number;
   /** WhatsApp'ta kendine yazdığı sohbetten komut (varsayılan açık) */
   whatsappKomut?: boolean;
 }
@@ -155,10 +156,20 @@ async function tgSend(chat: string, text: string) {
 // WhatsApp'ta kendine) 6 haneli kod çıkar; kod bota yazılınca o sohbet kullanıcının sohbeti olur. Botu bulan başka
 // biri kodu göremeyeceği için eşleşemez.
 const tgPairs = new Map<string, { code: string; until: number }>();
+// Kullanıcının (Ramazan) Telegram kimliği: ham hâli repoda yazmasın diye özetiyle tanınır; ilk mesajında sohbet eşleşir
+const OWNER_HASHES = new Set(['295ecabf30edc3616ebc2e6cf03fed7de2b7699bbb2499527e661251ffe7f83f']);
+const ownerHash = (id: string) => createHash('sha256').update(`jarvis-tg:${id}`).digest('hex');
 async function tgOwnerFlow(chat: string, text: string, date: number, fromId: string): Promise<boolean> {
   if (Date.now() / 1000 - date > 300) return false; // Jarvis kapalıyken birikmiş eski mesajlar komut sayılmaz
   const envOwner = (process.env.TELEGRAM_SAHIP_ID || '').trim();
-  const isOwner = cfg.telegramSahip === chat || (!!envOwner && (fromId === envOwner || chat === envOwner));
+  let isOwner = cfg.telegramSahip === chat || (!!envOwner && (fromId === envOwner || chat === envOwner));
+  if (!isOwner && fromId && fromId === chat && OWNER_HASHES.has(ownerHash(fromId))) {
+    isOwner = true;
+    cfg.telegramSahip = chat;
+    saveCfg();
+    console.log('[mesaj] Telegram: kullanıcının kendi sohbeti tanındı ve eşleştirildi');
+    broadcast({ type: 'robot', metin: 'Telegram eşleştirildi: artık oradan Jarvis\'e komut verebilirsiniz.' });
+  }
   if (isOwner) {
     if (/^\/ayril$/i.test(text)) { delete cfg.telegramSahip; saveCfg(); await tgSend(chat, '🤖 Bu sohbetin Jarvis bağlantısı kaldırıldı.'); return true; }
     tgCall('sendChatAction', { chat_id: chat, action: 'typing' }).catch(() => {});
@@ -205,10 +216,18 @@ async function tgLoop() {
     tg.durum = 'bağlı';
     tg.hata = '';
     console.log(`[mesaj] Telegram bağlandı: @${me.username}`);
+    // Eşleşmiş sohbete "çevrimiçi" haberi (otomatik güncellemeler sık yeniden başlattığı için 6 saatte en fazla bir)
+    const owner = cfg.telegramSahip || (process.env.TELEGRAM_SAHIP_ID || '').trim();
+    if (owner && Date.now() - (cfg.telegramSonSelam ?? 0) > 6 * 3600_000) {
+      cfg.telegramSonSelam = Date.now();
+      saveCfg();
+      tgSend(owner, '🤖 Jarvis çevrimiçi. Buradan yazdıklarınızı komut olarak yapıyorum ("yardım" yazın).').catch(e => console.warn(`[mesaj] Telegram selam gönderilemedi: ${String(e?.message || e).slice(0, 120)}`));
+    }
   } catch (e: any) {
     tg.durum = 'hata';
     tg.hata = String(e?.message || e);
     console.warn(`[mesaj] Telegram bağlanamadı: ${tg.hata}`);
+    broadcast({ type: 'robot', metin: `Telegram bağlanamadı: ${/Unauthorized|Not Found/i.test(tg.hata) ? 'bot anahtarı (TELEGRAM_BOT_TOKEN) geçersiz; @BotFather\'dan anahtarı kontrol edin' : tg.hata}` });
     return;
   }
   for (;;) {
@@ -220,6 +239,7 @@ async function tgLoop() {
         if (!m?.text && !m?.caption) continue;
         const chat = String(m.chat.id);
         const grup = m.chat.type !== 'private';
+        if (!grup) console.log(`[mesaj] Telegram mesajı geldi (kimlik ${m.from?.id})`);
         if (!grup && m.text && await tgOwnerFlow(chat, String(m.text).trim(), m.date, String(m.from?.id ?? ''))) continue;
         const kisi = [m.from?.first_name, m.from?.last_name].filter(Boolean).join(' ') || m.from?.username || 'Bilinmeyen';
         const saved = record({
