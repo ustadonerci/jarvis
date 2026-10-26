@@ -96,9 +96,17 @@ export function KeySettings({ flash }: { flash(t: string): void }) {
             <button type="submit" disabled={!newName.trim()}>Ekle</button>
           </form>
           <div className="seg">
-            <button className={dirty ? 'on' : ''} disabled={!dirty} onClick={save}>{dirty ? 'Kaydet' : 'Kaydet (önce bir alana yazın)'}</button>
+            <button className={dirty ? 'on' : ''} disabled={!dirty} onClick={save}>{dirty ? '💾 Kaydet' : 'Kaydet (önce bir alana yazın)'}</button>
             <button onClick={() => { setDraft({}); setOpen(false); }}>{dirty ? 'Vazgeç' : 'Kapat'}</button>
           </div>
+          {/* Liste uzun: değişiklik varken Kaydet ekranın altında hep görünür */}
+          {dirty && (
+            <div className="save-bar">
+              <span>Kaydedilmemiş {Object.keys(draft).length} değişiklik</span>
+              <button className="on" onClick={save}>💾 Kaydet</button>
+              <button onClick={() => setDraft({})}>Vazgeç</button>
+            </div>
+          )}
           <p className="muted small">Anahtarlar yalnızca bu bilgisayardaki server/.env dosyasına yazılır, GitHub'a gitmez ve tarayıcıya geri gönderilmez.</p>
         </div>
       )}

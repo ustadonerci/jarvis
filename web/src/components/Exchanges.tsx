@@ -23,8 +23,9 @@ export function ExchangeSettings({ flash }: { flash(t: string): void }) {
   };
   useEffect(load, []);
 
-  const save = (id: string) => {
-    const vals = Object.fromEntries(Object.entries(draft).filter(([k]) => keys.find(f => f.name === k)?.borsa === id));
+  /** id verilmezse tüm kartlardaki değişiklikler tek seferde (her kayıt Jarvis'i yeniden başlatır) */
+  const save = (id?: string) => {
+    const vals = Object.fromEntries(Object.entries(draft).filter(([k]) => !id || keys.find(f => f.name === k)?.borsa === id));
     if (!Object.keys(vals).length) return flash('Önce bir alana yazın');
     saveKeys(vals).then(r => {
       setDraft(d => Object.fromEntries(Object.entries(d).filter(([k]) => !(k in vals))));
@@ -80,7 +81,7 @@ export function ExchangeSettings({ flash }: { flash(t: string): void }) {
                 </div>
               ))}
               <div className="seg">
-                <button onClick={() => save(e.id)}>Kaydet</button>
+                <button className={fields.some(f => f.name in draft) ? 'on' : ''} onClick={() => save(e.id)}>💾 Kaydet</button>
                 <button disabled={!e.hazir || busy === e.id} onClick={() => test(e.id)}>{busy === e.id ? 'Bağlanıyor…' : 'Bağlantıyı test et'}</button>
               </div>
               {r?.hata && <p className="warn small">⚠️ {r.hata}</p>}
@@ -91,6 +92,13 @@ export function ExchangeSettings({ flash }: { flash(t: string): void }) {
           );
         })}
       </div>
+      {Object.keys(draft).length > 0 && (
+        <div className="save-bar">
+          <span>Kaydedilmemiş borsa anahtarı</span>
+          <button className="on" onClick={() => save()}>💾 Kaydet</button>
+          <button onClick={() => setDraft({})}>Vazgeç</button>
+        </div>
+      )}
     </>
   );
 }
