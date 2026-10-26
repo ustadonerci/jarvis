@@ -39,6 +39,7 @@ import { VS_MODEL, initVoiceStudio, isVoiceStudio, registerVoiceSetter, vsClone,
 import { initGithub } from './github.js';
 import { financeRouter, initFinance } from './finance.js';
 import { exchangesRouter } from './exchanges.js';
+import { setRemoteAsk, type Kanal } from './remote.js';
 import { clearErrors, errorList, initErrors, logError } from './errors.js';
 import { approvalsRouter, initApprovals } from './approvals.js';
 import { automationRouter } from './automation.js';
@@ -569,6 +570,39 @@ app.post('/api/chat', async (req, res) => {
     busy = false;
   }
 });
+
+// ---------- Uzaktan komut (WhatsApp'ta kendine mesaj / eşleştirilmiş Telegram) ----------
+// Ana sohbetle aynı yol: geçmişe yazılır, ekranlarda görünür; ses üretilmez, cevabın metni mesajla döner.
+async function askRemote(text: string, kanal: Kanal): Promise<string> {
+  for (let i = 0; busy && i < 120; i++) await new Promise(r => setTimeout(r, 1000)); // ekrandaki cevap bitsin
+  if (busy) throw new Error('Jarvis şu an meşgul, birazdan tekrar deneyin');
+  busy = true;
+  const origin = `uzak-${kanal}`;
+  const replyId = randomUUID();
+  const voice = { ...currentVoice() };
+  try {
+    const userMsg: StoredMessage = { role: 'user', text: `${kanal === 'whatsapp' ? '💬' : '✈️'} ${text}`, device: 'telefon', at: new Date().toISOString() };
+    const history = state.messages.slice();
+    state.messages.push(userMsg);
+    broadcast({ type: 'user', message: userMsg, origin });
+    const reply = await runJarvis({
+      text, device: 'telefon', prevDevice: state.lastDevice ?? null, history, photoMode: state.photoMode,
+      progress: line => broadcast({ type: 'progress', line, origin }),
+      onScene: (index, sahne) => broadcast({ type: 'scene', replyId, index, sahne, voice, origin }),
+      onScenesDone: count => broadcast({ type: 'scene_end', replyId, count, origin }),
+    });
+    const full = { ...reply, id: replyId, voice };
+    const msg: StoredMessage = { role: 'assistant', text: full.sahneler.map(s => s.ses).join(' '), device: 'telefon', at: full.created_at, reply: full };
+    state.messages.push(msg);
+    saveState();
+    broadcast({ type: 'reply', message: msg, origin });
+    console.log(`[uzak] ${kanal} komutu cevaplandı · ${full.sahneler.length} sahne`);
+    return msg.text;
+  } finally {
+    busy = false;
+  }
+}
+setRemoteAsk(askRemote);
 
 // Sahne sesi. v = cevaba sabitlenmiş ses (model:voice); i/n yalnızca log için.
 app.get('/api/tts', async (req, res) => {

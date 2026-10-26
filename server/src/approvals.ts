@@ -76,6 +76,8 @@ async function execute(id: string, approve: boolean) {
 }
 
 export const actionList = () => [...actions.values()].map(view).reverse();
+/** Uzaktan (Telegram / WhatsApp) onay ya da ret */
+export const decideAction = (id: string, approve: boolean) => execute(id, approve);
 
 export const APPROVAL_TOOLS = [
   {

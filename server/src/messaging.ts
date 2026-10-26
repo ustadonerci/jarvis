@@ -15,6 +15,8 @@ import { CHAT_MODEL, MOCK, routellm, type ChatResponse } from './routellm.js';
 import { adminOnly, isLocalRequest } from './keys.js';
 import { phoneStatus, setPublicUrl } from './phone.js';
 import { propose } from './approvals.js';
+import { HELP, handleRemote } from './remote.js';
+import { randomInt } from 'node:crypto';
 
 const DATA = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
 const MSG_FILE = path.join(DATA, 'mesajlar.json');
@@ -37,6 +39,10 @@ interface Cfg {
   aramaMetni: string;
   /** Otomatik cevapların üslubu ve kullanıcının eklemek istediği bilgi (ör. "Bu hafta izindeyim") */
   talimat: string;
+  /** Uzaktan komut: eşleştirilmiş Telegram sohbeti (kullanıcının kendi sohbeti) */
+  telegramSahip?: string;
+  /** WhatsApp'ta kendine yazdığı sohbetten komut (varsayılan açık) */
+  whatsappKomut?: boolean;
 }
 const DEFAULT_CFG: Cfg = {
   telegramOto: false,
@@ -145,6 +151,40 @@ async function tgSend(chat: string, text: string) {
   record({ id: `tg-${chat}-${r.message_id}`, platform: 'telegram', chat, kisi: user(), metin: text, gelen: false, otomatik: text.startsWith('🤖 ') });
 }
 
+// Uzaktan komut için Telegram eşleştirmesi: kullanıcı bota /start (ya da /jarvis) yazar, Jarvis ekranında (ve
+// WhatsApp'ta kendine) 6 haneli kod çıkar; kod bota yazılınca o sohbet kullanıcının sohbeti olur. Botu bulan başka
+// biri kodu göremeyeceği için eşleşemez.
+let tgPair: { chat: string; code: string; until: number } | null = null;
+async function tgOwnerFlow(chat: string, text: string, date: number): Promise<boolean> {
+  if (Date.now() / 1000 - date > 300) return false; // Jarvis kapalıyken birikmiş eski mesajlar komut sayılmaz
+  if (cfg.telegramSahip === chat) {
+    if (/^\/ayril$/i.test(text)) { delete cfg.telegramSahip; saveCfg(); await tgSend(chat, '🤖 Bu sohbetin Jarvis bağlantısı kaldırıldı.'); return true; }
+    tgCall('sendChatAction', { chat_id: chat, action: 'typing' }).catch(() => {});
+    handleRemote('telegram', text, t => tgSend(chat, t));
+    return true;
+  }
+  if (/^\/(start|jarvis)\b/i.test(text)) {
+    const code = String(randomInt(100000, 1000000));
+    tgPair = { chat, code, until: Date.now() + 10 * 60_000 };
+    broadcast({ type: 'robot', metin: `Telegram eşleştirme kodu: ${code} (10 dk geçerli). Bu kodu Telegram'da bota yazın.` });
+    notifySelf(`🤖 Telegram eşleştirme kodu: ${code} (10 dk geçerli). Bu kodu Telegram'da Jarvis botuna yazın.`).catch(() => {});
+    console.log(`[mesaj] Telegram eşleştirme istendi (sohbet ${chat})`);
+    await tgSend(chat, '🤖 Jarvis\'e buradan komut verebilmek için Jarvis ekranında (ya da WhatsApp\'ta kendinize gelen mesajda) görünen 6 haneli kodu buraya yazın.');
+    return true;
+  }
+  if (tgPair && tgPair.chat === chat && /^\d{6}$/.test(text)) {
+    if (Date.now() > tgPair.until || text !== tgPair.code) { tgPair = null; await tgSend(chat, '🤖 Kod yanlış ya da süresi doldu. /start yazıp yeniden deneyin.'); return true; }
+    tgPair = null;
+    cfg.telegramSahip = chat;
+    saveCfg();
+    console.log('[mesaj] Telegram uzaktan komut sohbeti eşleştirildi');
+    broadcast({ type: 'robot', metin: 'Telegram eşleştirildi: artık oradan Jarvis\'e komut verebilirsiniz.' });
+    await tgSend(chat, `🤖 Eşleştirildi! ${HELP}`);
+    return true;
+  }
+  return false;
+}
+
 async function tgLoop() {
   if (!TG()) return;
   try {
@@ -168,6 +208,7 @@ async function tgLoop() {
         if (!m?.text && !m?.caption) continue;
         const chat = String(m.chat.id);
         const grup = m.chat.type !== 'private';
+        if (!grup && m.text && await tgOwnerFlow(chat, String(m.text).trim(), m.date)) continue;
         const kisi = [m.from?.first_name, m.from?.last_name].filter(Boolean).join(' ') || m.from?.username || 'Bilinmeyen';
         const saved = record({
           id: `tg-${chat}-${m.message_id}`, platform: 'telegram', chat, grup,
@@ -200,6 +241,14 @@ const wa = {
   deneme: 0,
 };
 const waNames = new Map<string, string>();
+const seenCmd = new Set<string>();
+const sentByJarvis = new Set<string>();
+/** Kullanıcının kendine yazdığı sohbet: numarası ya da (yeni WhatsApp'ta) LID kimliği */
+function isSelfChat(jid: string): boolean {
+  const base = jid.split('@')[0].split(':')[0];
+  const lid = String(wa.sock?.user?.lid ?? '').split('@')[0].split(':')[0];
+  return (!!wa.numara && base === wa.numara && jid.endsWith('@s.whatsapp.net')) || (!!lid && base === lid && jid.endsWith('@lid'));
+}
 const waReady = () => fs.existsSync(path.join(WA_AUTH, 'creds.json'));
 
 function waText(m: any): string {
@@ -250,6 +299,8 @@ async function waSend(jid: string, text: string) {
   if (waCloud() && (!jid.includes('@') || wa.durum !== 'bağlı')) return waCloudSend(jid.split('@')[0], text);
   if (!wa.sock || wa.durum !== 'bağlı') throw new Error('WhatsApp bağlı değil');
   const r = await wa.sock.sendMessage(jid, { text });
+  // Jarvis'in kendi gönderdiği mesaj (kendine yazılan sohbete gidince komut sanılmasın)
+  if (r?.key?.id) { sentByJarvis.add(r.key.id); if (sentByJarvis.size > 500) sentByJarvis.delete(sentByJarvis.values().next().value!); }
   record({ id: `wa-${r?.key?.id ?? Date.now()}`, platform: 'whatsapp', chat: jid, kisi: user(), metin: text, gelen: false, otomatik: text.startsWith('🤖 ') });
 }
 
@@ -319,6 +370,16 @@ async function waConnect(fresh = false) {
       const metin = waText(m);
       if (!metin) continue;
       const grup = jid.endsWith('@g.us');
+      // Kendine yazdığı sohbet ("Kendime mesaj") = Jarvis'e komut. Jarvis'in kendi cevapları "🤖" ile başlar (döngü olmasın),
+      // "#" ile başlayan notlar komut sayılmaz; bağlantı kopukken birikmiş eski mesajlar da sayılmaz.
+      if (m.key.fromMe && isSelfChat(jid) && cfg.whatsappKomut !== false && !/^\s*(🤖|#)/.test(metin)
+        && Date.now() / 1000 - Number(m.messageTimestamp ?? 0) < 300 && !seenCmd.has(m.key.id) && !sentByJarvis.has(m.key.id)) {
+        seenCmd.add(m.key.id);
+        if (seenCmd.size > 500) seenCmd.delete(seenCmd.values().next().value!);
+        sock.sendPresenceUpdate?.('composing', jid).catch?.(() => {});
+        handleRemote('whatsapp', metin, t => waSend(jid, t));
+        continue;
+      }
       if (m.pushName && !m.key.fromMe) waNames.set(grup ? m.key.participant ?? jid : jid, m.pushName);
       const ad = m.key.fromMe ? user() : m.pushName || waNames.get(jid) || jid.split('@')[0];
       const saved = record({
