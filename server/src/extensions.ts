@@ -47,9 +47,11 @@ export interface McpServer {
   kapsam?: string[];
   /** Açılmadan önce repoda çalıştırılacak kurulum (Node paketi: npm install [+ build]) */
   kurulum?: 'npm';
+  /** Kullanıcı elle kapattı: otomatik açma bunu açmaz */
+  elleKapali?: boolean;
 }
 interface Repo { slug: string; url: string; at: string }
-interface Store { skills: Skill[]; servers: McpServer[]; repos: Repo[] }
+interface Store { skills: Skill[]; servers: McpServer[]; repos: Repo[]; /** Yeni ve kapalı MCP sunucuları kendiliğinden açılsın (varsayılan: evet) */ otoAc?: boolean }
 
 const MAX_SKILL = 40_000;
 const MAX_TOOL_OUT = 8_000;
@@ -58,7 +60,7 @@ const MAX_MCP_TOOLS = 80;
 function load(): Store {
   try {
     const s = JSON.parse(fs.readFileSync(FILE, 'utf8'));
-    return { skills: s.skills ?? [], servers: s.servers ?? [], repos: s.repos ?? [] };
+    return { skills: s.skills ?? [], servers: s.servers ?? [], repos: s.repos ?? [], otoAc: s.otoAc };
   } catch {
     return { skills: [], servers: [], repos: [] };
   }
@@ -525,7 +527,7 @@ function autoAddServers() {
     fs.mkdirSync(DATA, { recursive: true });
     fs.writeFileSync(mark, new Date().toISOString());
   }
-  if (added) { save(); changed(); console.log(`[yetenek] ${added} uzak MCP sunucusu eklendi (kapalı)`); }
+  if (added) { save(); changed(); console.log(`[yetenek] ${added} uzak MCP sunucusu eklendi`); }
 }
 const packageMark = (name: string) => path.join(DATA, `paket-${name}.kuruldu`);
 
@@ -541,10 +543,58 @@ async function autoInstallPackages() {
   }
 }
 
+const otoAc = () => store.otoAc !== false;
+
+/**
+ * Otomatik açma: elle kapatılmamış bütün sunucular açılır ve bağlanır. Aynı anda en fazla 3 sunucu kurulur/bağlanır
+ * (npm install'lar bilgisayarı kilitlemesin). Açılamayanlar "hata" olarak kalır; Ayarlar'dan tek tuşla silinebilir.
+ */
+async function startServers(list: McpServer[]) {
+  const queue = [...list];
+  const worker = async () => { for (let s = queue.shift(); s; s = queue.shift()) await enableServer(s); };
+  await Promise.all([worker(), worker(), worker()]);
+}
+function autoEnable(): McpServer[] {
+  if (!otoAc()) return [];
+  const opened = store.servers.filter(s => !s.aktif && !s.elleKapali);
+  for (const s of opened) s.aktif = true;
+  if (opened.length) { save(); console.log(`[yetenek] ${opened.length} MCP sunucusu otomatik açıldı: ${opened.map(s => s.ad).join(', ')}`); }
+  return opened;
+}
+
+/** Bozuk sayılan: açık ama bağlanamamış / kurulamamış (giriş bekleyen, kurulan ve bağlanmakta olan değil) */
+const isBroken = (s: McpServer) => {
+  const l = live.get(s.id);
+  return s.aktif && !installing.has(s.id) && !!l?.error && !l.girisGerekli;
+};
+
+/** Sunucuyu kaldırır; repodan geldiyse ve repoda başka bir şey kalmadıysa repo klasörü de silinir */
+async function deleteServer(id: string) {
+  const s = store.servers.find(x => x.id === id);
+  await disconnect(id);
+  store.servers = store.servers.filter(x => x.id !== id);
+  rebuildIndex();
+  save();
+  if (s?.repo && !store.servers.some(x => x.repo === s.repo) && !store.skills.some(x => x.repo === s.repo)) await removeRepo(s.repo);
+  changed();
+}
+
+/** Bozuk sunucuları ve toplu kurulumda kurulamayan repo satırlarını temizler */
+export async function removeBroken(): Promise<string[]> {
+  const broken = store.servers.filter(isBroken);
+  for (const s of broken) await deleteServer(s.id);
+  const failed = bulk.liste.filter(i => i.durum === 'hata');
+  if (failed.length && !bulk.calisiyor) bulk.liste = bulk.liste.filter(i => i.durum !== 'hata');
+  if (broken.length || failed.length) console.log(`[yetenek] bozuk temizlendi: ${broken.map(s => s.ad).join(', ') || '-'} · ${failed.length} kurulamayan repo satırı`);
+  changed();
+  return [...broken.map(s => s.ad), ...failed.map(i => i.url.replace('https://github.com/', ''))];
+}
+
 export function initExtensions(b: (e: object) => void) {
   broadcast = b;
   autoAddServers();
-  for (const s of store.servers) if (s.aktif) enableServer(s);
+  autoEnable();
+  startServers(store.servers.filter(s => s.aktif));
   // Sunucu açılışını bekletmesin
   setTimeout(() => autoInstallPackages().catch(e => console.warn('[yetenek] paket kurulamadı:', e)), 5000);
 }
@@ -671,7 +721,7 @@ export const EXT_TOOLS = [
     type: 'function',
     function: {
       name: 'yetenek_kur',
-      description: "Bir GitHub reposundaki becerileri, iş akışlarını ve MCP sunucularını kurar. Kullanıcı bir GitHub linki verip 'bunu kur', 'bu yeteneği ekle' dediğinde kullanılır. MCP sunucuları güvenlik için kapalı eklenir; kullanıcının Ayarlar → Yetenekler'den açması gerektiğini söyle.",
+      description: "Bir GitHub reposundaki becerileri, iş akışlarını ve MCP sunucularını kurar. Kullanıcı bir GitHub linki verip 'bunu kur', 'bu yeteneği ekle' dediğinde kullanılır. MCP sunucuları (otomatik açma açıksa) kendiliğinden açılıp bağlanır; bağlanamayanlar Ayarlar → Yetenekler'de 'hata' görünür ve mcp_yonet ile silinebilir.",
       parameters: { type: 'object', properties: { url: { type: 'string', description: 'https://github.com/kullanici/repo' } }, required: ['url'] },
     },
   },
@@ -681,6 +731,14 @@ export const EXT_TOOLS = [
       name: 'yetenek_bul',
       description: "İnternetteki açık beceri kataloğunda (skills.sh, find-skills) kurulmamış yeni beceri arar: kurulum sayısı ve kaynak repoyla. 'Şunun için beceri/yetenek var mı', 'kendini geliştir', 'X yapmayı öğren' isteklerinde ve yetenek_ara kurulu becerilerde bir şey bulamadığında kullan. Sonuçları söyle; kullanıcı isterse yetenek_kur ile kur.",
       parameters: { type: 'object', properties: { sorgu: { type: 'string', description: 'İngilizce anahtar kelimeler, ör. "instagram reels", "trading bot", "seo audit"' } }, required: ['sorgu'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'mcp_yonet',
+      description: "Kurulu MCP sunucularının durumunu söyler (bağlı / hata / giriş gerekli / kapalı) ya da bozuk olanları (kurulamayan, bağlanamayan) siler. 'MCP'ler çalışıyor mu', 'bozuk MCP'leri sil', 'hatalı eklentileri temizle' isteklerinde.",
+      parameters: { type: 'object', properties: { islem: { type: 'string', enum: ['durum', 'bozuklari_sil', 'hepsini_ac'] } }, required: ['islem'] },
     },
   },
 ] as const;
@@ -718,6 +776,22 @@ export function mcpTools() {
 export const isExtensionTool = (name: string) => EXT_TOOLS.some(t => t.function.name === name) || toolIndex.has(name);
 
 export async function runExtensionTool(name: string, args: any, progress: (l: string) => void): Promise<string> {
+  if (name === 'mcp_yonet') {
+    if (args.islem === 'bozuklari_sil') {
+      progress('bozuk MCP sunucuları siliniyor');
+      const silinen = await removeBroken();
+      return JSON.stringify({ silinen, not: silinen.length ? 'Silinenleri söyle; istenirse aynı repo tekrar kurulabilir.' : 'Silinecek bozuk sunucu yoktu.' });
+    }
+    if (args.islem === 'hepsini_ac') {
+      store.otoAc = true;
+      for (const s of store.servers) delete s.elleKapali;
+      const acilan = autoEnable();
+      startServers(acilan);
+      changed();
+      return JSON.stringify({ acilan: acilan.map(s => s.ad), not: 'Sunucular arka planda kuruluyor/bağlanıyor; birkaç dakika sürebilir.' });
+    }
+    return JSON.stringify({ otomatik_ac: otoAc(), sunucular: view().servers.map(s => ({ ad: s.ad, durum: s.durum, hata: s.hata?.slice(0, 160), arac: s.araclar.length })) });
+  }
   if (name === 'yetenek_ara') {
     const words = [...new Set(norm(String(args.sorgu ?? '')).split(/\s+/).filter(w => w.length > 1).flatMap(w => [w, ...(TR_EN[w] ?? [])]))];
     if (!words.length) return JSON.stringify({ hata: 'sorgu boş' });
@@ -1027,6 +1101,7 @@ async function installFromGitHub(url: string) {
   store.skills.push(...found.skills);
   store.servers.push(...found.servers);
   save();
+  if (found.servers.length) startServers(autoEnable());
   changed();
   console.log(`[yetenek] GitHub: ${owner}/${name} → ${found.skills.length} beceri/iş akışı, ${found.servers.length} MCP`);
   return { slug, bilgi, beceri: bilgi ? 0 : found.skills.filter(s => s.tur === 'beceri').length, is_akisi: found.skills.filter(s => s.tur === 'is_akisi').length, mcp: found.servers.length };
@@ -1062,7 +1137,7 @@ async function runBulk(urls: string[]) {
     try {
       const r = await installFromGitHub(item.url);
       item.durum = 'tamam';
-      item.mesaj = r.bilgi ? 'uygulama: README bilgi kaynağı olarak eklendi' : [r.beceri && `${r.beceri} beceri`, r.is_akisi && `${r.is_akisi} iş akışı`, r.mcp && `${r.mcp} MCP (kapalı)`].filter(Boolean).join(', ');
+      item.mesaj = r.bilgi ? 'uygulama: README bilgi kaynağı olarak eklendi' : [r.beceri && `${r.beceri} beceri`, r.is_akisi && `${r.is_akisi} iş akışı`, r.mcp && `${r.mcp} MCP${otoAc() ? '' : ' (kapalı)'}`].filter(Boolean).join(', ');
     } catch (e: any) {
       const m = String(e?.message || e);
       item.durum = /zaten kurulu/i.test(m) ? 'atlandı' : 'hata';
@@ -1078,6 +1153,8 @@ async function runBulk(urls: string[]) {
 function view() {
   return {
     toplu: bulk,
+    otoAc: otoAc(),
+    bozuk: store.servers.filter(isBroken).length,
     repos: store.repos,
     skills: store.skills.map(({ icerik, ...s }) => ({ ...s, uzunluk: icerik.length })),
     servers: store.servers.map(s => {
@@ -1208,6 +1285,7 @@ export function extensionsRouter(): Router {
     if (!s) return res.status(404).json({ error: 'bulunamadı' });
     if (typeof req.body?.aktif === 'boolean') {
       s.aktif = req.body.aktif;
+      if (s.aktif) delete s.elleKapali; else s.elleKapali = true;
       save();
       if (s.aktif) enableServer(s); else { await disconnect(s.id); rebuildIndex(); }
     } else if (req.body?.yenile && s.aktif) enableServer(s);
@@ -1215,10 +1293,18 @@ export function extensionsRouter(): Router {
     res.json(view());
   });
   r.delete('/api/extensions/server/:id', async (req, res) => {
-    await disconnect(req.params.id);
-    store.servers = store.servers.filter(x => x.id !== req.params.id);
-    rebuildIndex();
+    await deleteServer(req.params.id);
+    res.json(view());
+  });
+  r.post('/api/extensions/bozuklari-sil', async (_req, res) => {
+    const silinen = await removeBroken();
+    res.json({ ...view(), silinen });
+  });
+  r.post('/api/extensions/oto-ac', (req, res) => {
+    store.otoAc = !!req.body?.otoAc;
     save();
+    console.log(`[yetenek] MCP otomatik açma: ${store.otoAc ? 'açık' : 'kapalı'}`);
+    if (store.otoAc) startServers(autoEnable());
     changed();
     res.json(view());
   });

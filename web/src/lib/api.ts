@@ -123,12 +123,14 @@ export const saveKeys = (values: Record<string, string>) =>
 export interface SkillView { id: string; ad: string; aciklama: string; tur: 'beceri' | 'is_akisi'; aktif: boolean; repo?: string; dosya?: string; kaynak?: 'jarvis' | 'takip'; kaynakUrl?: string; uzunluk: number }
 export interface ServerView { id: string; ad: string; aktif: boolean; repo?: string; tur: 'stdio' | 'http'; hedef: string; durum: 'kapalı' | 'kuruluyor' | 'bağlanıyor' | 'bağlı' | 'giriş gerekli' | 'hata'; hata?: string; girisAdresi?: string; araclar: string[]; kurulum?: 'npm' }
 export interface BulkView { calisiyor: boolean; liste: { url: string; durum: 'bekliyor' | 'kuruluyor' | 'tamam' | 'atlandı' | 'hata'; mesaj?: string }[] }
-export interface ExtensionsData { repos: { slug: string; url: string; at: string }[]; skills: SkillView[]; servers: ServerView[]; toplu?: BulkView }
+export interface ExtensionsData { repos: { slug: string; url: string; at: string }[]; skills: SkillView[]; servers: ServerView[]; toplu?: BulkView; otoAc?: boolean; bozuk?: number }
 const ext = (path: string, method = 'GET', body?: object) =>
   fetch(`/api/extensions${path}`, { method, headers: headers(), body: body ? JSON.stringify(body) : undefined }).then(r => json<ExtensionsData>(r));
 export const getExtensions = () => ext('');
 export const installGitHub = (url: string) => ext('/github', 'POST', { url }) as Promise<ExtensionsData & { bilgi?: boolean; beceri: number; is_akisi: number; mcp: number }>;
 export const installBulk = (liste: string) => ext('/github-toplu', 'POST', { liste });
+export const removeBroken = () => ext('/bozuklari-sil', 'POST') as Promise<ExtensionsData & { silinen: string[] }>;
+export const setAutoOpen = (otoAc: boolean) => ext('/oto-ac', 'POST', { otoAc });
 
 export type SosyalPlatform = 'youtube' | 'instagram' | 'tiktok' | 'x';
 export interface TakipData {

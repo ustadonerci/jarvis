@@ -26,7 +26,7 @@ const RULES: [Group, RegExp][] = [
   ['satin', /(satin al|satın al|abonelik|abone ol|hostinger|hosting|alan adi|domain|vps|siparis|odeme yap|paket al|fatura|yenile)/],
   ['site', /(site(yi|sini)? (indir|arsivle|kaydet)|web sitesi(ni)? (indir|kaydet))/],
   ['yetenek', /(yetenek|beceri|skill|is akisi|workflow|repo|github\.com|ogren|seo|reklam|pazarlama|icerik|post|kampanya|tasarim|logo|marka|kurgu|montaj|senaryo|metin yaz|baslik yaz|analiz et|hazirla|olustur)/],
-  ['mcp', /(\bmcp|topview|sunucu araci)/],
+  ['mcp', /(\bmcp|topview|sunucu araci|eklenti)/],
   ['marka', /(brand24|marka(m|mizi|yi)? (takip|izle|hakkinda|analiz)|bahset(me|en|ti)|mention|sosyal dinleme|itibar|olumsuz yorum|hakkimda ne (konusuluyor|diyorlar))/],
 ];
 

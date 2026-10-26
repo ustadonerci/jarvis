@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   clearErrorLog, getErrors, type ErrorView, addWebhook, deleteWebhook, getWebhooks, type WebhookView,
-  addServer, addSkill, deleteServer, deleteSkill, getExtensions, getKeys, installGitHub, removeRepo, installBulk, retryServer, logoutServer, saveKeys, toggleServer, toggleSkill,
+  addServer, addSkill, deleteServer, deleteSkill, getExtensions, getKeys, installGitHub, removeRepo, installBulk, removeBroken, retryServer, setAutoOpen, logoutServer, saveKeys, toggleServer, toggleSkill,
   type ExtensionsData, type KeysData, type KeyView,
   addTakip, checkTakip, getTakip, removeTakip, type SosyalPlatform, type TakipData,
 } from '../lib/api';
@@ -278,6 +278,13 @@ export function ExtensionSettings({ flash }: { flash(t: string): void }) {
       {data.servers.length > 0 && (
         <Kutu baslik={`MCP sunucuları (${data.servers.length})`} ozet={`${data.servers.filter(x => x.durum === 'bağlı').length} bağlı`}
           ac={data.servers.some(x => x.durum === 'giriş gerekli' || x.durum === 'hata')}>
+        <div className="seg">
+          <button className={data.otoAc ? 'on' : ''} onClick={() => act(setAutoOpen(!data.otoAc), data.otoAc ? 'Otomatik açma kapatıldı' : 'MCP sunucuları otomatik açılıyor')}>{data.otoAc ? '✅ Otomatik aç: açık' : 'Otomatik aç: kapalı'}</button>
+          <button disabled={!data.bozuk && !data.toplu?.liste.some(i => i.durum === 'hata')}
+            onClick={() => confirm('Kurulamayan ve bağlanamayan (hatalı) MCP sunucuları silinsin mi? Gerekirse repoyu tekrar kurabilirsiniz.') && removeBroken().then(r => { setData(r); flash(r.silinen.length ? `Silindi: ${r.silinen.join(', ')}` : 'Silinecek bozuk sunucu yok'); }).catch(e => flash(e.message))}
+          >🗑️ Bozukları sil{data.bozuk ? ` (${data.bozuk})` : ''}</button>
+        </div>
+        <p className="muted small">Otomatik açık olunca yeni eklenen MCP'ler kendiliğinden kurulup bağlanır (elle kapattıklarınız kapalı kalır). Bağlanamayanlar kırmızı "hata" görünür.</p>
         <ul className="memory ext-list">
           {data.servers.map(s => (
             <li key={s.id} className={s.aktif ? '' : 'off'}>
@@ -297,7 +304,7 @@ export function ExtensionSettings({ flash }: { flash(t: string): void }) {
                 disabled={s.durum === 'kuruluyor'}
                 onClick={() => (s.aktif || confirm(`"${s.ad}" bu bilgisayarda şu komutu çalıştıracak:\n\n${s.hedef}\n\nRepoya güveniyor musunuz?`)) && act(toggleServer(s.id, !s.aktif))}
               >{s.aktif ? 'açık' : 'kapalı'}</button>
-              {!s.repo && <button aria-label="Sil" onClick={() => act(deleteServer(s.id))}>✕</button>}
+              <button aria-label="Sil" title="Sil" onClick={() => confirm(`"${s.ad}" silinsin mi?`) && act(deleteServer(s.id), 'Silindi')}>✕</button>
             </li>
           ))}
         </ul>
