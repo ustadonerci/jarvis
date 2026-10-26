@@ -900,3 +900,4 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .save-bar { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 0; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--bg) 92%, var(--accent) 8%); backdrop-filter: blur(12px); border: 1px solid var(--accent); box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.45); }
 .save-bar span { flex: 1; min-width: 140px; font-size: 13px; }
 .save-bar button { padding: 8px 16px; border-radius: 8px; }
+.tg-diag { margin: 6px 0; } .tg-diag p { margin: 0 0 4px; overflow-wrap: anywhere; }

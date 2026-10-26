@@ -155,7 +155,7 @@ export const logoutServer = (id: string) => ext(`/server/${id}/cikis`, 'POST', {
 // ---------- Ayarlar → Bağlantılar (Telegram, WhatsApp) ----------
 export interface MessagingCfg { telegramOto: boolean; whatsappOto: boolean; aramaMesaji: boolean; aramaMetni: string; talimat: string }
 export interface MessagingData {
-  telegram: { durum: 'anahtar yok' | 'kapalı' | 'bağlı' | 'hata'; bot: string; hata: string };
+  telegram: { durum: 'anahtar yok' | 'kapalı' | 'bağlı' | 'hata'; bot: string; hata: string; eslesme?: string; sonMesaj?: string; sonCevap?: string };
   whatsapp: { durum: 'kapalı' | 'qr' | 'bağlanıyor' | 'bağlı' | 'hata'; qr: string; numara: string; hata: string };
   whatsappCloud?: { hazir: boolean; webhook: string | null; imza: boolean };
   telefon?: { hazir: boolean; numara: string | null; webhook: string | null; son: { sid: string; yon: 'gelen' | 'giden'; numara: string; basla: string; sure_sn?: number; ozet: string }[] };
@@ -309,3 +309,6 @@ export const openMicSettings = (ne: 'kayit' | 'gizlilik') => fetch('/api/mikrofo
 export interface ExchangeView { id: string; ad: string; hazir: boolean; deneysel: boolean; not?: string }
 export const getExchanges = () => fetch('/api/borsalar', { headers: headers() }).then(r => json<{ borsalar: ExchangeView[] }>(r));
 export const testExchange = (id: string) => fetch(`/api/borsalar/${id}/test`, { method: 'POST', headers: headers() }).then(r => json<{ ok: boolean; borsa: string; bakiye: { varlik: string; serbest: number; kilitli: number }[] }>(r));
+
+export const testTelegram = () => fetch('/api/mesaj/telegram/test', { method: 'POST', headers: headers() }).then(r => json<{ ok: boolean }>(r));
+export const getVersion = () => fetch('/api/surum', { headers: headers() }).then(r => json<{ kod: string; tarih?: string; baslik?: string; calisma?: string }>(r));

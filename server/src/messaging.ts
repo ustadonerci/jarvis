@@ -133,6 +133,9 @@ const tg = {
   durum: 'kapalı' as 'kapalı' | 'bağlı' | 'hata',
   hata: '' as string,
   offset: 0,
+  /** Tanılama: son gelen özel mesaj ve son komut cevabı */
+  sonMesaj: '' as string,
+  sonCevap: '' as string,
 };
 
 async function tgCall<T = any>(method: string, body?: object): Promise<T> {
@@ -174,7 +177,7 @@ async function tgOwnerFlow(chat: string, text: string, date: number, fromId: str
     if (/^\/ayril$/i.test(text)) { delete cfg.telegramSahip; saveCfg(); await tgSend(chat, '🤖 Bu sohbetin Jarvis bağlantısı kaldırıldı.'); return true; }
     tgCall('sendChatAction', { chat_id: chat, action: 'typing' }).catch(() => {});
     console.log(`[mesaj] Telegram komutu: "${text.slice(0, 60)}"`);
-    handleRemote('telegram', text, t => tgSend(chat, t));
+    handleRemote('telegram', text, t => tgSend(chat, t).then(() => { tg.sonCevap = `${new Date().toLocaleString('tr-TR')} · gönderildi`; }, e => { tg.sonCevap = `gönderilemedi: ${String(e?.message || e).slice(0, 120)}`; throw e; }));
     return true;
   }
   // Henüz kimse eşleşmediyse ilk mesaj da eşleştirmeyi başlatır (sessiz kalmasın)
@@ -239,7 +242,7 @@ async function tgLoop() {
         if (!m?.text && !m?.caption) continue;
         const chat = String(m.chat.id);
         const grup = m.chat.type !== 'private';
-        if (!grup) console.log(`[mesaj] Telegram mesajı geldi (kimlik ${m.from?.id})`);
+        if (!grup) { console.log(`[mesaj] Telegram mesajı geldi (kimlik ${m.from?.id})`); tg.sonMesaj = `${new Date().toLocaleString('tr-TR')} · kimlik ${m.from?.id}`; }
         if (!grup && m.text && await tgOwnerFlow(chat, String(m.text).trim(), m.date, String(m.from?.id ?? ''))) continue;
         const kisi = [m.from?.first_name, m.from?.last_name].filter(Boolean).join(' ') || m.from?.username || 'Bilinmeyen';
         const saved = record({
@@ -645,7 +648,7 @@ export function messagingForPrompt(): string {
 // ---------------------------------------------------------------- HTTP
 
 const status = () => ({
-  telegram: { durum: TG() ? tg.durum : 'anahtar yok', bot: tg.bot, hata: tg.hata },
+  telegram: { durum: TG() ? tg.durum : 'anahtar yok', bot: tg.bot, hata: tg.hata, eslesme: cfg.telegramSahip ? 'eşleşmiş' : (process.env.TELEGRAM_SAHIP_ID || '').trim() ? 'kimlik girili' : 'eşleşme yok', sonMesaj: tg.sonMesaj, sonCevap: tg.sonCevap },
   whatsapp: { durum: wa.durum, qr: wa.qr, numara: wa.numara, hata: wa.hata },
   telefon: phoneStatus(),
   whatsappCloud: { hazir: waCloud(), webhook: process.env.PUBLIC_URL ? `${process.env.PUBLIC_URL.replace(/\/$/, '')}/hook/whatsapp` : null, imza: !!process.env.WHATSAPP_APP_SECRET },
@@ -664,6 +667,14 @@ export function messagingRouter(): Router {
     if (typeof b.talimat === 'string') cfg.talimat = b.talimat.slice(0, 1000);
     saveCfg();
     res.json(status());
+  });
+  // Tanılama: eşleşmiş Telegram sohbetine deneme mesajı (bot → kullanıcı yönü çalışıyor mu)
+  r.post('/api/mesaj/telegram/test', async (_req, res) => {
+    const owner = cfg.telegramSahip || (process.env.TELEGRAM_SAHIP_ID || '').trim();
+    if (!TG()) return res.status(400).json({ error: 'Telegram bot anahtarı girilmemiş' });
+    if (!owner) return res.status(400).json({ error: 'Henüz eşleşme yok: önce Telegram\'da bota herhangi bir mesaj yazın, sonra tekrar deneyin.' });
+    try { await tgSend(owner, '🤖 Jarvis deneme mesajı: bağlantı çalışıyor. Bana buradan yazabilirsiniz.'); res.json({ ok: true }); }
+    catch (e: any) { res.status(502).json({ error: `Telegram mesajı gönderilemedi: ${String(e?.message || e).slice(0, 200)}${/chat not found|blocked/i.test(String(e?.message)) ? ' — Telegram\'da bota /start yazın (bot size ilk siz yazmadan mesaj atamaz).' : ''}` }); }
   });
   r.post('/api/mesaj/whatsapp/baglan', async (_req, res) => {
     await waConnect(true).catch(e => { wa.durum = 'hata'; wa.hata = String(e?.message || e); });

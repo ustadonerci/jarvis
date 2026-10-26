@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { connectWhatsApp, getMessaging, logoutWhatsApp, saveMessaging, type MessagingCfg, type MessagingData } from '../lib/api';
+import { connectWhatsApp, getMessaging, getVersion, logoutWhatsApp, saveMessaging, testTelegram, type MessagingCfg, type MessagingData } from '../lib/api';
 
 /**
  * Ayarlar → Bağlantılar: Telegram botu ve WhatsApp (QR ile). Jarvis gelen mesajları okur, özetler, onayınızla
@@ -10,6 +10,9 @@ export function MessagingSettings({ flash }: { flash(t: string): void }) {
   const [error, setError] = useState('');
   const [aramaMetni, setAramaMetni] = useState('');
   const [talimat, setTalimat] = useState('');
+  const [surum, setSurum] = useState('');
+  useEffect(() => { getVersion().then(v => setSurum(v.kod === 'bilinmiyor' ? 'bilinmiyor' : `${v.kod} · ${v.tarih ? new Date(v.tarih).toLocaleString('tr-TR') : ''}`)).catch(() => {}); }, []);
+  const tgTest = () => testTelegram().then(() => { flash('Deneme mesajı gönderildi: Telegram\'a bakın'); load(); }).catch(e => flash(e.message));
 
   const load = () => getMessaging().then(d => {
     setData(d);
@@ -39,6 +42,7 @@ export function MessagingSettings({ flash }: { flash(t: string): void }) {
   return (
     <>
       <label>Bağlantılar{data.okunmamis ? ` · ${data.okunmamis} okunmamış mesaj` : ''}</label>
+      {surum && <p className="muted small">Jarvis sürümü: <b>{surum}</b></p>}
       <p className="muted small">Bağladıktan sonra "Jarvis, mesajlarımı özetle", "kim aradı", "Ahmet'e yarın gelirim yaz" diyebilirsiniz. Jarvis mesaj göndermeden önce her zaman onay ister.</p>
 
       <div className="conn">
@@ -50,6 +54,12 @@ export function MessagingSettings({ flash }: { flash(t: string): void }) {
           <p className="muted small">Telegram'da <b>@BotFather</b>'a yazın → <code>/newbot</code> → bota bir ad verin → size verdiği anahtarı yukarıdaki <b>API anahtarları → Telegram bot anahtarı</b> alanına yapıştırın. Sonra mesajlarınızı bu bota iletin ya da botu gruplarınıza ekleyin.</p>
         )}
         {tg.hata && <p className="small warn">{tg.hata}</p>}
+        {tg.durum !== 'anahtar yok' && (
+          <div className="tg-diag small">
+            <p>Uzaktan komut: <b>{tg.eslesme ?? '?'}</b> · son gelen mesaj: <b>{tg.sonMesaj || 'yok'}</b> · son cevap: <b>{tg.sonCevap || 'yok'}</b></p>
+            <div className="seg"><button onClick={tgTest}>Telegram'a deneme mesajı gönder</button><button onClick={load}>Yenile</button></div>
+          </div>
+        )}
         {tg.durum === 'bağlı' && (
           <>
             <p className="muted small">Bot yalnızca kendisine yazılan mesajları ve eklendiği grupları görür (Telegram kişisel sohbetlerinizi botlara açmıyor).</p>

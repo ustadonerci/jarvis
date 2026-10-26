@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { execFile } from 'node:child_process';
 import { runJarvis } from './agent.js';
 import { BRIEF_OPENING, BRIEF_TRIGGER } from './brief.js';
 import { buildDashboard } from './dashboard.js';
@@ -51,6 +52,7 @@ import { AZURE_MODEL, AZURE_VOICES, azureReady, isAzure } from './azure.js';
 import type { Device, StoredMessage } from './types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const STARTED_AT = new Date().toISOString();
 const PORT = Number(process.env.PORT || 8787);
 const ACCESS_TOKEN = process.env.ACCESS_TOKEN || '';
 const DATA_FILE = path.join(__dirname, '..', 'data', 'state.json');
@@ -411,6 +413,14 @@ app.get('/api/hatalar', adminOnly, (_req, res) => res.json({ hatalar: errorList(
 app.delete('/api/hatalar', adminOnly, (_req, res) => { clearErrors(); res.json({ ok: true }); });
 
 // ---------- API anahtarları (server/.env) ----------
+// Sürüm: otomatik güncellemenin çalışıp çalışmadığı Ayarlar'da görünsün
+app.get('/api/surum', (_req, res) => {
+  const repo = path.join(__dirname, '..', '..');
+  execFile('git', ['log', '-1', '--format=%h|%cI|%s'], { cwd: repo, windowsHide: true, timeout: 10_000 }, (err, out) => {
+    const [kod, tarih, baslik] = String(out || '').trim().split('|');
+    res.json(err || !kod ? { kod: 'bilinmiyor' } : { kod, tarih, baslik: (baslik || '').slice(0, 90), calisma: STARTED_AT });
+  });
+});
 app.get('/api/keys', adminOnly, (_req, res) => res.json(listKeys()));
 app.post('/api/keys', adminOnly, (req, res) => {
   const values = req.body?.values;
