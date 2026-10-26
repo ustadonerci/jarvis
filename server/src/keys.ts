@@ -17,6 +17,7 @@ export const KEY_FIELDS: KeyField[] = [
   { name: 'CHAT_MODEL', label: 'Sohbet modeli', hint: 'Varsayılan: route-llm (her soruyu uygun modele yönlendirir).', secret: false },
   { name: 'USER_NAME', label: 'Size nasıl hitap etsin', hint: 'Ör. Ramazan', secret: false },
   { name: 'TELEGRAM_BOT_TOKEN', label: 'Telegram bot anahtarı', hint: "Telegram'da @BotFather → /newbot → verilen anahtar. Mesajlarınızı bu bota yazdırın ya da botu gruplara ekleyin.", secret: true },
+  { name: 'TELEGRAM_SAHIP_ID', label: 'Telegram kullanıcı kimliğiniz (uzaktan komut)', hint: 'Sayılardan oluşan Telegram ID\'niz (Telegram\'da @userinfobot\'a yazınca söyler). Girilirse bota yazdığınız her mesaj Jarvis\'e komut olur; eşleştirme kodu gerekmez.', secret: false },
   { name: 'TELEGRAM_KANAL', label: 'Telegram kanalı (paylaşım için)', hint: 'İsteğe bağlı. Ör. @kanaladi. Botu kanala yönetici olarak ekleyin; Jarvis onayınızla gönderi paylaşır.', secret: false },
   { name: 'PUBLIC_URL', label: 'Herkese açık adres (tünel)', hint: 'Twilio ve WhatsApp Business webhookları için. Ör. cloudflared ile aldığınız https://….trycloudflare.com (sonda / olmadan)', secret: false },
   { name: 'WHATSAPP_CLOUD_TOKEN', label: 'WhatsApp Business erişim anahtarı', hint: 'İsteğe bağlı, resmî API. developers.facebook.com → uygulamanız → WhatsApp → API Setup', secret: true },

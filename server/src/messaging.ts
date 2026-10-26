@@ -154,27 +154,37 @@ async function tgSend(chat: string, text: string) {
 // Uzaktan komut için Telegram eşleştirmesi: kullanıcı bota /start (ya da /jarvis) yazar, Jarvis ekranında (ve
 // WhatsApp'ta kendine) 6 haneli kod çıkar; kod bota yazılınca o sohbet kullanıcının sohbeti olur. Botu bulan başka
 // biri kodu göremeyeceği için eşleşemez.
-let tgPair: { chat: string; code: string; until: number } | null = null;
-async function tgOwnerFlow(chat: string, text: string, date: number): Promise<boolean> {
+const tgPairs = new Map<string, { code: string; until: number }>();
+async function tgOwnerFlow(chat: string, text: string, date: number, fromId: string): Promise<boolean> {
   if (Date.now() / 1000 - date > 300) return false; // Jarvis kapalıyken birikmiş eski mesajlar komut sayılmaz
-  if (cfg.telegramSahip === chat) {
+  const envOwner = (process.env.TELEGRAM_SAHIP_ID || '').trim();
+  const isOwner = cfg.telegramSahip === chat || (!!envOwner && (fromId === envOwner || chat === envOwner));
+  if (isOwner) {
     if (/^\/ayril$/i.test(text)) { delete cfg.telegramSahip; saveCfg(); await tgSend(chat, '🤖 Bu sohbetin Jarvis bağlantısı kaldırıldı.'); return true; }
     tgCall('sendChatAction', { chat_id: chat, action: 'typing' }).catch(() => {});
+    console.log(`[mesaj] Telegram komutu: "${text.slice(0, 60)}"`);
     handleRemote('telegram', text, t => tgSend(chat, t));
     return true;
   }
-  if (/^\/(start|jarvis)\b/i.test(text)) {
+  // Henüz kimse eşleşmediyse ilk mesaj da eşleştirmeyi başlatır (sessiz kalmasın)
+  const noOwner = !cfg.telegramSahip && !envOwner;
+  const pair = tgPairs.get(chat);
+  const live = pair && Date.now() < pair.until;
+  if (/^\/(start|jarvis)\b/i.test(text) || (noOwner && !/^\d{6}$/.test(text))) {
+    // Geçerli bir kod zaten varsa yenisini üretme (art arda yazılan mesajlar kodu geçersiz kılmasın)
+    if (live && !/^\/(start|jarvis)\b/i.test(text)) { await tgSend(chat, '🤖 Jarvis ekranında görünen 6 haneli kodu buraya yazın (10 dk geçerli). Yeni kod için /start.'); return true; }
     const code = String(randomInt(100000, 1000000));
-    tgPair = { chat, code, until: Date.now() + 10 * 60_000 };
+    tgPairs.set(chat, { code, until: Date.now() + 10 * 60_000 });
+    if (tgPairs.size > 20) tgPairs.delete(tgPairs.keys().next().value!);
     broadcast({ type: 'robot', metin: `Telegram eşleştirme kodu: ${code} (10 dk geçerli). Bu kodu Telegram'da bota yazın.` });
     notifySelf(`🤖 Telegram eşleştirme kodu: ${code} (10 dk geçerli). Bu kodu Telegram'da Jarvis botuna yazın.`).catch(() => {});
     console.log(`[mesaj] Telegram eşleştirme istendi (sohbet ${chat})`);
     await tgSend(chat, '🤖 Jarvis\'e buradan komut verebilmek için Jarvis ekranında (ya da WhatsApp\'ta kendinize gelen mesajda) görünen 6 haneli kodu buraya yazın.');
     return true;
   }
-  if (tgPair && tgPair.chat === chat && /^\d{6}$/.test(text)) {
-    if (Date.now() > tgPair.until || text !== tgPair.code) { tgPair = null; await tgSend(chat, '🤖 Kod yanlış ya da süresi doldu. /start yazıp yeniden deneyin.'); return true; }
-    tgPair = null;
+  if (pair && /^\d{6}$/.test(text)) {
+    tgPairs.delete(chat);
+    if (!live || text !== pair.code) { await tgSend(chat, '🤖 Kod yanlış ya da süresi doldu. /start yazıp yeniden deneyin.'); return true; }
     cfg.telegramSahip = chat;
     saveCfg();
     console.log('[mesaj] Telegram uzaktan komut sohbeti eşleştirildi');
@@ -189,6 +199,8 @@ async function tgLoop() {
   if (!TG()) return;
   try {
     const me: any = await tgCall('getMe');
+    // Botta webhook kuruluysa getUpdates çalışmaz (409): kaldır
+    await tgCall('deleteWebhook', { drop_pending_updates: false }).catch(() => {});
     tg.bot = me.username;
     tg.durum = 'bağlı';
     tg.hata = '';
@@ -208,7 +220,7 @@ async function tgLoop() {
         if (!m?.text && !m?.caption) continue;
         const chat = String(m.chat.id);
         const grup = m.chat.type !== 'private';
-        if (!grup && m.text && await tgOwnerFlow(chat, String(m.text).trim(), m.date)) continue;
+        if (!grup && m.text && await tgOwnerFlow(chat, String(m.text).trim(), m.date, String(m.from?.id ?? ''))) continue;
         const kisi = [m.from?.first_name, m.from?.last_name].filter(Boolean).join(' ') || m.from?.username || 'Bilinmeyen';
         const saved = record({
           id: `tg-${chat}-${m.message_id}`, platform: 'telegram', chat, grup,
@@ -221,6 +233,12 @@ async function tgLoop() {
     } catch (e: any) {
       tg.durum = 'hata';
       tg.hata = String(e?.message || e);
+      if (/Conflict|terminated by other getUpdates/i.test(tg.hata)) {
+        tg.hata = 'Bu bot anahtarını başka bir program da kullanıyor (aynı anda iki Jarvis ya da başka bir bot programı açık). Diğerini kapatın; Jarvis tekrar deniyor.';
+        console.warn(`[mesaj] Telegram: ${tg.hata}`);
+        await new Promise(r => setTimeout(r, 15_000));
+        continue;
+      }
       // Anahtar geçersizse sonsuz döngüde Telegram'ı yormasın
       if (/Unauthorized|Not Found/i.test(tg.hata)) return;
       await new Promise(r => setTimeout(r, 5000));
