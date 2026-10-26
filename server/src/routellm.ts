@@ -35,11 +35,15 @@ export interface StreamResult {
  * Akışlı sohbet isteği (`stream: true`). İçerik geldikçe `onContent` çağrılır; araç çağrıları parçalardan birleştirilir.
  * Sahne JSON'u bu sayede tamamı bitmeden okunmaya başlar (ilk sahne hazır olunca TTS'i başlar).
  */
-export async function routellmStream(body: object, onContent?: (delta: string, full: string) => void): Promise<StreamResult> {
+export async function routellmStream(
+  body: object, onContent?: (delta: string, full: string) => void,
+  /** Başka bir OpenAI uyumlu sağlayıcı (providers.ts); verilmezse RouteLLM */
+  opts?: { base: string; key: string; extraHeaders?: Record<string, string> },
+): Promise<StreamResult> {
   const t0 = performance.now();
-  const res = await fetch(BASE_URL + '/chat/completions', {
+  const res = await fetch((opts?.base ?? BASE_URL) + '/chat/completions', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${opts?.key ?? API_KEY}`, 'Content-Type': 'application/json', ...opts?.extraHeaders },
     body: JSON.stringify({ ...body, stream: true }),
   });
   if (!res.ok || !res.body) throw new RouteLLMError(res.status, await res.text());

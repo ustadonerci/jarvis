@@ -40,6 +40,7 @@ import { VS_MODEL, initVoiceStudio, isVoiceStudio, registerVoiceSetter, vsClone,
 import { initGithub } from './github.js';
 import { financeRouter, initFinance } from './finance.js';
 import { exchangesRouter } from './exchanges.js';
+import { getBrainProvider, providersRouter, setBrainProvider } from './providers.js';
 import { setRemoteAsk, type Kanal } from './remote.js';
 import { clearErrors, errorList, initErrors, logError } from './errors.js';
 import { approvalsRouter, initApprovals } from './approvals.js';
@@ -72,6 +73,8 @@ interface State {
   sfx?: boolean;
   /** Cevap hızı: hızlı model ya da route-llm yönlendiricisi */
   hiz?: Hiz;
+  /** Ana sohbeti yürüten yapay zeka sağlayıcısı (providers.ts); yoksa RouteLLM */
+  beyin?: string;
   /** İki alkışla uyanma ayarları (tüm cihazlarda ortak) */
   wake?: WakeConfig;
   /** Konuşma tonu (persona) */
@@ -157,6 +160,7 @@ initRobot({ broadcast, notify: notifySelf });
 initContacts(broadcast);
 initMailClean();
 setHiz(state.hiz ?? defaultHiz());
+setBrainProvider(state.beyin ?? 'routellm');
 initBrain();
 initSocial(broadcast);
 initAndroid(broadcast);
@@ -229,6 +233,7 @@ app.get('/api/state', (_req, res) => {
     mock: MOCK,
     model: CHAT_MODEL,
     hiz: getHiz(),
+    beyin: getBrainProvider(),
     hizliModel: fastModel(),
     online: presence(),
   });
@@ -403,6 +408,7 @@ app.use(messagingRouter());
 // ---------- Finans: portföy ve fiyat alarmları ----------
 app.use(financeRouter());
 app.use(exchangesRouter());
+app.use(providersRouter(id => { state.beyin = id; saveState(); }));
 
 // ---------- Onay kartları ve otomasyon (webhook) ----------
 app.use(approvalsRouter());

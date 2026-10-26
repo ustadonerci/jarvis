@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { buildSystemPrompt } from './prompt.js';
-import { CHAT_MODEL, MOCK, RouteLLMError, routellmStream, type ChatMessage, type ContentPart } from './routellm.js';
+import { brainStream } from './providers.js';
+import { CHAT_MODEL, MOCK, RouteLLMError, type ChatMessage, type ContentPart } from './routellm.js';
 import { TOOLS, runTool, type ToolProgress } from './tools.js';
 import { EXT_TOOLS, extensionsForPrompt, mcpTools } from './extensions.js';
 import { MSG_TOOLS, messagingForPrompt } from './messaging.js';
@@ -413,7 +414,7 @@ export async function runJarvis(opts: RunOptions): Promise<JarvisReply> {
     const parser = new SceneStream();
     let res;
     try {
-      res = await routellmStream(body, (_d, full) => parser.push(full).forEach(enqueue));
+      res = await brainStream(body, (_d, full) => parser.push(full).forEach(enqueue));
     } catch (e) {
       if (force && e instanceof RouteLLMError && e.status === 400) {
         force = null; // sağlayıcı zorunlu tool_choice'u desteklemiyorsa 'auto' ile tekrar dene

@@ -114,7 +114,7 @@ export const addMemory = (text: string) => fetch('/api/memory', { method: 'POST'
 export const deleteMemory = (id: string) => fetch(`/api/memory/${encodeURIComponent(id)}`, { method: 'DELETE', headers: headers() }).then(r => json<{ memory: MemoryItem[] }>(r));
 
 // ---------- Ayarlar → API anahtarları ve Yetenekler ----------
-export interface KeyView { name: string; label: string; hint: string; secret: boolean; set: boolean; value: string; borsa?: string }
+export interface KeyView { name: string; label: string; hint: string; secret: boolean; set: boolean; value: string; borsa?: string; saglayici?: string }
 export interface KeysData { fields: KeyView[]; custom: KeyView[] }
 export const getKeys = () => fetch('/api/keys', { headers: headers() }).then(r => json<KeysData>(r));
 export const saveKeys = (values: Record<string, string>) =>
@@ -309,6 +309,12 @@ export const openMicSettings = (ne: 'kayit' | 'gizlilik') => fetch('/api/mikrofo
 export interface ExchangeView { id: string; ad: string; hazir: boolean; deneysel: boolean; not?: string }
 export const getExchanges = () => fetch('/api/borsalar', { headers: headers() }).then(r => json<{ borsalar: ExchangeView[] }>(r));
 export const testExchange = (id: string) => fetch(`/api/borsalar/${id}/test`, { method: 'POST', headers: headers() }).then(r => json<{ ok: boolean; borsa: string; bakiye: { varlik: string; serbest: number; kilitli: number }[] }>(r));
+
+export interface ProviderView { id: string; ad: string; hazir: boolean; model: string; anahtarSayfasi: string }
+export interface ProvidersData { beyin: string; aktif: string; saglayicilar: ProviderView[] }
+export const getProviders = () => fetch('/api/saglayicilar', { headers: headers() }).then(r => json<ProvidersData>(r));
+export const setBrain = (id: string) => fetch('/api/saglayicilar/beyin', { method: 'POST', headers: headers(), body: JSON.stringify({ id }) }).then(r => json<ProvidersData>(r));
+export const testProvider = (id: string) => fetch(`/api/saglayicilar/${id}/test`, { method: 'POST', headers: headers() }).then(r => json<{ ok: boolean; modeller: string[] }>(r));
 
 export const testTelegram = () => fetch('/api/mesaj/telegram/test', { method: 'POST', headers: headers() }).then(r => json<{ ok: boolean }>(r));
 export const getVersion = () => fetch('/api/surum', { headers: headers() }).then(r => json<{ kod: string; tarih?: string; baslik?: string; calisma?: string }>(r));

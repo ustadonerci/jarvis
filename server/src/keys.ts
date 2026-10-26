@@ -9,7 +9,7 @@ const SRC = path.dirname(fileURLToPath(import.meta.url));
 const ENV_FILE = path.join(SRC, '..', '.env');
 const ENV_EXAMPLE = path.join(SRC, '..', '.env.example');
 
-export interface KeyField { name: string; label: string; hint: string; secret: boolean; /** Ayarlar → Borsalar kartında gösterilir (genel listede değil) */ borsa?: string }
+export interface KeyField { name: string; label: string; hint: string; secret: boolean; /** Ayarlar → Borsalar kartında gösterilir (genel listede değil) */ borsa?: string; /** Ayarlar → Yapay zeka sağlayıcıları kartında gösterilir */ saglayici?: string }
 
 /** Arayüzde her zaman görünen alanlar */
 export const KEY_FIELDS: KeyField[] = [
@@ -49,7 +49,22 @@ export const KEY_FIELDS: KeyField[] = [
   { name: 'AZURE_SPEECH_KEY', label: 'Azure Speech anahtarı (ses)', hint: 'İsteğe bağlı. Türkçe erkek (Ahmet) ve kadın (Emel) sesleri. portal.azure.com → Speech service → Keys', secret: true },
   { name: 'AZURE_SPEECH_REGION', label: 'Azure Speech bölgesi', hint: 'Ör. westeurope (Speech kaynağının "Location/Region" değeri)', secret: false },
   { name: 'DEEPGRAM_API_KEY', label: 'Deepgram (ses tanıma)', hint: 'İsteğe bağlı. Konuşmanızı daha hızlı yazıya döker. console.deepgram.com', secret: true },
-  { name: 'OPENAI_API_KEY', label: 'OpenAI (Whisper ses tanıma)', hint: 'İsteğe bağlı. Ses tanımada Deepgram yoksa kullanılır. platform.openai.com → API keys', secret: true },
+  { name: 'OPENAI_API_KEY', label: 'API anahtarı', hint: 'platform.openai.com → API keys. Ses tanımada Deepgram yoksa Whisper için de kullanılır.', secret: true, saglayici: 'openai' },
+  { name: 'OPENAI_CHAT_MODEL', label: 'Model', hint: 'Boş: gpt-4.1', secret: false, saglayici: 'openai' },
+  { name: 'ANTHROPIC_API_KEY', label: 'API anahtarı', hint: 'platform.claude.com → API Keys', secret: true, saglayici: 'anthropic' },
+  { name: 'ANTHROPIC_MODEL', label: 'Model', hint: 'Boş: claude-opus-5-5 (daha hızlı/ucuz için claude-sonnet-5-5 ya da claude-haiku-5-5)', secret: false, saglayici: 'anthropic' },
+  { name: 'GEMINI_API_KEY', label: 'API anahtarı', hint: 'aistudio.google.com → Get API key', secret: true, saglayici: 'gemini' },
+  { name: 'GEMINI_MODEL', label: 'Model', hint: 'Boş: gemini-2.5-flash', secret: false, saglayici: 'gemini' },
+  { name: 'XAI_API_KEY', label: 'API anahtarı', hint: 'console.x.ai → API Keys', secret: true, saglayici: 'xai' },
+  { name: 'XAI_MODEL', label: 'Model', hint: 'Boş: grok-4', secret: false, saglayici: 'xai' },
+  { name: 'DEEPSEEK_API_KEY', label: 'API anahtarı', hint: 'platform.deepseek.com → API keys', secret: true, saglayici: 'deepseek' },
+  { name: 'DEEPSEEK_MODEL', label: 'Model', hint: 'Boş: deepseek-chat', secret: false, saglayici: 'deepseek' },
+  { name: 'MISTRAL_API_KEY', label: 'API anahtarı', hint: 'console.mistral.ai → API Keys', secret: true, saglayici: 'mistral' },
+  { name: 'MISTRAL_MODEL', label: 'Model', hint: 'Boş: mistral-large-latest', secret: false, saglayici: 'mistral' },
+  { name: 'GROQ_API_KEY', label: 'API anahtarı', hint: 'console.groq.com → API Keys', secret: true, saglayici: 'groq' },
+  { name: 'GROQ_MODEL', label: 'Model', hint: 'Boş: llama-3.3-70b-versatile', secret: false, saglayici: 'groq' },
+  { name: 'OPENROUTER_API_KEY', label: 'API anahtarı', hint: 'openrouter.ai → Keys (tek anahtarla yüzlerce model)', secret: true, saglayici: 'openrouter' },
+  { name: 'OPENROUTER_MODEL', label: 'Model', hint: 'Boş: openai/gpt-4.1 (ör. anthropic/claude-sonnet-5-5, google/gemini-2.5-pro)', secret: false, saglayici: 'openrouter' },
   { name: 'YOUTUBE_API_KEY', label: 'YouTube Data API', hint: 'İsteğe bağlı. "… videosunu aç" için.', secret: true },
   { name: 'PEXELS_API_KEY', label: 'Pexels (stok fotoğraf)', hint: 'İsteğe bağlı, ücretsiz.', secret: true },
   { name: 'UNSPLASH_ACCESS_KEY', label: 'Unsplash (stok fotoğraf)', hint: 'İsteğe bağlı, ücretsiz.', secret: true },
