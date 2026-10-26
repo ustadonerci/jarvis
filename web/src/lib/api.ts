@@ -318,5 +318,12 @@ export const getProviders = () => fetch('/api/saglayicilar', { headers: headers(
 export const setBrain = (id: string) => fetch('/api/saglayicilar/beyin', { method: 'POST', headers: headers(), body: JSON.stringify({ id }) }).then(r => json<ProvidersData>(r));
 export const testProvider = (id: string) => fetch(`/api/saglayicilar/${id}/test`, { method: 'POST', headers: headers() }).then(r => json<{ ok: boolean; modeller: string[] }>(r));
 
+export interface DailyCfg { raporSaati: number; sabahSaati: number; epostaOto: boolean; epostaGrupla: boolean; repoOto: boolean; gonder: boolean }
+export interface DailyReport { tarih: string; aksam?: string; eposta?: string; github?: string; gonderildi?: Partial<Record<'aksam' | 'eposta' | 'github', string[]>> }
+export interface DailyData { ayar: DailyCfg; calisiyor: string | null; eposta: boolean; raporlar: DailyReport[] }
+export const getDaily = () => fetch('/api/gunluk', { headers: headers() }).then(r => json<DailyData>(r));
+export const saveDaily = (patch: Partial<DailyCfg>) => fetch('/api/gunluk/ayar', { method: 'POST', headers: headers(), body: JSON.stringify(patch) }).then(r => json<DailyData>(r));
+export const runDaily = (is: 'aksam' | 'eposta' | 'github') => fetch('/api/gunluk/simdi', { method: 'POST', headers: headers(), body: JSON.stringify({ is }) }).then(r => json<DailyData>(r));
+
 export const testTelegram = () => fetch('/api/mesaj/telegram/test', { method: 'POST', headers: headers() }).then(r => json<{ ok: boolean }>(r));
 export const getVersion = () => fetch('/api/surum', { headers: headers() }).then(r => json<{ kod: string; tarih?: string; baslik?: string; calisma?: string }>(r));

@@ -28,6 +28,7 @@ import { isRobotTool, runRobotTool } from './robot.js';
 import { isBrand24Tool, runBrand24Tool } from './brand24.js';
 import { isContactTool, runContactTool } from './contacts.js';
 import { isMailCleanTool, runMailCleanTool } from './mailclean.js';
+import { isDailyTool, runDailyTool } from './daily.js';
 import { isMicDiagTool, runMicDiagTool } from './micdiag.js';
 import { isExchangeTool, runExchangeTool } from './exchanges.js';
 import { isSiteTool, runSiteTool } from './sitedownload.js';
@@ -320,6 +321,7 @@ async function runToolOnce(name: string, rawArgs: string, progress: ToolProgress
   if (isBrand24Tool(name)) return runBrand24Tool(args, progress);
   if (isContactTool(name)) return runContactTool(name, args, progress);
   if (isMailCleanTool(name)) return runMailCleanTool(args, progress);
+  if (isDailyTool(name)) return runDailyTool(args, progress);
   if (isMicDiagTool(name)) return runMicDiagTool(args, progress);
   if (isExchangeTool(name)) return runExchangeTool(args, progress);
   if (isSiteTool(name)) return runSiteTool(args, progress);

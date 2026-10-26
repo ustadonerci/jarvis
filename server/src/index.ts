@@ -37,7 +37,7 @@ import { initSocial, socialRouter } from './social.js';
 import { androidRouter, initAndroid } from './android.js';
 import { initAgents } from './agents.js';
 import { VS_MODEL, initVoiceStudio, isVoiceStudio, registerVoiceSetter, vsClone, vsProfiles, vsUp } from './voicestudio.js';
-import { initGithub } from './github.js';
+import { dailyRouter, initDaily } from './daily.js';
 import { financeRouter, initFinance } from './finance.js';
 import { exchangesRouter } from './exchanges.js';
 import { getBrainProvider, providersRouter, setBrainProvider } from './providers.js';
@@ -165,7 +165,7 @@ initBrain();
 initSocial(broadcast);
 initAndroid(broadcast);
 initAgents(broadcast);
-initGithub();
+initDaily({ messages: () => state.messages, broadcast });
 initVoiceStudio();
 
 const app = express();
@@ -408,6 +408,7 @@ app.use(messagingRouter());
 // ---------- Finans: portföy ve fiyat alarmları ----------
 app.use(financeRouter());
 app.use(exchangesRouter());
+app.use(dailyRouter());
 app.use(providersRouter(id => { state.beyin = id; saveState(); }));
 
 // ---------- Onay kartları ve otomasyon (webhook) ----------

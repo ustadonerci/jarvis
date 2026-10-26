@@ -2,6 +2,7 @@
 // riskli işlemleri Jarvis DOĞRUDAN yapmaz. Önerir; ekranda tam olarak ne çalışacağını gösteren bir onay kartı çıkar
 // ve yalnızca kullanıcı "Çalıştır" derse yürütülür. Onay yalnızca Jarvis'in çalıştığı bilgisayardan verilebilir
 // (ya da ACCESS_TOKEN ile). Öneriler 15 dakika sonra düşer.
+import { logActivity } from './activity.js';
 import { randomUUID } from 'node:crypto';
 import express, { type Router } from 'express';
 import { adminOnly } from './keys.js';
@@ -29,7 +30,7 @@ export function initApprovals(b: (e: object) => void) {
   broadcast = b;
   setInterval(() => {
     for (const a of actions.values()) {
-      if (a.durum === 'bekliyor' && Date.now() - Date.parse(a.at) > TTL) { a.durum = 'dustu'; broadcast({ type: 'onay' }); }
+      if (a.durum === 'bekliyor' && Date.now() - Date.parse(a.at) > TTL) { a.durum = 'dustu'; logActivity('islem', `${a.baslik} → onaylanmadığı için 15 dk sonra düştü`); broadcast({ type: 'onay' }); }
       if (a.bitti && Date.now() - Date.parse(a.bitti) > 6 * 3600_000) actions.delete(a.id);
     }
   }, 60_000).unref();
@@ -56,6 +57,7 @@ async function execute(id: string, approve: boolean) {
     a.durum = 'reddedildi';
     a.bitti = new Date().toISOString();
     console.log(`[onay] reddedildi: ${a.baslik}`);
+    logActivity('islem', `${a.baslik} → reddettiniz`);
     broadcast({ type: 'onay' });
     return view(a);
   }
@@ -71,6 +73,7 @@ async function execute(id: string, approve: boolean) {
     logError(`onay:${a.tur}`, a.sonuc);
   }
   a.bitti = new Date().toISOString();
+  logActivity('islem', `${a.baslik} → ${a.durum === 'tamam' ? 'yapıldı' : `hata: ${(a.sonuc ?? '').slice(0, 160)}`}`);
   broadcast({ type: 'onay', bitti: view(a) });
   return view(a);
 }

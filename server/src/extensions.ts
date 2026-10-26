@@ -21,6 +21,7 @@ import type { OAuthClientInformationMixed, OAuthTokens } from '@modelcontextprot
 import { adminOnly } from './keys.js';
 import { logError } from './errors.js';
 import { propose } from './approvals.js';
+import { logActivity } from './activity.js';
 
 const run = promisify(execFile);
 const DATA = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
@@ -1054,7 +1055,8 @@ function referenceSkill(root: string, slug: string, repoName: string): Skill | n
   };
 }
 
-async function installFromGitHub(url: string) {
+/** mcpKapali: repodaki MCP sunucuları kapalı eklenir ve otomatik açılmaz (günlük otomatik keşifte güvenlik için) */
+export async function installFromGitHub(url: string, o: { mcpKapali?: boolean } = {}) {
   const m = GH.exec(extractRepoUrls(url)[0] ?? '');
   if (!m) throw new Error('Geçerli bir GitHub repo adresi değil (ör. https://github.com/kullanici/repo ya da gh repo clone kullanici/repo).');
   const [, owner, name, sub] = m;
@@ -1097,6 +1099,7 @@ async function installFromGitHub(url: string) {
     found.skills.push(ref);
     bilgi = true;
   }
+  if (o.mcpKapali) for (const x of found.servers) { x.aktif = false; x.elleKapali = true; }
   store.repos.push({ slug, url, at: new Date().toISOString() });
   store.skills.push(...found.skills);
   store.servers.push(...found.servers);
@@ -1104,6 +1107,7 @@ async function installFromGitHub(url: string) {
   if (found.servers.length) startServers(autoEnable());
   changed();
   console.log(`[yetenek] GitHub: ${owner}/${name} → ${found.skills.length} beceri/iş akışı, ${found.servers.length} MCP`);
+  logActivity('yetenek', `GitHub'dan kuruldu: ${owner}/${name} (${bilgi ? 'bilgi kaynağı' : `${found.skills.length} beceri/iş akışı, ${found.servers.length} MCP`})`);
   return { slug, bilgi, beceri: bilgi ? 0 : found.skills.filter(s => s.tur === 'beceri').length, is_akisi: found.skills.filter(s => s.tur === 'is_akisi').length, mcp: found.servers.length };
 }
 
@@ -1309,4 +1313,10 @@ export function extensionsRouter(): Router {
     res.json(view());
   });
   return r;
+}
+
+/** Günlük rapor için MCP durumu */
+export function serverStats() {
+  const v = view().servers;
+  return { toplam: v.length, bagli: v.filter(s => s.durum === 'bağlı').length, hata: v.filter(s => s.durum === 'hata').map(s => s.ad), beceri: store.skills.filter(s => s.aktif).length };
 }

@@ -696,6 +696,30 @@ export function messagingRouter(): Router {
   return r;
 }
 
+/** Kullanıcıya bildirim: eşleşmiş Telegram sohbetine ve WhatsApp'ta kendine. Gönderilebilen kanalları döner. */
+export async function notifyOwner(text: string): Promise<string[]> {
+  const out: string[] = [];
+  const owner = cfg.telegramSahip || (process.env.TELEGRAM_SAHIP_ID || '').trim();
+  if (TG() && owner) {
+    try {
+      // Telegram mesaj sınırı 4096 karakter: satır sonlarından bölünür
+      const parts: string[] = [];
+      let cur = '';
+      for (const line of text.split('\n')) {
+        if ((cur + line).length > 3800 && cur) { parts.push(cur); cur = ''; }
+        cur += (cur ? '\n' : '') + line.slice(0, 3800);
+      }
+      if (cur) parts.push(cur);
+      for (const p of parts) await tgSend(owner, p);
+      out.push('Telegram');
+    } catch (e: any) {
+      console.warn(`[mesaj] Telegram rapor gönderilemedi: ${String(e?.message || e).slice(0, 120)}`);
+    }
+  }
+  if (await notifySelf(text)) out.push('WhatsApp');
+  return out;
+}
+
 /** Kullanıcının WhatsApp'ta kendine yazdığı sohbete mesaj (bağlı değilse false) */
 export async function notifySelf(text: string): Promise<boolean> {
   if (!(wa.sock && wa.durum === 'bağlı' && wa.numara)) return false;

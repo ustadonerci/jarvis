@@ -12,6 +12,8 @@ import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ImapFlow } from 'imapflow';
+import { simpleParser } from 'mailparser';
+import { logActivity } from './activity.js';
 import { propose } from './approvals.js';
 import { emailReady, folderPath, sendMail, withClient } from './email.js';
 
@@ -215,6 +217,82 @@ async function enforceBlocks() {
 export function initMailClean() {
   setTimeout(() => enforceBlocks().catch(() => {}), 60_000).unref();
   setInterval(() => enforceBlocks().catch(e => console.warn('[eposta] engel uygulanamadı:', e?.message || e)), 30 * 60_000).unref();
+}
+
+// ---------------------------------------------------------------- Günlük otomatik düzenleme
+
+export interface MailRoutineResult {
+  taranan_gun: number; toplam: number;
+  gruplar: Record<string, number>;
+  silinen: number; silinen_gondericiler: { ad: string; adres: string; adet: number; kategori: string }[];
+  abonelik: { cikildi: number; elle: string[] };
+  klasorlenen: Record<string, number>;
+  onemli: { kimden: string; konu: string; tarih: string; grup: string; metin: string }[];
+}
+
+/**
+ * Her gün kendiliğinden (daily.ts, onay kartı yok — kullanıcı Ayarlar → Günlük rapor'da açtı): tanıtım/reklam, bülten
+ * ve spam şüphesi e-postaları Çöp'e (30 gün geri alınabilir), tanıtım/bülten göndericilerinin aboneliğinden çıkılır
+ * (spam'de link açılmaz), göndericiler engellenir. İstenirse sosyal/bildirim/kargo/fatura klasörlere taşınır. Kişisel,
+ * güvenlik, fatura ve kargo e-postaları ASLA silinmez; önemli olanların metni özet için döner.
+ */
+export async function autoMailRoutine(o: { gun: number; grupla: boolean }): Promise<MailRoutineResult> {
+  const r = await scan(o.gun, 600);
+  last = null;
+  const gruplar: Record<string, number> = {};
+  for (const m of r.mails) gruplar[AD[m.kategori]] = (gruplar[AD[m.kategori]] ?? 0) + 1;
+  const SIL: Kategori[] = ['tanitim', 'bulten', 'spam'];
+  const targets = [...r.senders.values()].filter(s => SIL.includes(s.kategori));
+  const res: MailRoutineResult = { taranan_gun: r.gun, toplam: r.mails.length, gruplar, silinen: 0, silinen_gondericiler: [], abonelik: { cikildi: 0, elle: [] }, klasorlenen: {}, onemli: [] };
+  for (const s of targets) {
+    if (s.kategori === 'spam') continue;
+    const u = await unsubscribe(s).catch(() => ({ durum: 'hata' as const, yol: '', link: undefined }));
+    if (u.durum === 'tamam') res.abonelik.cikildi++;
+    else if (u.durum === 'elle' && u.link) res.abonelik.elle.push(`${s.ad}: ${u.link}`);
+  }
+  const uids = r.mails.filter(m => SIL.includes(m.kategori)).map(m => m.uid);
+  const moveBy = (kats: Kategori[]) => Object.fromEntries(kats.map(k => [k, r.mails.filter(m => m.kategori === k).map(m => m.uid)]).filter(([, l]) => l.length)) as Record<Kategori, number[]>;
+  const groups = o.grupla ? moveBy(['sosyal', 'bildirim']) : {} as Record<Kategori, number[]>;
+  // Önemliler: metinleri özet için (okundu işareti değişmez)
+  const onemliMails = r.mails.filter(m => m.kategori === 'kisisel' || m.kategori === 'guvenlik' || m.kategori === 'fatura' || m.kategori === 'kargo')
+    .sort((a, b) => b.tarih.localeCompare(a.tarih)).slice(0, 15);
+  await withClient(async c => {
+    const lock = await c.getMailboxLock('INBOX');
+    try {
+      if (onemliMails.length) {
+        const byUid = new Map(onemliMails.map(m => [m.uid, m]));
+        for await (const m of c.fetch(onemliMails.map(x => x.uid), { uid: true, source: { start: 0, maxLength: 24_576 } }, { uid: true })) {
+          const meta = byUid.get(m.uid)!;
+          const p = m.source ? await simpleParser(m.source).catch(() => null) : null;
+          res.onemli.push({ kimden: `${meta.ad} <${meta.adres}>`, konu: meta.konu, tarih: meta.tarih.slice(0, 16).replace('T', ' '), grup: AD[meta.kategori], metin: (p?.text || '').replace(/\s+/g, ' ').slice(0, 700) });
+        }
+        res.onemli.sort((a, b) => b.tarih.localeCompare(a.tarih));
+      }
+      if (uids.length) {
+        await c.messageMove(uids, await folderPath(c, 'cop'), { uid: true });
+        res.silinen = uids.length;
+      }
+      if (Object.keys(groups).length) {
+        const all = await c.list();
+        const delim = all.find(f => f.path === 'INBOX')?.delimiter || '/';
+        for (const [k, l] of Object.entries(groups) as [Kategori, number[]][]) {
+          const folder = `Jarvis${delim}${FOLDER[k]}`;
+          if (!all.some(f => f.path === folder)) await c.mailboxCreate(folder).catch(() => {});
+          await c.messageMove(l, folder, { uid: true });
+          res.klasorlenen[`Jarvis/${FOLDER[k]}`] = l.length;
+        }
+      }
+    } finally {
+      lock.release();
+    }
+  });
+  res.silinen_gondericiler = targets.map(s => ({ ad: s.ad, adres: s.adres, adet: s.uids.length, kategori: AD[s.kategori] })).sort((a, b) => b.adet - a.adet);
+  const cur = blocked();
+  for (const s of targets) if (!cur.some(b => b.adres === s.adres)) cur.push({ adres: s.adres, at: new Date().toISOString() });
+  saveBlocked(cur);
+  logActivity('eposta', `${r.mails.length} e-posta tarandı; ${res.silinen} reklam/bülten/spam Çöp'e, ${res.abonelik.cikildi} abonelikten çıkıldı${Object.keys(res.klasorlenen).length ? `, ${Object.values(res.klasorlenen).reduce((a, b) => a + b, 0)} klasörlendi` : ''}`);
+  console.log(`[eposta] günlük düzenleme: ${res.silinen} silindi, ${res.abonelik.cikildi} abonelik, ${res.onemli.length} önemli`);
+  return res;
 }
 
 // ---------------------------------------------------------------- Model aracı
