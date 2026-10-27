@@ -318,13 +318,25 @@ export const getProviders = () => fetch('/api/saglayicilar', { headers: headers(
 export const setBrain = (id: string) => fetch('/api/saglayicilar/beyin', { method: 'POST', headers: headers(), body: JSON.stringify({ id }) }).then(r => json<ProvidersData>(r));
 export const testProvider = (id: string) => fetch(`/api/saglayicilar/${id}/test`, { method: 'POST', headers: headers() }).then(r => json<{ ok: boolean; modeller: string[] }>(r));
 
-export interface DailyCfg { raporSaati: number; sabahSaati: number; epostaOto: boolean; epostaGrupla: boolean; repoOto: boolean; gonder: boolean }
-export interface DailyReport { tarih: string; aksam?: string; eposta?: string; github?: string; gonderildi?: Partial<Record<'aksam' | 'eposta' | 'github', string[]>> }
+export interface DailyCfg { raporSaati: number; sabahSaati: number; epostaOto: boolean; epostaGrupla: boolean; repoOto: boolean; gonder: boolean; harcamaOto: boolean }
+export type DailyKind = 'aksam' | 'eposta' | 'github' | 'harcama' | 'ay';
+export interface DailyReport { tarih: string; aksam?: string; eposta?: string; github?: string; harcama?: string; ay?: string; gonderildi?: Partial<Record<DailyKind, string[]>> }
 export interface DailyData { ayar: DailyCfg; calisiyor: string | null; eposta: boolean; raporlar: DailyReport[] }
 export const getDaily = () => fetch('/api/gunluk', { headers: headers() }).then(r => json<DailyData>(r));
 export const saveDaily = (patch: Partial<DailyCfg>) => fetch('/api/gunluk/ayar', { method: 'POST', headers: headers(), body: JSON.stringify(patch) }).then(r => json<DailyData>(r));
-export const runDaily = (is: 'aksam' | 'eposta' | 'github') => fetch('/api/gunluk/simdi', { method: 'POST', headers: headers(), body: JSON.stringify({ is }) }).then(r => json<DailyData>(r));
+export const runDaily = (is: DailyKind) => fetch('/api/gunluk/simdi', { method: 'POST', headers: headers(), body: JSON.stringify({ is }) }).then(r => json<DailyData>(r));
 
+export interface ExpenseView { id: string; tarih: string; saat: string; isyeri: string; kategori: string; tutar: number; para: string; kart: string; banka: string; tur: 'harcama' | 'iade' }
+export interface ExpensesData { ay: string; aylar: string[]; harcamalar: ExpenseView[]; toplam: number; kategori: [string, number][]; kart: [string, number][]; klasor: string }
+export const getExpenses = (ay?: string) => fetch(`/api/harcamalar${ay ? `?ay=${ay}` : ''}`, { headers: headers() }).then(r => json<ExpensesData>(r));
+export const deleteExpense = (id: string) => fetch(`/api/harcamalar/${encodeURIComponent(id)}`, { method: 'DELETE', headers: headers() }).then(r => json<{ ok: boolean }>(r));
+export const downloadExpensesCsv = (ay: string) => fetch(`/api/harcamalar/csv?ay=${ay}`, { headers: headers() }).then(async r => {
+  if (!r.ok) throw new Error('Tablo indirilemedi');
+  const url = URL.createObjectURL(await r.blob());
+  const a = document.createElement('a');
+  a.href = url; a.download = `gider-tablosu-${ay}.csv`; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+});
 export const openJarvisBrowser = (url = 'https://mail.google.com/') => fetch('/api/tarayici/ac', { method: 'POST', headers: headers(), body: JSON.stringify({ url }) }).then(r => json<{ ok: boolean }>(r));
 
 export const testTelegram = () => fetch('/api/mesaj/telegram/test', { method: 'POST', headers: headers() }).then(r => json<{ ok: boolean }>(r));

@@ -17,22 +17,23 @@ import { serverStats } from './extensions.js';
 import { dailyRepos, type RepoKarar } from './github.js';
 import { adminOnly } from './keys.js';
 import { autoMailRoutine, type MailRoutineResult } from './mailclean.js';
+import { collectExpenses, dayText, monthText } from './expenses.js';
 import { notifyOwner } from './messaging.js';
 import { askText } from './routellm.js';
 import type { StoredMessage } from './types.js';
 
 export interface DailyCfg {
   raporSaati: number; sabahSaati: number;
-  epostaOto: boolean; epostaGrupla: boolean; repoOto: boolean; gonder: boolean;
-  sonSabah?: string; sonAksam?: string; epostaIlkYapildi?: boolean;
+  epostaOto: boolean; epostaGrupla: boolean; repoOto: boolean; gonder: boolean; harcamaOto: boolean;
+  sonSabah?: string; sonAksam?: string; epostaIlkYapildi?: boolean; harcamaIlkYapildi?: boolean; sonAyRaporu?: string;
 }
 const CFG_FILE = path.join(GUNLUK, 'ayar.json');
-const DEFAULT: DailyCfg = { raporSaati: 21, sabahSaati: 8, epostaOto: true, epostaGrupla: true, repoOto: true, gonder: true };
+const DEFAULT: DailyCfg = { raporSaati: 21, sabahSaati: 8, epostaOto: true, epostaGrupla: true, repoOto: true, gonder: true, harcamaOto: true };
 let cfg: DailyCfg = (() => { try { return { ...DEFAULT, ...JSON.parse(fs.readFileSync(CFG_FILE, 'utf8')) }; } catch { return { ...DEFAULT }; } })();
 const saveCfg = () => { fs.mkdirSync(GUNLUK, { recursive: true }); fs.writeFileSync(CFG_FILE, JSON.stringify(cfg, null, 2)); };
 
-type Kind = 'aksam' | 'eposta' | 'github';
-interface DayReport { tarih: string; aksam?: string; eposta?: string; github?: string; gonderildi?: Partial<Record<Kind, string[]>> }
+type Kind = 'aksam' | 'eposta' | 'github' | 'harcama' | 'ay';
+interface DayReport { tarih: string; aksam?: string; eposta?: string; github?: string; harcama?: string; ay?: string; gonderildi?: Partial<Record<Kind, string[]>> }
 const reportFile = (t: string) => path.join(GUNLUK, `rapor-${t}.json`);
 const readReport = (t: string): DayReport => { try { return JSON.parse(fs.readFileSync(reportFile(t), 'utf8')); } catch { return { tarih: t }; } };
 
@@ -87,11 +88,11 @@ export async function runMail(send = true): Promise<string> {
   else {
     // Uygulama şifresi yok: Jarvis'in tarayıcısındaki Gmail oturumuyla
     try {
-      r = await gmailWebRoutine({ gun });
+      r = await gmailWebRoutine({ gun, grupla: cfg.epostaGrupla });
       kaynak = ' · tarayıcıyla Gmail';
     } catch (e) {
       const msg = e instanceof GmailLoginNeeded
-        ? '🤖 📧 E-posta: Jarvis\'in tarayıcı penceresinde Gmail açıldı ama giriş yapılmamış. O pencerede Gmail hesabınıza BİR KEZ kendiniz giriş yapın (şifrenizi Jarvis\'e söylemeyin), sonra "maillerimi düzenle" deyin ya da Ayarlar → Günlük rapor → "E-postaları şimdi düzenle"ye basın.'
+        ? '🤖 📧 E-posta: Jarvis\'in Chrome penceresinde Gmail açıldı ama giriş yapılmamış. O pencerede Gmail hesabınıza BİR KEZ kendiniz giriş yapın (şifrenizi Jarvis\'e söylemeyin), sonra "maillerimi düzenle" deyin ya da Ayarlar → Günlük rapor → "E-postaları şimdi düzenle"ye basın.'
         : `🤖 📧 E-posta tarayıcıyla düzenlenemedi: ${String((e as any)?.message || e).split('\n')[0].slice(0, 200)}`;
       return (await store('eposta', msg, send)).eposta!;
     }
@@ -166,22 +167,44 @@ async function job(kind: Kind, fn: () => Promise<unknown>) {
   finally { running = null; }
 }
 
+/** Kart harcamalarını günceller (ilk seferde ayın başından beri) ve günün tablosunu kaydeder/gönderir */
+export async function runExpenses(send = true): Promise<string> {
+  const gun = cfg.harcamaIlkYapildi ? 3 : new Date().getDate() + 1;
+  const r = await collectExpenses(gun);
+  if (!cfg.harcamaIlkYapildi) { cfg.harcamaIlkYapildi = true; saveCfg(); }
+  return (await store('harcama', `${dayText()}\n\n(${r.kaynak}: ${r.okunan} banka e-postası okundu, ${r.eklenen} yeni harcama)`, send)).harcama!;
+}
+export async function runMonth(ay: string, send = true): Promise<string> {
+  cfg.sonAyRaporu = ay;
+  saveCfg();
+  return (await store('ay', monthText(ay), send)).ay!;
+}
+const lastDayOfMonth = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate() === d.getDate(); };
+const prevMonth = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth() - 1, 15).toLocaleDateString('sv-SE').slice(0, 7); };
+
 async function tick() {
   const t = today(), h = new Date().getHours();
   if (h >= cfg.sabahSaati && cfg.sonSabah !== t) {
     cfg.sonSabah = t;
     saveCfg();
+    // Harcamalar e-postalar klasörlere taşınmadan önce okunur
+    if (cfg.harcamaOto) await job('harcama', () => collectExpenses(cfg.harcamaIlkYapildi ? 3 : new Date().getDate() + 1).then(() => { cfg.harcamaIlkYapildi = true; saveCfg(); }));
+    // Geçen ayın ay sonu raporu kaçtıysa (bilgisayar kapalıydı)
+    if (cfg.harcamaOto && cfg.harcamaIlkYapildi && cfg.sonAyRaporu && cfg.sonAyRaporu < prevMonth()) await job('ay', () => runMonth(prevMonth()));
     if (cfg.epostaOto) await job('eposta', () => runMail());
     await job('github', () => runGithub());
   }
   if (h >= cfg.raporSaati && cfg.sonAksam !== t) {
     cfg.sonAksam = t;
     saveCfg();
+    if (cfg.harcamaOto) await job('harcama', () => runExpenses());
+    if (cfg.harcamaOto && lastDayOfMonth()) await job('ay', () => runMonth(t.slice(0, 7)));
     await job('aksam', () => runEvening());
   }
 }
 
 export function initDaily(o: { messages: () => StoredMessage[]; broadcast: (e: object) => void }) {
+  if (!cfg.sonAyRaporu) { cfg.sonAyRaporu = prevMonth(); saveCfg(); }
   getMessages = o.messages;
   broadcast = o.broadcast;
   // Otomatik güncellemeler sık yeniden başlattığı için açılışta biraz beklenir (WhatsApp/Telegram bağlansın)
@@ -206,7 +229,7 @@ export function dailyRouter(): Router {
   r.get('/api/gunluk', (_req, res) => res.json(view()));
   r.post('/api/gunluk/ayar', (req, res) => {
     const b = req.body ?? {};
-    for (const k of ['epostaOto', 'epostaGrupla', 'repoOto', 'gonder'] as const) if (typeof b[k] === 'boolean') cfg[k] = b[k];
+    for (const k of ['epostaOto', 'epostaGrupla', 'repoOto', 'gonder', 'harcamaOto'] as const) if (typeof b[k] === 'boolean') cfg[k] = b[k];
     for (const k of ['raporSaati', 'sabahSaati'] as const) if (Number.isInteger(b[k]) && b[k] >= 0 && b[k] <= 23) cfg[k] = b[k];
     saveCfg();
     res.json(view());
@@ -214,7 +237,7 @@ export function dailyRouter(): Router {
   r.post('/api/gunluk/simdi', async (req, res) => {
     const is = String(req.body?.is ?? '') as Kind;
     if (running) return res.status(409).json({ error: 'Şu an başka bir günlük iş sürüyor; biraz sonra deneyin.' });
-    const fn = is === 'eposta' ? runMail : is === 'github' ? runGithub : is === 'aksam' ? runEvening : null;
+    const fn = is === 'eposta' ? runMail : is === 'github' ? runGithub : is === 'aksam' ? runEvening : is === 'harcama' ? runExpenses : is === 'ay' ? (s?: boolean) => runMonth(today().slice(0, 7), s) : null;
     if (!fn) return res.status(400).json({ error: 'bilinmeyen iş' });
     await job(is, () => fn(true));
     res.json(view());

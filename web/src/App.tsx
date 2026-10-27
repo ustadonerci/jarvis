@@ -33,7 +33,7 @@ import { micInfo, recorderSupported, startRecording, suspiciousMic, warmMic } fr
 import { MicTest } from './components/MicTest';
 import { ExchangeSettings } from './components/Exchanges';
 import { ProviderSettings } from './components/Providers';
-import { DailySettings } from './components/Daily';
+import { DailySettings, ExpenseSettings } from './components/Daily';
 import { Markdown } from './lib/markdown';
 import { createRecognizer, speechRecognitionSupported, voice } from './lib/speech';
 import { DEVICE_LABEL, type PersonaOption, type ThemeOption, type CoreState, type CurrencyCode, type Dashboard, type Device, type GreetingPeriod, type Health, type JarvisReply, type Sahne, type ServerEvent, type StoredMessage, type UiMode, type VoiceOption, type VoiceSel, type WakeConfig } from './lib/types';
@@ -1330,6 +1330,7 @@ export default function App() {
                   </div>
                   <p className="muted small">Ton hem konuşma üslubunu hem de seslendirmeyi değiştirir. Doğruluk ve onay kuralları her tonda aynıdır.</p>
                   <DailySettings flash={flash} />
+                  <ExpenseSettings flash={flash} />
                   <MicTest flash={flash} />
                   <KeySettings flash={flash} />
                   <ProviderSettings flash={flash} />

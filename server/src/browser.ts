@@ -1,4 +1,6 @@
-// Jarvis'in tarayıcısı: bilgisayardaki Microsoft Edge'i (yoksa Chrome'u) kendi profiliyle açar ve yönetir (Playwright).
+// Jarvis'in tarayıcısı: bilgisayardaki Google Chrome'u (yoksa Edge'i) kendi profiliyle açar ve yönetir (Playwright).
+// Chrome 136'dan beri güvenlik gereği dış programlar kullanıcının ANA Chrome profilini yönetemez; bu yüzden Jarvis ayrı
+// bir Chrome penceresi (kendi profili) kullanır. TARAYICI_CDP=http://127.0.0.1:9222 verilirse açık bir Chrome'a bağlanır.
 // Profil server/data/tarayici-profil'de kalır: kullanıcı Gmail gibi sitelere bu pencerede BİR KEZ kendisi giriş yapar,
 // sonra Jarvis o oturumla çalışır (şifre Jarvis'e verilmez, saklanmaz).
 // Model aracı "tarayici": sayfa aç, oku (görünür metin + numaralı tıklanabilir öğeler), tıkla, yaz, tuş, kaydır.
@@ -19,8 +21,17 @@ let starting: Promise<BrowserContext> | null = null;
 
 async function launch(): Promise<BrowserContext> {
   fs.mkdirSync(PROFILE, { recursive: true });
+  const cdp = process.env.TARAYICI_CDP?.trim();
+  if (cdp) {
+    const b = await chromium.connectOverCDP(cdp, { timeout: 15_000 });
+    const c = b.contexts()[0] ?? await b.newContext();
+    b.on('disconnected', () => { ctx = null; current = null; });
+    c.on('page', p => { current = p; });
+    console.log(`[tarayici] açık Chrome'a bağlandı (${cdp})`);
+    return c;
+  }
   const exe = process.env.TARAYICI_YOLU?.trim();
-  const channels = exe ? [undefined] : process.env.TARAYICI_KANAL ? [process.env.TARAYICI_KANAL] : ['msedge', 'chrome'];
+  const channels = exe ? [undefined] : process.env.TARAYICI_KANAL ? [process.env.TARAYICI_KANAL] : ['chrome', 'msedge'];
   let last: unknown;
   for (const channel of channels) {
     try {
@@ -38,7 +49,7 @@ async function launch(): Promise<BrowserContext> {
       last = e;
     }
   }
-  throw new Error(`Tarayıcı açılamadı (Edge ya da Chrome bulunamadı ya da Jarvis profili başka bir pencerede açık): ${String((last as any)?.message || last).split('\n')[0].slice(0, 200)}`);
+  throw new Error(`Tarayıcı açılamadı (Chrome ya da Edge bulunamadı ya da Jarvis profili başka bir pencerede açık): ${String((last as any)?.message || last).split('\n')[0].slice(0, 200)}`);
 }
 
 export async function browserPage(): Promise<Page> {

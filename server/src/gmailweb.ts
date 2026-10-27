@@ -12,7 +12,7 @@ export class GmailLoginNeeded extends Error {}
 
 const BASE = process.env.GMAIL_WEB_URL || 'https://mail.google.com/mail/u/0/';
 
-interface Row { adres: string; ad: string; konu: string; onizleme: string; tarih: string; okunmadi: boolean }
+interface Row { adres: string; ad: string; konu: string; onizleme: string; tarih: string; okunmadi: boolean; id: string }
 
 async function open(p: Page, hash: string) {
   await p.goto(`${BASE}#${hash}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
@@ -32,6 +32,7 @@ async function rows(p: Page, max = 100): Promise<Row[]> {
       onizleme: ((r.querySelector('.y2') as HTMLElement | null)?.innerText || '').replace(/^\s*[-–]\s*/, '').slice(0, 300),
       tarih: r.querySelector('td.xW span[title]')?.getAttribute('title') || '',
       okunmadi: r.classList.contains('zE'),
+      id: r.querySelector('[data-legacy-thread-id]')?.getAttribute('data-legacy-thread-id') || r.querySelector('[data-thread-id]')?.getAttribute('data-thread-id')?.replace(/^#?thread-f:/, '') || '',
     };
   }), max);
 }
@@ -110,7 +111,7 @@ async function unsubscribeSenders(p: Page, senders: Row[]): Promise<{ cikildi: s
   return { cikildi: out };
 }
 
-export async function gmailWebRoutine(o: { gun: number }): Promise<MailRoutineResult> {
+export async function gmailWebRoutine(o: { gun: number; grupla?: boolean }): Promise<MailRoutineResult> {
   const p = await browserPage();
   const silinenler: Row[] = [];
   // Önce önemliler (silmeden önce gelen kutusu)
@@ -128,6 +129,11 @@ export async function gmailWebRoutine(o: { gun: number }): Promise<MailRoutineRe
   const promoN = await trashSearch(p, `category:promotions newer_than:${o.gun}d`, silinenler);
   const spamRows: Row[] = [];
   const spamN = await trashSearch(p, 'in:spam', spamRows);
+  let klasorlenen: Record<string, number> = {};
+  let klasorNot = '';
+  if (o.grupla) {
+    try { klasorlenen = await organizeLabels(o.gun); } catch (e: any) { if (e instanceof GmailLoginNeeded) throw e; klasorNot = `Klasörleme yapılamadı: ${String(e?.message || e).split('\n')[0].slice(0, 120)}`; }
+  }
   const by = new Map<string, { ad: string; adres: string; adet: number; kategori: string }>();
   for (const [r, kat] of [...silinenler.map(r => [r, 'Tanıtım / reklam'] as const), ...spamRows.map(r => [r, 'Spam'] as const)]) {
     const k = r.adres || r.ad;
@@ -141,8 +147,94 @@ export async function gmailWebRoutine(o: { gun: number }): Promise<MailRoutineRe
     gruplar: Object.fromEntries(Object.entries({ 'Kişisel / önemli': onemli.length, 'Sosyal medya (Gmail sekmesi)': sosyal, 'Güncellemeler (Gmail sekmesi)': bildirim, 'Tanıtım / reklam': Math.max(promoN, promo.length), Spam: spamN }).filter(([, n]) => n > 0)),
     silinen: promoN + spamN,
     silinen_gondericiler: [...by.values()].sort((a, b) => b.adet - a.adet),
-    abonelik: { cikildi: unsub.cikildi.length, elle: unsub.not ? [unsub.not] : [] },
-    klasorlenen: {},
+    abonelik: { cikildi: unsub.cikildi.length, elle: [unsub.not, klasorNot].filter(Boolean) as string[] },
+    klasorlenen,
     onemli: onemli.map(r => ({ kimden: `${r.ad} <${r.adres}>`, konu: r.konu, tarih: r.tarih, grup: 'Gelen kutusu', metin: r.onizleme })),
   };
+}
+
+// ---------------------------------------------------------------- E-posta metinleri (harcama bildirimleri için)
+
+export interface WebMail { id: string; kimden: string; konu: string; tarih: string; metin: string }
+
+/** Aramadaki e-postaları tek tek açıp metnini okur (en fazla max). Okundu işareti Gmail'de değişebilir. */
+export async function readSearch(query: string, max = 40, skip: Set<string> = new Set()): Promise<WebMail[]> {
+  const p = await browserPage();
+  await open(p, `search/${encodeURIComponent(query)}`);
+  const list = (await rows(p, max)).filter(r => r.id && !skip.has(`gw-${r.id}`));
+  const out: WebMail[] = [];
+  for (const r of list) {
+    try {
+      await p.goto(`${BASE}#all/${r.id}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+      await p.waitForSelector('div.a3s', { timeout: 15_000 });
+      const metin = await p.evaluate(() => Array.from(document.querySelectorAll('div.a3s')).map(e => (e as HTMLElement).innerText).join('\n---\n'));
+      out.push({ id: `gw-${r.id}`, kimden: `${r.ad} <${r.adres}>`, konu: r.konu, tarih: r.tarih, metin: metin.replace(/\s+/g, ' ').slice(0, 3000) });
+    } catch {
+      // Açılamadıysa önizlemesiyle (tutar çoğunlukla ilk satırdadır)
+      out.push({ id: `gw-${r.id}`, kimden: `${r.ad} <${r.adres}>`, konu: r.konu, tarih: r.tarih, metin: r.onizleme });
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- Klasörler (Gmail etiketleri)
+
+/** Gelen kutusundan Jarvis/… etiketlerine taşınacaklar (Gmail araması) */
+export const WEB_FOLDERS: { ad: string; sorgu: string }[] = [
+  { ad: 'Jarvis/Kredi Kartı', sorgu: '(harcama OR provizyon OR ekstre OR "hesap özeti" OR "kartınızla" OR "kredi kartı") -category:promotions' },
+  { ad: 'Jarvis/Faturalar', sorgu: '(fatura OR e-fatura OR e-arşiv OR dekont OR makbuz OR invoice OR receipt) -category:promotions' },
+  { ad: 'Jarvis/Sipariş-Kargo', sorgu: '(kargo OR sipariş OR "siparişiniz" OR "order" OR shipped OR teslim) -category:promotions' },
+  { ad: 'Jarvis/Sosyal', sorgu: 'category:social' },
+  { ad: 'Jarvis/Bildirimler', sorgu: 'category:updates' },
+];
+
+async function ensureLabel(p: Page, name: string) {
+  await p.goto(`${BASE}#settings/labels`, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  await p.waitForTimeout(2500);
+  const exists = await p.evaluate((n: string) => (document.body.innerText || '').split('\n').some(l => l.trim() === n || l.trim() === n.split('/').pop()), name);
+  if (exists) return;
+  const create = p.locator('button, [role="button"]').filter({ hasText: /^\s*(Yeni etiket oluştur|Create new label)\s*$/i }).first();
+  if (!(await create.isVisible().catch(() => false))) return;
+  await create.click();
+  const input = p.locator('div[role="dialog"] input[type="text"], div[role="alertdialog"] input[type="text"]').first();
+  await input.fill(name, { timeout: 8000 });
+  await p.locator('div[role="dialog"] button[name="ok"], div[role="alertdialog"] button[name="ok"]').first().click({ timeout: 8000 }).catch(() => p.keyboard.press('Enter'));
+  await p.waitForTimeout(1500);
+}
+
+/** Gelen kutusundaki e-postaları etiketlere taşır (gelen kutusundan çıkar; etikette durur, silinmez). Sayılar. */
+export async function organizeLabels(gun: number): Promise<Record<string, number>> {
+  const p = await browserPage();
+  const out: Record<string, number> = {};
+  for (const f of WEB_FOLDERS) {
+    const q = `in:inbox newer_than:${gun}d ${f.sorgu}`;
+    await open(p, `search/${encodeURIComponent(q)}`);
+    const list = await rows(p, 100);
+    if (!list.length) continue;
+    await ensureLabel(p, f.ad);
+    await open(p, `search/${encodeURIComponent(q)}`);
+    await p.locator('div[gh="tm"] div[role="checkbox"]').first().click({ timeout: 10_000 });
+    await p.waitForTimeout(600);
+    const all = p.locator('div[role="main"] span[role="link"]').filter({ hasText: /(tüm|all).*(seç|select)|eşleşen|that match/i }).first();
+    let n = list.length;
+    if (await all.isVisible().catch(() => false)) {
+      const t = await all.innerText().catch(() => '');
+      await all.click().catch(() => {});
+      n = Math.max(n, Number((t.match(/[\d.,]+/) ?? [''])[0].replace(/[.,]/g, '')) || 0);
+    }
+    // "Taşı" menüsü: etiket adını yazıp Enter
+    const move = p.locator('div[gh="tm"] [aria-label="Taşı"], div[gh="tm"] [aria-label="Move to"], div[gh="tm"] [data-tooltip="Taşı"], div[gh="tm"] [data-tooltip="Move to"]').first();
+    if (!(await move.isVisible().catch(() => false))) throw new Error('Gmail\'de "Taşı" düğmesi bulunamadı');
+    await move.click();
+    const box = p.locator('div[role="menu"] input, div[role="listbox"] input').first();
+    await box.fill(f.ad, { timeout: 8000 });
+    await p.waitForTimeout(800);
+    const item = p.locator('div[role="menu"] [role="menuitem"], div[role="menu"] [role="menuitemradio"], div[role="menu"] [role="option"]').filter({ hasText: new RegExp(`^\\s*${f.ad.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}\\s*$`) }).first();
+    if (await item.isVisible().catch(() => false)) await item.click(); else await p.keyboard.press('Enter');
+    const ok = p.locator('div[role="alertdialog"] button[name="ok"], div[role="dialog"] button[name="ok"]').first();
+    if (await ok.isVisible({ timeout: 3000 }).catch(() => false)) await ok.click();
+    await p.waitForTimeout(2500);
+    out[f.ad] = n;
+  }
+  return out;
 }

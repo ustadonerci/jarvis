@@ -252,7 +252,7 @@ export async function autoMailRoutine(o: { gun: number; grupla: boolean }): Prom
   }
   const uids = r.mails.filter(m => SIL.includes(m.kategori)).map(m => m.uid);
   const moveBy = (kats: Kategori[]) => Object.fromEntries(kats.map(k => [k, r.mails.filter(m => m.kategori === k).map(m => m.uid)]).filter(([, l]) => l.length)) as Record<Kategori, number[]>;
-  const groups = o.grupla ? moveBy(['sosyal', 'bildirim']) : {} as Record<Kategori, number[]>;
+  const groups = o.grupla ? moveBy(['sosyal', 'bildirim', 'fatura', 'kargo']) : {} as Record<Kategori, number[]>;
   // Önemliler: metinleri özet için (okundu işareti değişmez)
   const onemliMails = r.mails.filter(m => m.kategori === 'kisisel' || m.kategori === 'guvenlik' || m.kategori === 'fatura' || m.kategori === 'kargo')
     .sort((a, b) => b.tarih.localeCompare(a.tarih)).slice(0, 15);

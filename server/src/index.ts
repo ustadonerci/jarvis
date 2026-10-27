@@ -39,6 +39,7 @@ import { initAgents } from './agents.js';
 import { VS_MODEL, initVoiceStudio, isVoiceStudio, registerVoiceSetter, vsClone, vsProfiles, vsUp } from './voicestudio.js';
 import { dailyRouter, initDaily } from './daily.js';
 import { browserRouter } from './browser.js';
+import { expensesRouter } from './expenses.js';
 import { financeRouter, initFinance } from './finance.js';
 import { exchangesRouter } from './exchanges.js';
 import { getBrainProvider, providersRouter, setBrainProvider } from './providers.js';
@@ -412,6 +413,7 @@ app.use(financeRouter());
 app.use(exchangesRouter());
 app.use(dailyRouter());
 app.use(browserRouter());
+app.use(expensesRouter());
 app.use(providersRouter(id => { state.beyin = id; saveState(); }));
 
 // ---------- Onay kartları ve otomasyon (webhook) ----------
