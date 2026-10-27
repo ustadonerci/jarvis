@@ -29,6 +29,7 @@ import { isBrand24Tool, runBrand24Tool } from './brand24.js';
 import { isContactTool, runContactTool } from './contacts.js';
 import { isMailCleanTool, runMailCleanTool } from './mailclean.js';
 import { isDailyTool, runDailyTool } from './daily.js';
+import { isBrowserTool, runBrowserTool } from './browser.js';
 import { isMicDiagTool, runMicDiagTool } from './micdiag.js';
 import { isExchangeTool, runExchangeTool } from './exchanges.js';
 import { isSiteTool, runSiteTool } from './sitedownload.js';
@@ -322,6 +323,7 @@ async function runToolOnce(name: string, rawArgs: string, progress: ToolProgress
   if (isContactTool(name)) return runContactTool(name, args, progress);
   if (isMailCleanTool(name)) return runMailCleanTool(args, progress);
   if (isDailyTool(name)) return runDailyTool(args, progress);
+  if (isBrowserTool(name)) return runBrowserTool(args, progress);
   if (isMicDiagTool(name)) return runMicDiagTool(args, progress);
   if (isExchangeTool(name)) return runExchangeTool(args, progress);
   if (isSiteTool(name)) return runSiteTool(args, progress);

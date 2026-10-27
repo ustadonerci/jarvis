@@ -38,6 +38,7 @@ import { androidRouter, initAndroid } from './android.js';
 import { initAgents } from './agents.js';
 import { VS_MODEL, initVoiceStudio, isVoiceStudio, registerVoiceSetter, vsClone, vsProfiles, vsUp } from './voicestudio.js';
 import { dailyRouter, initDaily } from './daily.js';
+import { browserRouter } from './browser.js';
 import { financeRouter, initFinance } from './finance.js';
 import { exchangesRouter } from './exchanges.js';
 import { getBrainProvider, providersRouter, setBrainProvider } from './providers.js';
@@ -410,6 +411,7 @@ app.use(messagingRouter());
 app.use(financeRouter());
 app.use(exchangesRouter());
 app.use(dailyRouter());
+app.use(browserRouter());
 app.use(providersRouter(id => { state.beyin = id; saveState(); }));
 
 // ---------- Onay kartları ve otomasyon (webhook) ----------

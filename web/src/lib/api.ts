@@ -325,5 +325,7 @@ export const getDaily = () => fetch('/api/gunluk', { headers: headers() }).then(
 export const saveDaily = (patch: Partial<DailyCfg>) => fetch('/api/gunluk/ayar', { method: 'POST', headers: headers(), body: JSON.stringify(patch) }).then(r => json<DailyData>(r));
 export const runDaily = (is: 'aksam' | 'eposta' | 'github') => fetch('/api/gunluk/simdi', { method: 'POST', headers: headers(), body: JSON.stringify({ is }) }).then(r => json<DailyData>(r));
 
+export const openJarvisBrowser = (url = 'https://mail.google.com/') => fetch('/api/tarayici/ac', { method: 'POST', headers: headers(), body: JSON.stringify({ url }) }).then(r => json<{ ok: boolean }>(r));
+
 export const testTelegram = () => fetch('/api/mesaj/telegram/test', { method: 'POST', headers: headers() }).then(r => json<{ ok: boolean }>(r));
 export const getVersion = () => fetch('/api/surum', { headers: headers() }).then(r => json<{ kod: string; tarih?: string; baslik?: string; calisma?: string }>(r));

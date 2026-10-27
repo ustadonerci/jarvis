@@ -325,7 +325,7 @@ export const isMailCleanTool = (n: string) => n === 'eposta_duzenle';
 
 export async function runMailCleanTool(a: any, progress: (l: string) => void): Promise<string> {
   const j = (v: unknown) => JSON.stringify(v);
-  if (!emailReady()) return j({ hata: 'E-posta bağlı değil. Ayarlar → API anahtarları: e-posta adresi ve uygulama şifresi girilmeli.' });
+  if (!emailReady()) return j({ hata: 'Uygulama şifresi girilmemiş.', not: 'Bunun yerine gunluk_rapor islem: eposta çağır: Jarvis\'in tarayıcısındaki Gmail oturumuyla reklam/spamı siler, abonelikten çıkar ve özetler (kullanıcı o pencerede bir kez Gmail\'e giriş yapmış olmalı).' });
   try {
     if (a.islem === 'engel_listesi') return j({ engelli: blocked() });
     if (a.islem === 'engel_kaldir') {
