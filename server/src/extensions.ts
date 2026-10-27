@@ -51,7 +51,7 @@ export interface McpServer {
   /** Kullanıcı elle kapattı: otomatik açma bunu açmaz */
   elleKapali?: boolean;
 }
-interface Repo { slug: string; url: string; at: string }
+interface Repo { slug: string; url: string; at: string; /** kurulan commit (eski kurulumlarda yok) */ sha?: string }
 interface Store { skills: Skill[]; servers: McpServer[]; repos: Repo[]; /** Yeni ve kapalı MCP sunucuları kendiliğinden açılsın (varsayılan: evet) */ otoAc?: boolean }
 
 const MAX_SKILL = 40_000;
@@ -1023,8 +1023,22 @@ async function sparseClone(url: string, dir: string, branch?: string, sub = '') 
     await git('sparse-checkout', 'set', '--no-cone', ...keep, ...['mp4', 'mov', 'webm', 'mkv', 'avi', 'mp3', 'wav', 'flac', 'ogg', 'zip', 'tar', 'gz', '7z', 'psd'].map(e => `!*.${e}`));
   }
   await git('checkout');
+  const sha = (await git('rev-parse', 'HEAD')).stdout.trim();
   // Güncelleme yeniden kurulumla yapılır; geçmiş ve nesne deposu yalnızca yer kaplar
   if (!full) fs.rmSync(path.join(dir, '.git'), { recursive: true, force: true });
+  return sha;
+}
+
+/** GitHub'daki son commit (sürüm karşılaştırması için) */
+async function lastCommit(owner: string, name: string, branch?: string): Promise<{ sha: string; date: string }> {
+  const token = process.env.GITHUB_TOKEN;
+  const r = await fetch(`https://api.github.com/repos/${owner}/${name}/commits/${encodeURIComponent(branch || 'HEAD')}`, {
+    headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'jarvis', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!r.ok) throw new Error(`Repo zaten kurulu; yeni sürüm kontrol edilemedi (GitHub ${r.status}). Biraz sonra tekrar deneyin.`);
+  const j: any = await r.json();
+  return { sha: j.sha, date: j.commit?.committer?.date };
 }
 
 /** Uygulama reposunu tanıtan bilgi becerisi: README + CLAUDE.md/AGENTS.md (varsa) */
@@ -1056,30 +1070,43 @@ function referenceSkill(root: string, slug: string, repoName: string): Skill | n
 }
 
 /** mcpKapali: repodaki MCP sunucuları kapalı eklenir ve otomatik açılmaz (günlük otomatik keşifte güvenlik için) */
-export async function installFromGitHub(url: string, o: { mcpKapali?: boolean } = {}) {
+export async function installFromGitHub(url: string, o: { mcpKapali?: boolean; guncelle?: boolean } = {}) {
   const m = GH.exec(extractRepoUrls(url)[0] ?? '');
   if (!m) throw new Error('Geçerli bir GitHub repo adresi değil (ör. https://github.com/kullanici/repo ya da gh repo clone kullanici/repo).');
   const [, owner, name, sub] = m;
   // Alt klasör kurulumunda klasör adı sona eklenir ve kısaltmada korunur (aynı repodaki iki eklenti çakışmasın)
   const last = sub ? slugify(sub.split('/').pop()!).slice(0, 24) : '';
   let slug = last ? `${slugify(`${owner}-${name}`).slice(0, 39 - last.length).replace(/-$/, '')}-${last}` : slugify(`${owner}-${name}`);
-  if (store.repos.some(r => r.slug === slug)) throw new Error('Bu repo zaten kurulu. Güncellemek için önce kaldırın.');
-  fs.mkdirSync(REPOS, { recursive: true });
-  const dir = path.join(REPOS, slug);
-  fs.rmSync(dir, { recursive: true, force: true });
-
   // Alt klasör linki: /tree/<dal>/<yol>. Dal adında "/" olabilir; önce ilk parçayı dal sayıp deneriz.
   const parts = sub?.split('/') ?? [];
   const branch = parts[0];
+  const eski = store.repos.find(r => r.slug === slug);
+  if (eski && !o.guncelle) throw new Error('Bu repo zaten kurulu. Güncellemek için önce kaldırın.');
+  if (eski) {
+    // Kurulu sürüm GitHub'daki son commit ile aynıysa yeniden kurulmaz (sha'sız eski kurulumlarda tarih karşılaştırılır)
+    const son = await lastCommit(owner, name, branch);
+    if (eski.sha ? eski.sha === son.sha : new Date(son.date) <= new Date(eski.at)) return { slug, guncel: true, bilgi: false, beceri: 0, is_akisi: 0, mcp: 0 };
+  }
+  fs.mkdirSync(REPOS, { recursive: true });
+  const dir = path.join(REPOS, slug);
+  // Güncellemede yeni sürüm önce yan klasöre iner: indirme başarısız olursa kurulu sürüm kaybolmaz
+  const hedef = eski ? `${dir}.yeni` : dir;
+  fs.rmSync(hedef, { recursive: true, force: true });
+
+  let sha: string;
   try {
-    await sparseClone(`https://github.com/${owner}/${name}.git`, dir, branch, parts.slice(1).join('/'));
+    sha = await sparseClone(`https://github.com/${owner}/${name}.git`, hedef, branch, parts.slice(1).join('/'));
   } catch (e: any) {
-    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(hedef, { recursive: true, force: true });
     const msg = String(e?.stderr || e?.message || e).trim();
     throw new Error(/not found|does not exist|Repository not found|could not read Username|Authentication failed/i.test(msg)
       ? `GitHub'da "${owner}/${name}" bulunamadı: adres yanlış, repo silinmiş ya da özel (gizli) olabilir.`
       : /Remote branch .* not found/i.test(msg) ? `"${branch}" dalı bulunamadı; linkteki /tree/... kısmını kontrol edin.`
       : `Repo indirilemedi: ${msg.split('\n').pop()}`);
+  }
+  if (eski) {
+    await removeRepo(slug);
+    fs.renameSync(hedef, dir);
   }
   const root = parts.length > 1 ? path.join(dir, ...parts.slice(1)) : dir;
   if (!root.startsWith(dir) || !fs.existsSync(root)) {
@@ -1100,7 +1127,7 @@ export async function installFromGitHub(url: string, o: { mcpKapali?: boolean } 
     bilgi = true;
   }
   if (o.mcpKapali) for (const x of found.servers) { x.aktif = false; x.elleKapali = true; }
-  store.repos.push({ slug, url, at: new Date().toISOString() });
+  store.repos.push({ slug, url, at: new Date().toISOString(), sha });
   store.skills.push(...found.skills);
   store.servers.push(...found.servers);
   save();
@@ -1108,7 +1135,7 @@ export async function installFromGitHub(url: string, o: { mcpKapali?: boolean } 
   changed();
   console.log(`[yetenek] GitHub: ${owner}/${name} → ${found.skills.length} beceri/iş akışı, ${found.servers.length} MCP`);
   logActivity('yetenek', `GitHub'dan kuruldu: ${owner}/${name} (${bilgi ? 'bilgi kaynağı' : `${found.skills.length} beceri/iş akışı, ${found.servers.length} MCP`})`);
-  return { slug, bilgi, beceri: bilgi ? 0 : found.skills.filter(s => s.tur === 'beceri').length, is_akisi: found.skills.filter(s => s.tur === 'is_akisi').length, mcp: found.servers.length };
+  return { slug, guncellendi: !!eski, bilgi, beceri: bilgi ? 0 : found.skills.filter(s => s.tur === 'beceri').length, is_akisi: found.skills.filter(s => s.tur === 'is_akisi').length, mcp: found.servers.length };
 }
 
 async function removeRepo(slug: string) {
@@ -1226,7 +1253,7 @@ export function extensionsRouter(): Router {
   r.post('/api/extensions/github', async (req, res) => {
     try {
       // mcpKapali: telefondan (RepoSwipe) kurulanlarda MCP sunucuları kapalı eklenir
-      res.json({ ok: true, ...(await installFromGitHub(str(req.body?.url), { mcpKapali: req.body?.mcpKapali === true })), ...view() });
+      res.json({ ok: true, ...(await installFromGitHub(str(req.body?.url), { mcpKapali: req.body?.mcpKapali === true, guncelle: req.body?.guncelle === true })), ...view() });
     } catch (e: any) {
       res.status(400).json({ error: String(e?.message || e) });
     }
