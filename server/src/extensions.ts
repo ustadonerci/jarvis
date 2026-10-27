@@ -1225,7 +1225,8 @@ export function extensionsRouter(): Router {
   });
   r.post('/api/extensions/github', async (req, res) => {
     try {
-      res.json({ ok: true, ...(await installFromGitHub(str(req.body?.url))), ...view() });
+      // mcpKapali: telefondan (RepoSwipe) kurulanlarda MCP sunucuları kapalı eklenir
+      res.json({ ok: true, ...(await installFromGitHub(str(req.body?.url), { mcpKapali: req.body?.mcpKapali === true })), ...view() });
     } catch (e: any) {
       res.status(400).json({ error: String(e?.message || e) });
     }

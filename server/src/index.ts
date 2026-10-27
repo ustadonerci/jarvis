@@ -45,6 +45,7 @@ import { setRemoteAsk, type Kanal } from './remote.js';
 import { clearErrors, errorList, initErrors, logError } from './errors.js';
 import { approvalsRouter, initApprovals } from './approvals.js';
 import { automationRouter } from './automation.js';
+import { explainRepo } from './github.js';
 import { adminOnly, isLocalRequest, listKeys, restartServer, saveKeys } from './keys.js';
 import { PERSONAS, isPersona, setPersona, type PersonaId } from './persona.js';
 import { THEMES, isTheme, voiceGender, type ThemeId } from './look.js';
@@ -418,6 +419,17 @@ app.use(automationRouter());
 // ---------- Hata günlüğü ----------
 app.get('/api/hatalar', adminOnly, (_req, res) => res.json({ hatalar: errorList() }));
 app.delete('/api/hatalar', adminOnly, (_req, res) => { clearErrors(); res.json({ ok: true }); });
+
+// RepoSwipe (telefon): bir repo ne işe yarar, Türkçe kısa açıklama
+app.get('/api/github/ozet', async (req, res) => {
+  const repo = String(req.query.repo ?? '');
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) return res.status(400).json({ error: 'repo sahip/ad biçiminde olmalı' });
+  try {
+    res.json({ repo, ozet: await explainRepo(repo) });
+  } catch (e: any) {
+    res.status(502).json({ error: String(e?.message || e) });
+  }
+});
 
 // ---------- API anahtarları (server/.env) ----------
 // Sürüm: otomatik güncellemenin çalışıp çalışmadığı Ayarlar'da görünsün
