@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { deleteExpense, downloadExpensesCsv, getDaily, getExpenses, openJarvisBrowser, runDaily, saveDaily, type DailyCfg, type DailyData, type DailyKind, type ExpensesData } from '../lib/api';
+import { deleteExpense, downloadExpensesCsv, getDaily, getExpenses, openJarvisBrowser, showJarvisBrowser, runDaily, saveDaily, type DailyCfg, type DailyData, type DailyKind, type ExpensesData } from '../lib/api';
 
 const ADI = { aksam: '📋 Günlük rapor', eposta: '📧 E-posta', github: '🐙 GitHub', harcama: '💳 Kart harcamaları', ay: '💳 Ay sonu gider tablosu' } as const;
 /** Rapordaki https linkleri tıklanabilir */
@@ -49,6 +49,11 @@ export function DailySettings({ flash }: { flash(t: string): void }) {
         </>
       )}
       <p className="muted small">E-posta düzenleme: tanıtım/reklam, bülten ve spam Çöp'e taşınır (30 gün geri alınabilir), aboneliklerden çıkılır; kişisel, fatura, kargo ve güvenlik e-postaları silinmez, önemliler özetlenir. Repolar: beceri içeren ve en az 25 yıldızlı olanlar kurulur (günde en fazla 5); MCP içerenler güvenlik için kapalı eklenir.</p>
+      <div className="seg">
+        <span className="small">Jarvis'in tarayıcısı arka planda (küçültülmüş) çalışır:</span>
+        <button onClick={() => showJarvisBrowser(true).then(() => flash('Tarayıcı öne getirildi')).catch(e => flash(e.message))}>🪟 Göster</button>
+        <button onClick={() => showJarvisBrowser(false).then(() => flash('Tarayıcı arka plana alındı')).catch(e => flash(e.message))}>Arka plana al</button>
+      </div>
       <div className="seg">
         <button disabled={!!busy || !!d.calisiyor} onClick={() => now('eposta')}>{busy === 'eposta' ? 'Düzenleniyor…' : '📧 E-postaları şimdi düzenle'}</button>
         <button disabled={!!busy || !!d.calisiyor} onClick={() => now('github')}>{busy === 'github' ? 'Taranıyor…' : '🐙 Repoları şimdi tara'}</button>

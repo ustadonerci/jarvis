@@ -5,10 +5,12 @@
 //  - Gelen kutusundaki önemliler (tanıtım/sosyal/güncelleme dışı) gönderen + konu + önizlemeyle özet için döner.
 // Gmail sayfa yapısı: satır tr.zA, gönderen [email], konu .bog, önizleme .y2, araç çubuğu div[gh="tm"] (Sil: act=10).
 import type { Page } from 'playwright-core';
-import { browserPage } from './browser.js';
+import { browserPage, showBrowser } from './browser.js';
 import type { MailRoutineResult } from './mailclean.js';
 
 export class GmailLoginNeeded extends Error {}
+/** Giriş sayfası: kullanıcı girebilsin diye pencere öne gelir */
+const loginNeeded = async () => { await showBrowser().catch(() => {}); return new GmailLoginNeeded(); };
 
 const BASE = process.env.GMAIL_WEB_URL || 'https://mail.google.com/mail/u/0/';
 
@@ -16,8 +18,8 @@ interface Row { adres: string; ad: string; konu: string; onizleme: string; tarih
 
 async function open(p: Page, hash: string) {
   await p.goto(`${BASE}#${hash}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-  if (/accounts\.google\.com|ServiceLogin|signin/i.test(p.url())) throw new GmailLoginNeeded();
-  await p.waitForSelector('div[role="main"]', { timeout: 45_000 }).catch(() => { throw /accounts\.google/.test(p.url()) ? new GmailLoginNeeded() : new Error('Gmail sayfası yüklenmedi'); });
+  if (/accounts\.google\.com|ServiceLogin|signin/i.test(p.url())) throw await loginNeeded();
+  await p.waitForSelector('div[role="main"]', { timeout: 45_000 }).catch(async () => { throw /accounts\.google/.test(p.url()) ? await loginNeeded() : new Error('Gmail sayfası yüklenmedi'); });
   // Arama sonuçları gelsin (ya da "eşleşen ileti yok")
   await p.waitForTimeout(2500);
 }
@@ -251,7 +253,7 @@ export async function webRead(id: string) {
   if (!/^[\w-]+$/.test(id)) throw new Error('geçersiz e-posta kimliği');
   const p = await browserPage();
   await p.goto(`${BASE}#all/${id}`, { waitUntil: 'domcontentloaded', timeout: 45_000 });
-  if (/accounts\.google\.com/.test(p.url())) throw new GmailLoginNeeded();
+  if (/accounts\.google\.com/.test(p.url())) throw await loginNeeded();
   await p.waitForSelector('div.a3s', { timeout: 20_000 });
   return p.evaluate(() => ({
     konu: (document.querySelector('h2.hP') as HTMLElement | null)?.innerText || '',

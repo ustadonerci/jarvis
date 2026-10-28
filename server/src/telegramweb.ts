@@ -7,7 +7,7 @@
 import express, { type Router } from 'express';
 import type { Page } from 'playwright-core';
 import { adminOnly } from './keys.js';
-import { browserPage, snapshot } from './browser.js';
+import { browserPage, showBrowser, snapshot } from './browser.js';
 import type { TgPost } from './tgchannels.js';
 
 export class TelegramLoginNeeded extends Error {
@@ -24,7 +24,7 @@ async function ready(p: Page) {
       app: !!document.querySelector('#column-left, .chatlist, .chats-container'),
     })).catch(() => ({ login: false, app: false }));
     if (st.app) return;
-    if (st.login) { await p.bringToFront().catch(() => {}); throw new TelegramLoginNeeded(); }
+    if (st.login) { await showBrowser(); throw new TelegramLoginNeeded(); }
     await p.waitForTimeout(1500);
   }
   throw new Error('Telegram Web açılamadı');
@@ -83,7 +83,6 @@ export async function openMiniApp(raw: string, startapp = ''): Promise<{ bot: st
   }
   const acildi = await iframe().isVisible({ timeout: 15_000 }).catch(() => false);
   if (acildi) await p.waitForTimeout(4000); // mini uygulama verisini yüklesin
-  await p.bringToFront().catch(() => {});
   return { bot, acildi, ekran: await snapshot(p, 6000) };
 }
 
@@ -131,10 +130,10 @@ export function tgWebRouter(): Router {
   const r = express.Router();
   r.use('/api/telegram-web', adminOnly);
   r.post('/api/telegram-web/ac', async (_req, res) => {
-    try { res.json(await openTelegramWeb()); } catch (e: any) { res.status(500).json({ error: String(e?.message || e).split('\n')[0].slice(0, 200) }); }
+    try { const r = await openTelegramWeb(); await showBrowser(); res.json(r); } catch (e: any) { res.status(500).json({ error: String(e?.message || e).split('\n')[0].slice(0, 200) }); }
   });
   r.post('/api/telegram-web/mini', async (req, res) => {
-    try { const x = await openMiniApp(String(req.body?.bot ?? 'ucretsizderinlikbot'), String(req.body?.startapp ?? '')); res.json({ acildi: x.acildi }); }
+    try { const x = await openMiniApp(String(req.body?.bot ?? 'ucretsizderinlikbot'), String(req.body?.startapp ?? '')); await showBrowser(); res.json({ acildi: x.acildi }); }
     catch (e: any) { res.status(e instanceof TelegramLoginNeeded ? 401 : 500).json({ error: String(e?.message || e).split('\n')[0].slice(0, 300) }); }
   });
   return r;
