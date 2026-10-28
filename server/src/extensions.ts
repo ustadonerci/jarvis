@@ -1029,7 +1029,15 @@ async function sparseClone(url: string, dir: string, branch?: string, sub = '') 
   return sha;
 }
 
-/** GitHub'daki son commit (sürüm karşılaştırması için) */
+/** GitHub'daki son commit: git ls-remote (API sınırına takılmaz) */
+async function remoteSha(owner: string, name: string, branch?: string): Promise<string> {
+  const out = (await run('git', ['ls-remote', `https://github.com/${owner}/${name}.git`, branch ? `refs/heads/${branch}` : 'HEAD'], { timeout: 60_000 })).stdout;
+  const sha = out.split(/\s/)[0];
+  if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error('Repo zaten kurulu; GitHub\'daki son sürüm okunamadı.');
+  return sha;
+}
+
+/** Son commit tarihi: yalnızca sha'sı kaydedilmemiş eski kurulumlar için (GitHub API, saatte 60 istek sınırı) */
 async function lastCommit(owner: string, name: string, branch?: string): Promise<{ sha: string; date: string }> {
   const token = process.env.GITHUB_TOKEN;
   const r = await fetch(`https://api.github.com/repos/${owner}/${name}/commits/${encodeURIComponent(branch || 'HEAD')}`, {
@@ -1084,8 +1092,10 @@ export async function installFromGitHub(url: string, o: { mcpKapali?: boolean; g
   if (eski && !o.guncelle) throw new Error('Bu repo zaten kurulu. Güncellemek için önce kaldırın.');
   if (eski) {
     // Kurulu sürüm GitHub'daki son commit ile aynıysa yeniden kurulmaz (sha'sız eski kurulumlarda tarih karşılaştırılır)
-    const son = await lastCommit(owner, name, branch);
-    if (eski.sha ? eski.sha === son.sha : new Date(son.date) <= new Date(eski.at)) return { slug, guncel: true, bilgi: false, beceri: 0, is_akisi: 0, mcp: 0 };
+    const ayni = eski.sha
+      ? eski.sha === await remoteSha(owner, name, branch)
+      : new Date((await lastCommit(owner, name, branch)).date) <= new Date(eski.at);
+    if (ayni) return { slug, guncel: true, bilgi: false, beceri: 0, is_akisi: 0, mcp: 0 };
   }
   fs.mkdirSync(REPOS, { recursive: true });
   const dir = path.join(REPOS, slug);
