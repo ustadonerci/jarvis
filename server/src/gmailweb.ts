@@ -262,26 +262,32 @@ export async function webRead(id: string) {
   }));
 }
 
-/** Tek tek e-posta (ileti dizisi) Çöp'e: dizi açılır, Sil düğmesine basılır, sonra Çöp'te olduğu doğrulanır */
-export async function webTrash(ids: string[]): Promise<{ silinen: string[]; silinemeyen: { id: string; neden: string }[] }> {
+/** Tek tek e-posta (ileti dizisi) Çöp'e: her dizi açılıp Sil'e basılır; sonunda Çöp'te oldukları tek seferde doğrulanır */
+export async function webTrash(ids: string[], progress: (l: string) => void = () => {}): Promise<{ silinen: string[]; silinemeyen: { id: string; neden: string }[] }> {
   const p = await browserPage();
-  const silinen: string[] = [], silinemeyen: { id: string; neden: string }[] = [];
-  for (const id of ids) {
+  const basildi: string[] = [], silinemeyen: { id: string; neden: string }[] = [];
+  for (const [k, id] of ids.entries()) {
     try {
+      progress(`Çöp'e taşınıyor ${k + 1}/${ids.length}`);
       await p.goto(`${BASE}#all/${id}`, { waitUntil: 'domcontentloaded', timeout: 45_000 });
       if (/accounts\.google\.com/.test(p.url())) throw await loginNeeded();
       await p.waitForSelector('div.a3s, h2.hP', { timeout: 20_000 });
       const del = p.locator('div[gh="mtb"] div[act="10"], div[gh="tm"] div[act="10"], div[gh="mtb"] [aria-label="Sil"], div[gh="mtb"] [aria-label="Delete"], div[gh="mtb"] [data-tooltip="Sil"], div[gh="mtb"] [data-tooltip="Delete"]').first();
       await del.click({ timeout: 10_000 });
-      await p.waitForTimeout(2000);
-      // Doğrulama: Çöp'te bu dizi var mı
-      await open(p, 'trash');
-      const inTrash = (await rows(p, 100)).some(r => r.id === id);
-      if (inTrash) silinen.push(id); else silinemeyen.push({ id, neden: 'Sil düğmesine basıldı ama Çöp kutusunda görünmüyor' });
+      await p.waitForTimeout(1200);
+      basildi.push(id);
     } catch (e: any) {
       if (e instanceof GmailLoginNeeded) throw e;
       silinemeyen.push({ id, neden: String(e?.message || e).split('\n')[0].slice(0, 120) });
     }
   }
-  return { silinen, silinemeyen };
+  // Doğrulama: Çöp kutusunun ilk sayfası (en yeniler üstte)
+  if (basildi.length) {
+    await p.waitForTimeout(1500);
+    await open(p, 'trash');
+    const inTrash = new Set((await rows(p, 100)).map(r => r.id));
+    for (const id of basildi) if (!inTrash.has(id)) silinemeyen.push({ id, neden: 'Sil düğmesine basıldı ama Çöp kutusunda görünmüyor' });
+    return { silinen: basildi.filter(id => inTrash.has(id)), silinemeyen };
+  }
+  return { silinen: [], silinemeyen };
 }
