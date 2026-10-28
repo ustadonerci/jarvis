@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { deleteTgChannel, getTgChannels, saveTgChannel, type TgChannelView } from '../lib/api';
+import { deleteTgChannel, getTgChannels, openMiniApp, openTelegramWeb, saveTgChannel, type TgChannelView } from '../lib/api';
 
 const ago = (iso?: string) => {
   if (!iso) return 'henüz okunmadı';
@@ -21,6 +21,11 @@ export function TgChannelSettings({ flash }: { flash(t: string): void }) {
     <>
       <label>Telegram kanalları · canlı veri</label>
       <p className="muted small">Herkese açık kanalların mesajları dakikada bir okunur; Jarvis'e "Alpha finans kanalında ne var?", "kanaldaki son veriler" diye sorabilirsiniz. Kanal verisi üçüncü kişi bilgisidir, yatırım tavsiyesi değildir; robot buna göre kendiliğinden işlem yapmaz.</p>
+      <p className="small">Özel / önizlemesi kapalı kanallar ve bot mini uygulamaları (ör. derinlik) için Jarvis kendi Chrome penceresinde Telegram Web kullanır. Telegram Masaüstü uygulamasını dışarıdan bir program yönetemez. Bir kez giriş: pencerede çıkan QR kodu telefondaki Telegram → Ayarlar → Cihazlar → "Masaüstü cihazı bağla" ile okutun.</p>
+      <div className="seg">
+        <button onClick={() => openTelegramWeb().then(r => flash(r.girisli ? 'Telegram Web hazır' : 'Jarvis\'in Chrome penceresinde QR kodu telefonla okutun')).catch(e => flash(e.message))}>🌐 Telegram Web'i aç (giriş)</button>
+        <button onClick={() => { flash('Derinlik uygulaması açılıyor…'); openMiniApp('ucretsizderinlikbot').then(r => flash(r.acildi ? 'Derinlik uygulaması açıldı; Jarvis\'e "THYAO derinliği" diye sorabilirsiniz' : 'Pencerede "Aç / Başlat"a basın')).catch(e => flash(e.message)); }}>📊 Derinlik uygulamasını aç</button>
+      </div>
       <div className="seg">
         <input className="ext-input" value={yeni} onChange={e => setYeni(e.target.value)} placeholder="Kanal adı ya da https://t.me/… linki" />
         <button className="on" disabled={!yeni.trim()} onClick={() => upd({ kanal: yeni }, 'Kanal eklendi').then(() => setYeni(''))}>+ Takip et</button>

@@ -349,6 +349,8 @@ export const getIndicators = () => fetch('/api/indikatorler', { headers: headers
 export const calcIndicators = (sembol: string) => fetch('/api/indikatorler/hesapla', { method: 'POST', headers: headers(), body: JSON.stringify({ sembol, id: 'hepsi' }) }).then(r => json<{ sembol: string; ad: string; fiyat: number; para: string; oylama?: { AL: number; SAT: number; BEKLE: number; genel: string }; sinyaller: IndicatorSignal[] }>(r));
 export const testIndicators = (sembol: string) => fetch('/api/indikatorler/test', { method: 'POST', headers: headers(), body: JSON.stringify({ sembol, id: 'hepsi' }) }).then(r => json<{ sembol: string; testler: IndicatorTest[] }>(r));
 export const importIndicatorChannel = (kanal: string) => fetch('/api/indikatorler/kanal', { method: 'POST', headers: headers(), body: JSON.stringify({ kanal }) }).then(r => json<{ baslik: string; taranan: number; taninan: { id: string; ad: string; mesaj: number; ornek: string }[]; ozel: { ad: string; ozet: string; link: string }[] }>(r));
+export const openTelegramWeb = () => fetch('/api/telegram-web/ac', { method: 'POST', headers: headers() }).then(r => json<{ girisli: boolean }>(r));
+export const openMiniApp = (bot = 'ucretsizderinlikbot') => fetch('/api/telegram-web/mini', { method: 'POST', headers: headers(), body: JSON.stringify({ bot }) }).then(r => json<{ acildi: boolean }>(r));
 export const openJarvisBrowser = (url = 'https://mail.google.com/') => fetch('/api/tarayici/ac', { method: 'POST', headers: headers(), body: JSON.stringify({ url }) }).then(r => json<{ ok: boolean }>(r));
 
 export const testTelegram = () => fetch('/api/mesaj/telegram/test', { method: 'POST', headers: headers() }).then(r => json<{ ok: boolean }>(r));

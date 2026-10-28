@@ -33,6 +33,7 @@ import { isBrowserTool, runBrowserTool } from './browser.js';
 import { isExpenseTool, runExpenseTool } from './expenses.js';
 import { isTgChannelTool, runTgChannelTool } from './tgchannels.js';
 import { isIndicatorTool, runIndicatorTool } from './indicators.js';
+import { isTgWebTool, runTgWebTool } from './telegramweb.js';
 import { isMicDiagTool, runMicDiagTool } from './micdiag.js';
 import { isExchangeTool, runExchangeTool } from './exchanges.js';
 import { isSiteTool, runSiteTool } from './sitedownload.js';
@@ -330,6 +331,7 @@ async function runToolOnce(name: string, rawArgs: string, progress: ToolProgress
   if (isExpenseTool(name)) return runExpenseTool(args, progress);
   if (isTgChannelTool(name)) return runTgChannelTool(args, progress);
   if (isIndicatorTool(name)) return runIndicatorTool(args, progress);
+  if (isTgWebTool(name)) return runTgWebTool(args, progress);
   if (isMicDiagTool(name)) return runMicDiagTool(args, progress);
   if (isExchangeTool(name)) return runExchangeTool(args, progress);
   if (isSiteTool(name)) return runSiteTool(args, progress);

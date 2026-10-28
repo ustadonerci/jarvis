@@ -43,6 +43,7 @@ import { browserRouter } from './browser.js';
 import { expensesRouter } from './expenses.js';
 import { initTgChannels, tgChannelsRouter } from './tgchannels.js';
 import { indicatorsRouter } from './indicators.js';
+import { tgWebRouter } from './telegramweb.js';
 import { financeRouter, initFinance } from './finance.js';
 import { exchangesRouter } from './exchanges.js';
 import { getBrainProvider, providersRouter, setBrainProvider } from './providers.js';
@@ -421,6 +422,7 @@ app.use(browserRouter());
 app.use(expensesRouter());
 app.use(tgChannelsRouter());
 app.use(indicatorsRouter());
+app.use(tgWebRouter());
 app.use(providersRouter(id => { state.beyin = id; saveState(); }));
 
 // ---------- Onay kartları ve otomasyon (webhook) ----------

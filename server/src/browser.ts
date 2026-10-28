@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express, { type Router } from 'express';
-import { chromium, type BrowserContext, type Page } from 'playwright-core';
+import { chromium, type BrowserContext, type Frame, type Page } from 'playwright-core';
 import { adminOnly } from './keys.js';
 import { logActivity } from './activity.js';
 
@@ -68,28 +68,46 @@ export async function closeBrowser() { await ctx?.close().catch(() => {}); ctx =
 
 export interface Snapshot { baslik: string; adres: string; metin: string; ogeler: { no: number; tur: string; metin: string; adres?: string }[] }
 
+/** Son okumadaki çerçeveler: öğe no = çerçeve sırası × 1000 + sıra (mini uygulamalar ve gömülü sayfalar iframe'de) */
+let lastFrames: Frame[] = [];
+export const frameOf = (p: Page, no: number): Frame => lastFrames[Math.floor(no / 1000)] ?? p.mainFrame();
+
+/** Bir çerçevenin görünür metni ve tıklanabilir öğeleri (numaralar base'den başlar) */
+const SNAP = ([limit, base]: [number, number]) => {
+  const sel = 'a[href],button,input,textarea,select,[role=button],[role=link],[role=checkbox],[role=menuitem],[role=tab],[role=option],[contenteditable=true],summary';
+  document.querySelectorAll('[data-jarvis]').forEach(e => e.removeAttribute('data-jarvis'));
+  const ogeler: { no: number; tur: string; metin: string; adres?: string }[] = [];
+  let i = 0;
+  for (const el of Array.from(document.querySelectorAll<HTMLElement>(sel))) {
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2 || r.bottom < 0 || r.top > innerHeight * 3) continue;
+    const st = getComputedStyle(el);
+    if (st.visibility === 'hidden' || st.display === 'none' || st.opacity === '0') continue;
+    const no = base + ++i;
+    el.setAttribute('data-jarvis', String(no));
+    const tag = el.tagName.toLowerCase();
+    const type = el.getAttribute('type');
+    const t = (el.getAttribute('aria-label') || el.innerText || (el as HTMLInputElement).value || el.getAttribute('placeholder') || el.getAttribute('title') || el.getAttribute('name') || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    ogeler.push({ no, tur: (el.getAttribute('role') || tag) + (type ? `:${type}` : ''), metin: t, ...(tag === 'a' ? { adres: (el.getAttribute('href') || '').slice(0, 120) } : {}) });
+    if (ogeler.length >= 150) break;
+  }
+  return { baslik: document.title, adres: location.href, metin: (document.body?.innerText || '').replace(/\n{3,}/g, '\n\n').slice(0, limit), ogeler };
+};
+
 export async function snapshot(p: Page, metinSiniri = 5000): Promise<Snapshot> {
   await p.waitForLoadState('domcontentloaded', { timeout: 15_000 }).catch(() => {});
-  return p.evaluate((limit: number) => {
-    const sel = 'a[href],button,input,textarea,select,[role=button],[role=link],[role=checkbox],[role=menuitem],[role=tab],[role=option],[contenteditable=true],summary';
-    document.querySelectorAll('[data-jarvis]').forEach(e => e.removeAttribute('data-jarvis'));
-    const ogeler: { no: number; tur: string; metin: string; adres?: string }[] = [];
-    let i = 0;
-    for (const el of Array.from(document.querySelectorAll<HTMLElement>(sel))) {
-      const r = el.getBoundingClientRect();
-      if (r.width < 2 || r.height < 2 || r.bottom < 0 || r.top > innerHeight * 3) continue;
-      const st = getComputedStyle(el);
-      if (st.visibility === 'hidden' || st.display === 'none' || st.opacity === '0') continue;
-      const no = ++i;
-      el.setAttribute('data-jarvis', String(no));
-      const tag = el.tagName.toLowerCase();
-      const type = el.getAttribute('type');
-      const t = (el.getAttribute('aria-label') || el.innerText || (el as HTMLInputElement).value || el.getAttribute('placeholder') || el.getAttribute('title') || el.getAttribute('name') || '').replace(/\s+/g, ' ').trim().slice(0, 80);
-      ogeler.push({ no, tur: (el.getAttribute('role') || tag) + (type ? `:${type}` : ''), metin: t, ...(tag === 'a' ? { adres: (el.getAttribute('href') || '').slice(0, 120) } : {}) });
-      if (ogeler.length >= 150) break;
-    }
-    return { baslik: document.title, adres: location.href, metin: (document.body?.innerText || '').replace(/\n{3,}/g, '\n\n').slice(0, limit), ogeler };
-  }, metinSiniri);
+  lastFrames = [p.mainFrame(), ...p.frames().filter(f => f !== p.mainFrame() && !f.isDetached() && /^https?:/.test(f.url()))].slice(0, 6);
+  const main = await p.mainFrame().evaluate(SNAP, [metinSiniri, 0] as [number, number]);
+  for (let k = 1; k < lastFrames.length; k++) {
+    const f = lastFrames[k];
+    const sub = await f.evaluate(SNAP, [3000, k * 1000] as [number, number]).catch(() => null);
+    if (!sub || (!sub.metin.trim() && !sub.ogeler.length)) continue;
+    // Çerçeve adresinin yalnız alan adı (mini uygulama adreslerinde oturum bilgisi olur, gösterilmez)
+    const host = (() => { try { return new URL(f.url()).host; } catch { return 'çerçeve'; } })();
+    main.metin += `\n\n[İç çerçeve: ${host}]\n${sub.metin}`;
+    main.ogeler.push(...sub.ogeler);
+  }
+  return main;
 }
 
 // ---------------------------------------------------------------- Güvenlik kuralları
@@ -131,7 +149,7 @@ export async function runBrowserTool(a: any, progress: (l: string) => void): Pro
   try {
     if (a.islem === 'kapat') { await closeBrowser(); return j({ ok: true }); }
     const p = await browserPage();
-    const el = () => p.locator(`[data-jarvis="${Number(a.no)}"]`).first();
+    const el = () => frameOf(p, Number(a.no)).locator(`[data-jarvis="${Number(a.no)}"]`).first();
     switch (a.islem) {
       case 'ac': {
         let url = String(a.url ?? '').trim();

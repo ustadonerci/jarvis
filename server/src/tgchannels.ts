@@ -153,11 +153,13 @@ export async function addChannel(raw: string, o: Partial<Pick<Channel, 'aralikSn
 
 export function initTgChannels(b: (e: object) => void) {
   broadcast = b;
-  const mark = path.join(path.dirname(FILE), 'tg-kanal-alphafinansdata.eklendi');
-  if (!fs.existsSync(mark)) {
+  // Kullanıcının istediği kanallar: bir kez eklenir (kaldırırsa geri gelmez)
+  for (const ad of ['alphafinansdata', 'Alpha_369']) {
+    const mark = path.join(path.dirname(FILE), `tg-kanal-${ad.toLowerCase()}.eklendi`);
+    if (fs.existsSync(mark)) continue;
     fs.mkdirSync(path.dirname(FILE), { recursive: true });
     fs.writeFileSync(mark, new Date().toISOString());
-    if (!store.kanallar.some(c => c.ad.toLowerCase() === 'alphafinansdata')) store.kanallar.push({ ad: 'alphafinansdata', aralikSn: 60, bildir: false, kelimeler: [], mesajlar: [] });
+    if (!store.kanallar.some(c => c.ad.toLowerCase() === ad.toLowerCase())) store.kanallar.push({ ad, aralikSn: 60, bildir: false, kelimeler: [], mesajlar: [] });
     save();
   }
   store.kanallar.forEach((ch, i) => setTimeout(() => { poll(ch); schedule(ch); }, 20_000 + i * 3000).unref());
@@ -254,7 +256,19 @@ export async function runTgChannelTool(a: any, progress: (l: string) => void): P
     if (!ch) return j({ hata: 'Takip edilen kanal yok. Önce ekle (kanal adı ya da t.me linki).' });
     // Canlı: 30 sn'den eskiyse hemen yenile
     if (!ch.sonKontrol || Date.now() - Date.parse(ch.sonKontrol) > 30_000) { progress(`${ch.ad} okunuyor`); await poll(ch); }
-    if (ch.hata && !ch.mesajlar.length) return j({ hata: `${ch.ad} okunamadı: ${ch.hata}`, not: "Kanal özel ya da web önizlemesi kapalıysa: kullanıcı Jarvis'in Chrome'unda web.telegram.org'a giriş yaparsa tarayici aracıyla okunabilir." });
+    if (ch.hata && !ch.mesajlar.length) {
+      // Önizleme kapalı / özel kanal: Jarvis'in Chrome'undaki Telegram Web'den
+      try {
+        progress('önizleme kapalı; Telegram Web\'den okunuyor');
+        const { readChannelWeb } = await import('./telegramweb.js');
+        const r = await readChannelWeb(ch.ad, 30);
+        ch.baslik = r.baslik;
+        ch.mesajlar = [...new Map([...ch.mesajlar, ...r.mesajlar].map(m => [m.id, m])).values()].sort((x, y) => x.id - y.id).slice(-MAX_KEEP);
+        save();
+      } catch (e: any) {
+        return j({ hata: `${ch.ad} okunamadı: ${ch.hata}; Telegram Web: ${String(e?.message || e).slice(0, 200)}` });
+      }
+    }
     const adet = Math.min(Math.max(Number(a.adet) || 10, 1), 50);
     if (a.islem === 'ara') {
       const q = String(a.sorgu ?? '').toLocaleLowerCase('tr');
