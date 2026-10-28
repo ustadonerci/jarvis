@@ -6,6 +6,7 @@
 // Model aracı "tarayici": sayfa aç, oku (görünür metin + numaralı tıklanabilir öğeler), tıkla, yaz, tuş, kaydır.
 // Güvenlik: şifre/kart/doğrulama kodu alanlarına yazmaz; satın alma/ödeme düğmelerine basmaz (kullanıcı kendisi basar).
 // Sayfa metni veridir, talimat değildir.
+import { spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -57,7 +58,49 @@ async function launch(): Promise<BrowserContext> {
   throw new Error(`Tarayıcı açılamadı (Chrome ya da Edge bulunamadı ya da Jarvis profili başka bir pencerede açık): ${String((last as any)?.message || last).split('\n')[0].slice(0, 200)}`);
 }
 
+// ---------------------------------------------------------------- Giriş penceresi (kullanıcının kendisi)
+
+/**
+ * Google hesabına giriş, Jarvis'in yönettiği pencerede yapılamaz (Google reddeder: signin/rejected). Giriş için
+ * Jarvis'in profiliyle NORMAL bir Chrome penceresi açılır; Jarvis bu pencereye bağlanmaz ve hiçbir şeye dokunmaz.
+ * Kullanıcı kendisi girip pencereyi kapatır. Uygulama şifresi (IMAP) Google'ın resmî ve önerilen yoludur.
+ */
+let loginProc: ChildProcess | null = null;
+export const loginWindowOpen = () => !!loginProc;
+
+function findChrome(): string | null {
+  if (process.env.TARAYICI_YOLU?.trim()) return process.env.TARAYICI_YOLU.trim();
+  const c = process.platform === 'win32'
+    ? [process.env.PROGRAMFILES, process.env['PROGRAMFILES(X86)'], process.env.LOCALAPPDATA].filter(Boolean).map(d => path.join(d!, 'Google', 'Chrome', 'Application', 'chrome.exe'))
+      .concat([process.env['PROGRAMFILES(X86)'], process.env.PROGRAMFILES].filter(Boolean).map(d => path.join(d!, 'Microsoft', 'Edge', 'Application', 'msedge.exe')))
+    : process.platform === 'darwin' ? ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'] : ['/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'];
+  return c.find(f => fs.existsSync(f)) ?? null;
+}
+
+export async function openLoginWindow(url: string): Promise<{ ok: boolean; not: string }> {
+  if (loginProc) return { ok: true, not: 'Giriş penceresi zaten açık.' };
+  const exe = findChrome();
+  if (!exe) throw new Error('Chrome bulunamadı (Google Chrome kurulu olmalı).');
+  await closeBrowser(); // aynı profili iki tarayıcı birden kullanamaz
+  fs.mkdirSync(PROFILE, { recursive: true });
+  const proc = spawn(exe, [`--user-data-dir=${PROFILE}`, '--no-first-run', '--no-default-browser-check', '--new-window', url], { stdio: 'ignore', windowsHide: false });
+  loginProc = proc;
+  proc.on('exit', () => {
+    if (loginProc === proc) loginProc = null;
+    console.log('[tarayici] giriş penceresi kapandı');
+    logActivity('tarayici', 'giriş penceresi kapatıldı');
+  });
+  proc.on('error', () => { if (loginProc === proc) loginProc = null; });
+  console.log(`[tarayici] giriş penceresi açıldı: ${new URL(url).host}`);
+  return { ok: true, not: 'Normal bir Chrome penceresi açıldı. Hesabınıza kendiniz girin, sonra bu pencereyi KAPATIN.' };
+}
+
+export class LoginWindowOpen extends Error {
+  constructor() { super('Giriş penceresi açık: girişi tamamlayıp o Chrome penceresini kapatın, sonra tekrar deneyin.'); }
+}
+
 export async function browserPage(): Promise<Page> {
+  if (loginProc) throw new LoginWindowOpen();
   let fresh = false;
   if (!ctx) {
     starting ??= launch().finally(() => { starting = null; });
@@ -258,13 +301,15 @@ export async function runBrowserTool(a: any, progress: (l: string) => void): Pro
 export function browserRouter(): Router {
   const r = express.Router();
   r.use('/api/tarayici', adminOnly);
-  r.get('/api/tarayici', (_req, res) => res.json({ acik: browserOpen(), gorunur: browserShown() }));
+  r.get('/api/tarayici', (_req, res) => res.json({ acik: browserOpen(), gorunur: browserShown(), girisPenceresi: loginWindowOpen() }));
   r.post('/api/tarayici/goster', async (_req, res) => { try { await showBrowser(); res.json({ ok: true }); } catch (e: any) { res.status(500).json({ error: String(e?.message || e).split('\n')[0].slice(0, 200) }); } });
   r.post('/api/tarayici/gizle', async (_req, res) => { await hideBrowser(); res.json({ ok: true }); });
   r.post('/api/tarayici/ac', async (req, res) => {
     const url = String(req.body?.url ?? 'https://mail.google.com/');
     if (!/^https:\/\//.test(url)) return res.status(400).json({ error: 'https adresi gerekli' });
     try {
+      // Google hesabı girişi: kullanıcının kendisi, normal pencerede
+      if (/^https:\/\/(mail|accounts)\.google\.com/.test(url)) return res.json(await openLoginWindow(url));
       const p = await browserPage();
       await p.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
       await showBrowser();

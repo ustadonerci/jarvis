@@ -5,12 +5,12 @@
 //  - Gelen kutusundaki önemliler (tanıtım/sosyal/güncelleme dışı) gönderen + konu + önizlemeyle özet için döner.
 // Gmail sayfa yapısı: satır tr.zA, gönderen [email], konu .bog, önizleme .y2, araç çubuğu div[gh="tm"] (Sil: act=10).
 import type { Page } from 'playwright-core';
-import { browserPage, showBrowser } from './browser.js';
+import { browserPage, openLoginWindow } from './browser.js';
 import type { MailRoutineResult } from './mailclean.js';
 
 export class GmailLoginNeeded extends Error {}
 /** Giriş sayfası: kullanıcı girebilsin diye pencere öne gelir */
-const loginNeeded = async () => { await showBrowser().catch(() => {}); return new GmailLoginNeeded(); };
+const loginNeeded = async () => { await openLoginWindow('https://mail.google.com/').catch(() => {}); return new GmailLoginNeeded(); };
 
 const BASE = process.env.GMAIL_WEB_URL || 'https://mail.google.com/mail/u/0/';
 

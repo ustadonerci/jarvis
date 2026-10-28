@@ -94,7 +94,7 @@ export async function runMail(send = true): Promise<string> {
       kaynak = ' · tarayıcıyla Gmail';
     } catch (e) {
       const msg = e instanceof GmailLoginNeeded
-        ? '🤖 📧 E-posta: Jarvis\'in Chrome penceresinde Gmail açıldı ama giriş yapılmamış. O pencerede Gmail hesabınıza BİR KEZ kendiniz giriş yapın (şifrenizi Jarvis\'e söylemeyin), sonra "maillerimi düzenle" deyin ya da Ayarlar → Günlük rapor → "E-postaları şimdi düzenle"ye basın.'
+        ? '🤖 📧 E-posta: Gmail\'e giriş gerekiyor. Ekranda normal bir Chrome penceresi açıldı: Gmail hesabınıza BİR KEZ kendiniz giriş yapın (şifrenizi Jarvis\'e söylemeyin), girdikten sonra o pencereyi KAPATIN. Sonra "maillerimi düzenle" deyin. (Daha sağlam yol: Google uygulama şifresi — https://myaccount.google.com/apppasswords)'
         : `🤖 📧 E-posta tarayıcıyla düzenlenemedi: ${String((e as any)?.message || e).split('\n')[0].slice(0, 200)}`;
       return (await store('eposta', msg, send)).eposta!;
     }
