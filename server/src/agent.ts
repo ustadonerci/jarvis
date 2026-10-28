@@ -4,6 +4,7 @@ import { brainStream } from './providers.js';
 import { DAILY_TOOLS } from './daily.js';
 import { BROWSER_TOOLS } from './browser.js';
 import { EXPENSE_TOOLS } from './expenses.js';
+import { TGCHANNEL_TOOLS } from './tgchannels.js';
 import { CHAT_MODEL, MOCK, RouteLLMError, type ChatMessage, type ContentPart } from './routellm.js';
 import { TOOLS, runTool, type ToolProgress } from './tools.js';
 import { EXT_TOOLS, extensionsForPrompt, mcpTools } from './extensions.js';
@@ -85,7 +86,7 @@ export function contextVars(device: Device, prevDevice: Device | null) {
 export function toolsFor(groups: Set<Group>, isBrief = false): any[] {
   const pick = (g: Group, t: readonly any[]) => (groups.has(g) ? t : []);
   return [
-    ...(isBrief ? TOOLS : TOOLS.filter(t => t.function.name !== 'get_news')), ...SEARCH_TOOLS, ...ERROR_TOOLS, ...APPROVAL_TOOLS, ...DAILY_TOOLS, ...BROWSER_TOOLS, ...EXPENSE_TOOLS,
+    ...(isBrief ? TOOLS : TOOLS.filter(t => t.function.name !== 'get_news')), ...SEARCH_TOOLS, ...ERROR_TOOLS, ...APPROVAL_TOOLS, ...DAILY_TOOLS, ...BROWSER_TOOLS, ...EXPENSE_TOOLS, ...TGCHANNEL_TOOLS,
     ...pick('finans', FINANCE_TOOLS), ...pick('mesaj', MSG_TOOLS), ...pick('eposta', EMAIL_TOOLS), ...pick('github', GITHUB_TOOLS),
     ...pick('ajan', agentTools()), ...pick('sistem', SYSTEM_TOOLS), ...pick('otomasyon', AUTOMATION_TOOLS), ...pick('telefon', PHONE_TOOLS),
     ...pick('sms', SMS_TOOLS), ...pick('sosyal', SOCIAL_TOOLS), ...pick('android', ANDROID_TOOLS), ...pick('site', SITE_TOOLS), ...pick('medya', MEDIA_TOOLS), ...pick('ses', VOICESTUDIO_TOOLS), ...pick('satin', HOSTINGER_TOOLS), ...pick('finans', ROBOT_TOOLS), ...pick('finans', EXCHANGE_TOOLS), ...pick('medya', REELS_TOOLS), ...pick('marka', BRAND24_TOOLS), ...pick('telefon', CONTACT_TOOLS), ...pick('eposta', MAILCLEAN_TOOLS), ...pick('sistem', MICDIAG_TOOLS), ...pick('medya', SYSTEM_TOOLS.filter(t => t.function.name === 'dosya_listele' || t.function.name === 'uygulama_yonet' || t.function.name === 'uygulama_ara')),

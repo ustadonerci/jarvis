@@ -337,6 +337,11 @@ export const downloadExpensesCsv = (ay: string) => fetch(`/api/harcamalar/csv?ay
   a.href = url; a.download = `gider-tablosu-${ay}.csv`; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 });
+export interface TgPostView { id: number; tarih: string; metin: string; gorsel: boolean; link: string; goruntulenme?: string }
+export interface TgChannelView { ad: string; baslik?: string; aralikSn: number; bildir: boolean; kelimeler: string[]; sonKontrol?: string; hata?: string; mesajSayisi: number; son: TgPostView[] }
+export const getTgChannels = () => fetch('/api/telegram-kanallar', { headers: headers() }).then(r => json<{ kanallar: TgChannelView[] }>(r));
+export const saveTgChannel = (b: { kanal: string; aralikSn?: number; bildir?: boolean; kelimeler?: string[] }) => fetch('/api/telegram-kanallar', { method: 'POST', headers: headers(), body: JSON.stringify(b) }).then(r => json<{ kanallar: TgChannelView[] }>(r));
+export const deleteTgChannel = (ad: string) => fetch(`/api/telegram-kanallar/${encodeURIComponent(ad)}`, { method: 'DELETE', headers: headers() }).then(r => json<{ kanallar: TgChannelView[] }>(r));
 export const openJarvisBrowser = (url = 'https://mail.google.com/') => fetch('/api/tarayici/ac', { method: 'POST', headers: headers(), body: JSON.stringify({ url }) }).then(r => json<{ ok: boolean }>(r));
 
 export const testTelegram = () => fetch('/api/mesaj/telegram/test', { method: 'POST', headers: headers() }).then(r => json<{ ok: boolean }>(r));

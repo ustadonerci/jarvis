@@ -31,6 +31,7 @@ import { isMailCleanTool, runMailCleanTool } from './mailclean.js';
 import { isDailyTool, runDailyTool } from './daily.js';
 import { isBrowserTool, runBrowserTool } from './browser.js';
 import { isExpenseTool, runExpenseTool } from './expenses.js';
+import { isTgChannelTool, runTgChannelTool } from './tgchannels.js';
 import { isMicDiagTool, runMicDiagTool } from './micdiag.js';
 import { isExchangeTool, runExchangeTool } from './exchanges.js';
 import { isSiteTool, runSiteTool } from './sitedownload.js';
@@ -326,6 +327,7 @@ async function runToolOnce(name: string, rawArgs: string, progress: ToolProgress
   if (isDailyTool(name)) return runDailyTool(args, progress);
   if (isBrowserTool(name)) return runBrowserTool(args, progress);
   if (isExpenseTool(name)) return runExpenseTool(args, progress);
+  if (isTgChannelTool(name)) return runTgChannelTool(args, progress);
   if (isMicDiagTool(name)) return runMicDiagTool(args, progress);
   if (isExchangeTool(name)) return runExchangeTool(args, progress);
   if (isSiteTool(name)) return runSiteTool(args, progress);
