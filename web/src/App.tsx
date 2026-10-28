@@ -864,12 +864,16 @@ export default function App() {
     const hi = ['Buyurun efendim.', 'Dinliyorum efendim.', 'Evet efendim?', 'Sizi dinliyorum.'];
     speakLine(hi[Math.floor(Math.random() * hi.length)]);
   };
-  convHandlers.current.onInterrupt = () => {
-    // Yalnız gerçek bir cevap okunurken kaldığı yer saklanır (tek cümlelik selamlaşmada değil)
+  /** Yalnız gerçek bir cevap okunurken kaldığı yer saklanır (tek cümlelik selamlaşmada değil) */
+  const saveInterrupted = () => {
     const l = liveRef.current;
     if (l && coreRef.current === 'speaking' && sceneIdxRef.current >= 0 && sceneIdxRef.current < l.scenes.length) {
       interruptedRef.current = { l, i: sceneIdxRef.current };
+      askResumeRef.current = true;
     }
+  };
+  convHandlers.current.onInterrupt = () => {
+    saveInterrupted();
     stopPlayback();
     setCore('listening');
     setInterim('dinliyorum…');
@@ -892,6 +896,7 @@ export default function App() {
     if (intent === 'dur') { stopPlayback(); setCore('idle'); return; }
     if (intent === 'kapat') { speakLine('Sohbet modunu kapattım efendim. Açmak için alttaki simgeye dokunun.'); setTimeout(() => { setConvOn(false); saveConvPref('acik', false); }, 2500); return; }
     if (intent === 'bitir') {
+      convRef.current?.end();
       interruptedRef.current = null; awaitingResumeRef.current = false; askResumeRef.current = false;
       speakLine('Rica ederim efendim. İhtiyacınız olursa "Merhaba Jarvis" demeniz yeterli.');
       return;
@@ -900,6 +905,71 @@ export default function App() {
     askResumeRef.current = !!interruptedRef.current;
     submit(text);
   };
+
+  // ---- Sıra dinleme: sohbetteyken Jarvis susunca kayıt kendiliğinden başlar, kullanıcı susunca biter ----
+  // Tarayıcının sürekli ses tanıması bazı bilgisayarlarda hiç sonuç vermiyor (yanlış varsayılan mikrofon, tarayıcı);
+  // bu yüzden kullanıcının sırası mikrofon düğmesiyle aynı yoldan alınır: seçili mikrofon → kayıt → sunucuda yazıya.
+  const turnRef = useRef<{ stop(): void } | null>(null);
+  const emptyTurns = useRef(0);
+  const listenTurn = async () => {
+    const c = convRef.current;
+    if (!c || !c.active || turnRef.current || recRef.current || coreRef.current !== 'idle' || !recorderSupported()) return;
+    c.suspend();
+    setCore('listening');
+    setInterim('🟢 dinliyorum… konuşun');
+    try {
+      turnRef.current = await startRecording({
+        silenceMs: 1100,
+        noSpeechMs: 9000,
+        maxMs: 60_000,
+        sendSilent: true,
+        onLevel: lv => { if (lv > 0.08) lastActive.current = Date.now(); },
+        onStop: async (blob, info) => {
+          turnRef.current = null;
+          const cc = convRef.current;
+          cc?.resume();
+          // Kısık masaüstü mikrofonlarında konuşma algılanmayabilir: biraz ses varsa yine de yazıya çevrilir
+          const something = !!blob && (info.heard || info.peak >= 0.02);
+          if (!something) {
+            setInterim('');
+            emptyTurns.current++;
+            if (emptyTurns.current >= 2) {
+              emptyTurns.current = 0;
+              cc?.end();
+              flash(info.peak < 0.004 ? 'Mikrofondan ses gelmiyor: Ayarlar → Mikrofon · test ile mikrofonu seçin.' : 'Sohbet beklemede: simgeye dokunun ya da "Merhaba Jarvis" deyin.');
+            }
+            setCore(cs => (cs === 'listening' ? 'idle' : cs));
+            return;
+          }
+          emptyTurns.current = 0;
+          setInterim('anlıyorum…');
+          let text = '';
+          try { text = blob ? await stt(blob, info.ms) : ''; } catch (e: any) { flash(`Ses yazıya çevrilemedi: ${e.message}`); }
+          setInterim('');
+          if (!text.trim()) { setCore(cs => (cs === 'listening' ? 'idle' : cs)); return; }
+          setConvHeard(text);
+          cc?.touched();
+          convHandlers.current.onUtterance(text);
+          setCore(cs => (cs === 'listening' ? 'idle' : cs));
+        },
+      });
+    } catch (e: any) {
+      c.resume();
+      setCore(cs => (cs === 'listening' ? 'idle' : cs));
+      setInterim('');
+      flash(`Mikrofon açılamadı: ${e?.message || e}`);
+    }
+  };
+  const listenTurnRef = useRef(listenTurn);
+  listenTurnRef.current = listenTurn;
+  // Sohbetteyken Jarvis boşa çıkınca (konuşma bitti, araya giren komut bitti) sırayı dinle
+  useEffect(() => {
+    if (!convOn || core !== 'idle') return;
+    const t = setTimeout(() => { if (coreRef.current === 'idle' && convRef.current?.active) listenTurnRef.current(); }, 450);
+    return () => clearTimeout(t);
+  }, [core, convOn, convState]);
+  // Sohbet modu kapanırsa ya da sohbet biterse açık kayıt kapanır
+  useEffect(() => { if (!convOn) { turnRef.current?.stop(); turnRef.current = null; } }, [convOn]);
 
   // Motor bir kez kurulur; kancalar güncel durumu ref'lerden okur
   useEffect(() => {
@@ -1411,7 +1481,8 @@ export default function App() {
                 voice.unlock();
                 // Dokunuş sohbeti KAPATMAZ: kapalıysa açar, açıksa "sizi dinliyorum" der (kapatmak: Ayarlar ya da "sohbet modunu kapat")
                 if (!convOn) { saveConvPref('acik', true); setConvOn(true); setTimeout(() => { convRef.current?.begin(); speakLine('Sohbet modu açık. Dinliyorum efendim.'); }, 600); return; }
-                if (convState === 'konusuyor') { stopPlayback(); return; }
+                if (convState === 'konusuyor' || core === 'speaking') { saveInterrupted(); convRef.current?.begin(); stopPlayback(); return; }
+                if (turnRef.current) { turnRef.current.stop(); return; }
                 convRef.current?.begin();
                 speakLine('Dinliyorum efendim.');
               }}
