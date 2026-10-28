@@ -18,6 +18,7 @@ const host = (u: string) => u.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
 export const PROVIDERS: Provider[] = [
   { id: 'openai', ad: 'OpenAI (ChatGPT)', keyEnv: 'OPENAI_API_KEY', modelEnv: 'OPENAI_CHAT_MODEL', varsayilanModel: 'gpt-4.1', base: 'https://api.openai.com/v1', anahtarUrl: 'https://platform.openai.com/api-keys', anahtarSayfasi: host('https://platform.openai.com/api-keys'), tur: 'sohbet', not: 'Ses tanımada (Whisper) da kullanılır.' },
   { id: 'anthropic', ad: 'Anthropic (Claude)', keyEnv: 'ANTHROPIC_API_KEY', modelEnv: 'ANTHROPIC_MODEL', varsayilanModel: 'claude-opus-5-5', anahtarUrl: 'https://console.anthropic.com/settings/keys', anahtarSayfasi: host('https://console.anthropic.com/settings/keys'), tur: 'sohbet', not: 'Daha hızlı/ucuz: claude-sonnet-5-5, claude-haiku-5-5' },
+  { id: 'nvidia', ad: 'NVIDIA (NIM · Llama, Nemotron, DeepSeek, Qwen)', keyEnv: 'NVIDIA_API_KEY', modelEnv: 'NVIDIA_MODEL', varsayilanModel: 'meta/llama-3.3-70b-instruct', base: 'https://integrate.api.nvidia.com/v1', anahtarUrl: 'https://build.nvidia.com', anahtarSayfasi: host('https://build.nvidia.com'), tur: 'sohbet', not: 'build.nvidia.com\'da ücretsiz deneme kredisi; anahtar "nvapi-" ile başlar. Model: meta/llama-3.3-70b-instruct (araç kullanır); diğerleri için Bağlantıyı test et.' },
   { id: 'gemini', ad: 'Google Gemini', keyEnv: 'GEMINI_API_KEY', modelEnv: 'GEMINI_MODEL', varsayilanModel: 'gemini-2.5-flash', base: 'https://generativelanguage.googleapis.com/v1beta/openai', anahtarUrl: 'https://aistudio.google.com/app/apikey', anahtarSayfasi: host('https://aistudio.google.com/app/apikey'), tur: 'sohbet', not: 'Ücretsiz kullanım kotası var.' },
   { id: 'xai', ad: 'xAI (Grok)', keyEnv: 'XAI_API_KEY', modelEnv: 'XAI_MODEL', varsayilanModel: 'grok-4', base: 'https://api.x.ai/v1', anahtarUrl: 'https://console.x.ai', anahtarSayfasi: host('https://console.x.ai'), tur: 'sohbet' },
   { id: 'deepseek', ad: 'DeepSeek', keyEnv: 'DEEPSEEK_API_KEY', modelEnv: 'DEEPSEEK_MODEL', varsayilanModel: 'deepseek-chat', base: 'https://api.deepseek.com/v1', anahtarUrl: 'https://platform.deepseek.com/api_keys', anahtarSayfasi: host('https://platform.deepseek.com/api_keys'), tur: 'sohbet', not: 'Çok ucuz.' },
@@ -32,7 +33,6 @@ export const PROVIDERS: Provider[] = [
   { id: 'sambanova', ad: 'SambaNova', keyEnv: 'SAMBANOVA_API_KEY', modelEnv: 'SAMBANOVA_MODEL', varsayilanModel: 'Meta-Llama-3.3-70B-Instruct', base: 'https://api.sambanova.ai/v1', anahtarUrl: 'https://cloud.sambanova.ai/apis', anahtarSayfasi: host('https://cloud.sambanova.ai/apis'), tur: 'sohbet' },
   { id: 'deepinfra', ad: 'DeepInfra', keyEnv: 'DEEPINFRA_API_KEY', modelEnv: 'DEEPINFRA_MODEL', varsayilanModel: 'meta-llama/Llama-3.3-70B-Instruct', base: 'https://api.deepinfra.com/v1/openai', anahtarUrl: 'https://deepinfra.com/dash/api_keys', anahtarSayfasi: host('https://deepinfra.com/dash/api_keys'), tur: 'sohbet' },
   { id: 'huggingface', ad: 'Hugging Face', keyEnv: 'HF_TOKEN', modelEnv: 'HF_MODEL', varsayilanModel: 'meta-llama/Llama-3.3-70B-Instruct', base: 'https://router.huggingface.co/v1', anahtarUrl: 'https://huggingface.co/settings/tokens', anahtarSayfasi: host('https://huggingface.co/settings/tokens'), tur: 'sohbet', not: 'Token türü: Read ya da Inference.' },
-  { id: 'nvidia', ad: 'NVIDIA NIM', keyEnv: 'NVIDIA_API_KEY', modelEnv: 'NVIDIA_MODEL', varsayilanModel: 'meta/llama-3.3-70b-instruct', base: 'https://integrate.api.nvidia.com/v1', anahtarUrl: 'https://build.nvidia.com', anahtarSayfasi: host('https://build.nvidia.com'), tur: 'sohbet', not: 'Ücretsiz deneme kredisi.' },
   { id: 'qwen', ad: 'Alibaba Qwen (Model Studio)', keyEnv: 'DASHSCOPE_API_KEY', modelEnv: 'QWEN_MODEL', varsayilanModel: 'qwen-plus', base: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', anahtarUrl: 'https://modelstudio.console.alibabacloud.com', anahtarSayfasi: host('https://modelstudio.console.alibabacloud.com'), tur: 'sohbet' },
   { id: 'moonshot', ad: 'Moonshot (Kimi)', keyEnv: 'MOONSHOT_API_KEY', modelEnv: 'MOONSHOT_MODEL', varsayilanModel: 'moonshot-v1-8k', base: 'https://api.moonshot.ai/v1', anahtarUrl: 'https://platform.moonshot.ai/console/api-keys', anahtarSayfasi: host('https://platform.moonshot.ai/console/api-keys'), tur: 'sohbet' },
   { id: 'zhipu', ad: 'Zhipu (GLM)', keyEnv: 'ZAI_API_KEY', modelEnv: 'ZAI_MODEL', varsayilanModel: 'glm-4.5', base: 'https://api.z.ai/api/paas/v4', anahtarUrl: 'https://z.ai/manage-apikey/apikey-list', anahtarSayfasi: host('https://z.ai/manage-apikey/apikey-list'), tur: 'sohbet' },
@@ -232,8 +232,46 @@ export function providerStatus() {
   };
 }
 
+let persistBrain: (id: string) => void = () => {};
+/** Kullanıcı hiç seçmediyse: NVIDIA anahtarı girilmişse beyin NVIDIA (kullanıcının isteği), yoksa RouteLLM */
+export function initialBrain(saved?: string): string {
+  if (saved) return saved;
+  const nv = findProvider('nvidia');
+  return nv && providerReady(nv) ? 'nvidia' : 'routellm';
+}
+
+export const BRAIN_TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'beyin',
+      description: "Jarvis'in sohbetini yürüten yapay zekayı (beyin) gösterir ya da değiştirir. islem: durum (hangi beyin, anahtarı girilmiş sağlayıcılar), sec (saglayici: nvidia, openai, anthropic, gemini, groq, deepseek… ya da routellm). 'Beyni NVIDIA yap', 'hangi yapay zekayı kullanıyorsun', 'Claude'a geç' isteklerinde.",
+      parameters: { type: 'object', properties: { islem: { type: 'string', enum: ['durum', 'sec'] }, saglayici: { type: 'string' } }, required: ['islem'] },
+    },
+  },
+] as const;
+export const isBrainTool = (n: string) => n === 'beyin';
+export function runBrainTool(a: any): string {
+  const j = (v: unknown) => JSON.stringify(v);
+  const ready = PROVIDERS.filter(p => p.tur === 'sohbet' && providerReady(p)).map(p => ({ id: p.id, ad: p.ad, model: providerModel(p) }));
+  if (a.islem === 'sec') {
+    const q = String(a.saglayici ?? '').toLowerCase().trim();
+    const id = /^(routellm|varsay[ıi]lan|abacus)$/.test(q) ? 'routellm' : PROVIDERS.find(p => p.tur === 'sohbet' && (p.id === q || p.ad.toLowerCase().includes(q)))?.id;
+    if (!id) return j({ hata: `"${a.saglayici}" bulunamadı`, anahtari_girilmis: ready });
+    const p = findProvider(id);
+    if (p && !providerReady(p)) return j({ hata: `${p.ad} anahtarı girilmemiş. Ayarlar → Yapay zeka sağlayıcıları → ${p.ad} kartındaki "anahtar al" linkinden alıp kaydetmesi gerekiyor: ${p.anahtarUrl}`, anahtari_girilmis: ready });
+    setBrainProvider(id);
+    persistBrain(id);
+    console.log(`[beyin] sohbetle seçildi: ${id}`);
+    return j({ ok: true, beyin: p ? `${p.ad} · ${providerModel(p)}` : 'RouteLLM', not: 'Bir sonraki cevaptan itibaren geçerli. Hata verirse o cevap RouteLLM ile tamamlanır.' });
+  }
+  const p = activeProvider();
+  return j({ beyin: p ? `${p.ad} · ${providerModel(p)}` : 'RouteLLM', secili: brain, anahtari_girilmis: ready });
+}
+
 /** Ayarlar → Yapay zeka sağlayıcıları. persist: beyin seçimi state'e yazılsın */
 export function providersRouter(persist: (id: string) => void): Router {
+  persistBrain = persist;
   const r = express.Router();
   r.use('/api/saglayicilar', adminOnly);
   r.get('/api/saglayicilar', (_req, res) => res.json(providerStatus()));
