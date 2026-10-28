@@ -35,6 +35,7 @@ import { ExchangeSettings } from './components/Exchanges';
 import { ProviderSettings } from './components/Providers';
 import { DailySettings, ExpenseSettings } from './components/Daily';
 import { TgChannelSettings } from './components/TgChannels';
+import { IndicatorSettings } from './components/Indicators';
 import { Markdown } from './lib/markdown';
 import { createRecognizer, speechRecognitionSupported, voice } from './lib/speech';
 import { DEVICE_LABEL, type PersonaOption, type ThemeOption, type CoreState, type CurrencyCode, type Dashboard, type Device, type GreetingPeriod, type Health, type JarvisReply, type Sahne, type ServerEvent, type StoredMessage, type UiMode, type VoiceOption, type VoiceSel, type WakeConfig } from './lib/types';
@@ -1333,6 +1334,7 @@ export default function App() {
                   <DailySettings flash={flash} />
                   <ExpenseSettings flash={flash} />
                   <TgChannelSettings flash={flash} />
+                  <IndicatorSettings flash={flash} />
                   <MicTest flash={flash} />
                   <KeySettings flash={flash} />
                   <ProviderSettings flash={flash} />

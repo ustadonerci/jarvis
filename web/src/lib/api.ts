@@ -342,6 +342,13 @@ export interface TgChannelView { ad: string; baslik?: string; aralikSn: number; 
 export const getTgChannels = () => fetch('/api/telegram-kanallar', { headers: headers() }).then(r => json<{ kanallar: TgChannelView[] }>(r));
 export const saveTgChannel = (b: { kanal: string; aralikSn?: number; bildir?: boolean; kelimeler?: string[] }) => fetch('/api/telegram-kanallar', { method: 'POST', headers: headers(), body: JSON.stringify(b) }).then(r => json<{ kanallar: TgChannelView[] }>(r));
 export const deleteTgChannel = (ad: string) => fetch(`/api/telegram-kanallar/${encodeURIComponent(ad)}`, { method: 'DELETE', headers: headers() }).then(r => json<{ kanallar: TgChannelView[] }>(r));
+export interface IndicatorInfo { id: string; ad: string; olcer: string; strateji: string; zayif: string; yazar: string }
+export interface IndicatorSignal { indikator: string; id: string; sinyal: 'AL' | 'SAT' | 'BEKLE'; yeni_sinyal: boolean; sinyal_baslangici: string | null; degerler: Record<string, number | string | null>; stop: number | null }
+export interface IndicatorTest { indikator: string; donem: string; islem: number; kazanma_orani_yuzde: number | null; toplam_getiri_yuzde: number; en_buyuk_dusus_yuzde: number; al_tut_yuzde: number }
+export const getIndicators = () => fetch('/api/indikatorler', { headers: headers() }).then(r => json<{ indikatorler: IndicatorInfo[]; favoriler: string[]; notlar: { ad: string; ozet: string; link: string; kanal: string }[]; kanallar: string[] }>(r));
+export const calcIndicators = (sembol: string) => fetch('/api/indikatorler/hesapla', { method: 'POST', headers: headers(), body: JSON.stringify({ sembol, id: 'hepsi' }) }).then(r => json<{ sembol: string; ad: string; fiyat: number; para: string; oylama?: { AL: number; SAT: number; BEKLE: number; genel: string }; sinyaller: IndicatorSignal[] }>(r));
+export const testIndicators = (sembol: string) => fetch('/api/indikatorler/test', { method: 'POST', headers: headers(), body: JSON.stringify({ sembol, id: 'hepsi' }) }).then(r => json<{ sembol: string; testler: IndicatorTest[] }>(r));
+export const importIndicatorChannel = (kanal: string) => fetch('/api/indikatorler/kanal', { method: 'POST', headers: headers(), body: JSON.stringify({ kanal }) }).then(r => json<{ baslik: string; taranan: number; taninan: { id: string; ad: string; mesaj: number; ornek: string }[]; ozel: { ad: string; ozet: string; link: string }[] }>(r));
 export const openJarvisBrowser = (url = 'https://mail.google.com/') => fetch('/api/tarayici/ac', { method: 'POST', headers: headers(), body: JSON.stringify({ url }) }).then(r => json<{ ok: boolean }>(r));
 
 export const testTelegram = () => fetch('/api/mesaj/telegram/test', { method: 'POST', headers: headers() }).then(r => json<{ ok: boolean }>(r));

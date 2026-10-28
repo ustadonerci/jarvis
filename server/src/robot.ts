@@ -15,6 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { propose } from './approvals.js';
 import { analyze, getSeries, resolveSymbol, round, type Series } from './finance.js';
+import { findIndicator, indicatorDecision } from './indicators.js';
 
 const DATA = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
 const CFG_FILE = path.join(DATA, 'robot.json');
@@ -24,6 +25,8 @@ export interface RobotConfig {
   aktif: boolean; mod: 'kagit' | 'canli'; semboller: string[];
   /** İşlem başı tutar (USD karşılığı) */
   islem_basi: number; max_pozisyon: number; gunluk_zarar_limiti: number; aralik_dk: number; min_risk_odul: number; baslangic_bakiye: number;
+  /** 'varsayilan': piyasa_analiz puanı; ya da bir indikatör id'si (indicators.ts: supertrend, utbot, squeeze…) */
+  strateji?: string;
 }
 interface Position { sembol: string; para: string; adet: number; giris: number; stop: number; hedef1: number; hedef2: number; h1: boolean; maliyet_usd: number; at: string; mod: 'kagit' | 'canli' }
 interface Trade { id: string; at: string; sembol: string; yon: 'AL' | 'SAT'; fiyat: number; adet: number; tutar_usd: number; neden: string; kar_usd?: number; mod: 'kagit' | 'canli' }
@@ -34,6 +37,12 @@ const readJson = <T,>(f: string, d: T): T => { try { return { ...d, ...JSON.pars
 const writeJson = (f: string, v: unknown) => { fs.mkdirSync(DATA, { recursive: true }); fs.writeFileSync(f, JSON.stringify(v, null, 2)); };
 const freshState = (c: RobotConfig): RobotState => ({ nakit_usd: c.baslangic_bakiye, pozisyonlar: {}, islemler: [], gun: { tarih: today(), pnl: 0 }, son_kapanis: {}, hata_sayisi: 0 });
 const today = () => new Date().toISOString().slice(0, 10);
+
+/** Seçili stratejiye göre sinyal ve işlem planı */
+function decide(s: Series): { sinyal: string; puan?: number; islem_plani?: any } {
+  const id = cfg.strateji && cfg.strateji !== 'varsayilan' ? cfg.strateji : '';
+  return id ? indicatorDecision(id, s) : (analyze(s) as any);
+}
 
 let cfg = readJson(CFG_FILE, DEFAULT_CFG);
 let st = readJson<RobotState>(STATE_FILE, freshState(cfg));
@@ -170,7 +179,7 @@ export async function tick(force = false): Promise<string[]> {
     for (const sym of syms) {
       try {
         const s = await getSeries(sym);
-        const a = analyze(s);
+        const a = decide(s);
         const p = st.pozisyonlar[sym];
         const price = s.fiyat;
         if (p) {
@@ -234,7 +243,7 @@ export async function backtest(raw: string) {
       else if (o.yuksek[i] >= pos.h2) { exit = pos.h2; neden = 'hedef 2'; }
       else {
         if (!pos.hit1 && o.yuksek[i] >= pos.h1) { pos.hit1 = true; pos.stop = Math.max(pos.stop, pos.giris); }
-        if (analyze(sub(i)).sinyal === 'SAT') { exit = s.kapanis[i]; neden = 'sinyal SAT'; }
+        if (decide(sub(i)).sinyal === 'SAT') { exit = s.kapanis[i]; neden = 'sinyal SAT'; }
       }
       if (exit !== null) {
         const g = exit / pos.giris - 1 - 0.002; // alış+satış komisyonu ~%0,2
@@ -243,7 +252,7 @@ export async function backtest(raw: string) {
         pos = null;
       }
     } else {
-      const a: any = analyze(sub(i));
+      const a: any = decide(sub(i));
       if (a.sinyal === 'AL' && a.islem_plani && a.islem_plani.risk_odul >= cfg.min_risk_odul) {
         pos = { giris: s.kapanis[i], stop: a.islem_plani.stop_loss, h1: a.islem_plani.hedef1, h2: a.islem_plani.hedef2, hit1: false };
         entryAt = day;
@@ -295,6 +304,11 @@ function applySettings(a: any): RobotConfig {
   next.aralik_dk = Math.round(n(a.aralik_dk, 5, 1440, cfg.aralik_dk));
   next.min_risk_odul = n(a.min_risk_odul, 1, 5, cfg.min_risk_odul);
   next.baslangic_bakiye = n(a.baslangic_bakiye, 50, 10_000_000, cfg.baslangic_bakiye);
+  if (typeof a.strateji === 'string' && a.strateji.trim()) {
+    const q = a.strateji.trim();
+    if (/^(varsay[ıi]lan|default|puan)$/i.test(q)) next.strateji = 'varsayilan';
+    else { const ind = findIndicator(q); if (!ind) throw new Error(`"${q}" stratejisi bulunamadı (indikator liste ile bakın)`); next.strateji = ind.id; }
+  }
   return next;
 }
 
@@ -302,7 +316,7 @@ const liveSummary = (c: RobotConfig) => [
   `Borsa: Binance spot (${BIN()})`, `Semboller: ${c.semboller.filter(isCrypto).join(', ') || '(kripto yok!)'}`,
   `İşlem başı: ${Math.min(c.islem_basi, LIVE_MAX())} USDT (üst sınır ${LIVE_MAX()})`, `En fazla açık pozisyon: ${c.max_pozisyon}`,
   `Günlük zarar sınırı: ${c.gunluk_zarar_limiti} USDT (aşılırsa robot durur)`, `Kontrol aralığı: ${c.aralik_dk} dk`,
-  'Strateji: sinyal AL + risk/ödül ≥ ' + c.min_risk_odul + '; stop, hedef 1\'de maliyete koruma, hedef 2 ya da sinyal SAT\'ta satış',
+  `Strateji: ${c.strateji && c.strateji !== 'varsayilan' ? `${findIndicator(c.strateji)?.ad ?? c.strateji} indikatörü` : 'piyasa_analiz puanı'}; ` + 'sinyal AL + risk/ödül ≥ ' + c.min_risk_odul + '; stop, hedef 1\'de maliyete koruma, hedef 2 ya da sinyal SAT\'ta satış',
 ].join('\n');
 
 export function initRobot(o: { broadcast: (e: object) => void; notify?: (t: string) => Promise<unknown> }) {
@@ -323,7 +337,7 @@ export const ROBOT_TOOLS = [
     type: 'function',
     function: {
       name: 'borsa_robotu',
-      description: "Otomatik alım-satım robotu. Varsayılan KÂĞIT (sanal para, simülasyon) modudur; canlı mod yalnız kripto/Binance ve onay kartıyla. İşlemler: durum (bakiye, pozisyonlar, kâr/zarar), baslat, durdur (anında), ayarla (semboller, islem_basi USD, max_pozisyon, gunluk_zarar_limiti USD, aralik_dk, min_risk_odul, baslangic_bakiye), tur (şimdi bir kontrol turu), test_et (sembolün son 1 yılında stratejiyi geriye dönük dener), gecmis (son işlemler), pozisyon_kapat (sembol ya da 'hepsi'), canli_ac (onay kartı), kagida_don, sifirla (kâğıt bakiyeyi sıfırla).",
+      description: "Otomatik alım-satım robotu. Varsayılan KÂĞIT (sanal para, simülasyon) modudur; canlı mod yalnız kripto/Binance ve onay kartıyla. İşlemler: durum (bakiye, pozisyonlar, kâr/zarar), baslat, durdur (anında), ayarla (semboller, islem_basi USD, max_pozisyon, gunluk_zarar_limiti USD, aralik_dk, min_risk_odul, baslangic_bakiye, strateji: 'varsayilan' ya da indikatör id'si: ott, most, pmax, alphatrend, tillson_t3, supertrend, utbot, squeeze, wavetrend, ichimoku, ema_kesisim, golden_cross, rsi, stoch_rsi, macd, bollinger, psar, adx, hull, donchian, chandelier, obv, cci, mfi, williams_r), tur (şimdi bir kontrol turu), test_et (sembolün son 1 yılında stratejiyi geriye dönük dener), gecmis (son işlemler), pozisyon_kapat (sembol ya da 'hepsi'), canli_ac (onay kartı), kagida_don, sifirla (kâğıt bakiyeyi sıfırla).",
       parameters: {
         type: 'object',
         properties: {
@@ -332,6 +346,7 @@ export const ROBOT_TOOLS = [
           semboller: { type: 'array', items: { type: 'string' }, description: 'Ör. ["BTC-USD","ETH-USD","THYAO"]' },
           islem_basi: { type: 'number' }, max_pozisyon: { type: 'number' }, gunluk_zarar_limiti: { type: 'number' },
           aralik_dk: { type: 'number' }, min_risk_odul: { type: 'number' }, baslangic_bakiye: { type: 'number' },
+          strateji: { type: 'string', description: "'varsayilan' ya da indikatör id'si (ör. supertrend)" },
         },
         required: ['islem'],
       },

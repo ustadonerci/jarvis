@@ -81,6 +81,24 @@ async function fetchPreview(kanal: string, before?: number): Promise<{ baslik: s
   return out;
 }
 
+/** Kanalın eski mesajları da (sayfa sayfa geriye) — indikatör arşivi gibi taramalar için */
+export async function fetchHistory(raw: string, sayfa = 10): Promise<{ baslik: string; mesajlar: TgPost[] }> {
+  const kanal = clean(raw);
+  if (!validName(kanal)) throw new Error('Geçerli bir kanal adı değil (ör. https://t.me/kanaladi)');
+  const first = await fetchPreview(kanal);
+  const all = new Map(first.mesajlar.map(m => [m.id, m]));
+  let before = Math.min(...first.mesajlar.map(m => m.id));
+  for (let i = 1; i < sayfa && before > 1; i++) {
+    const r = await fetchPreview(kanal, before).catch(() => null);
+    if (!r?.mesajlar.length) break;
+    for (const m of r.mesajlar) all.set(m.id, m);
+    const min = Math.min(...r.mesajlar.map(m => m.id));
+    if (min >= before) break;
+    before = min;
+  }
+  return { baslik: first.baslik, mesajlar: [...all.values()].sort((a, b) => a.id - b.id) };
+}
+
 // ---------------------------------------------------------------- Takip döngüsü
 
 async function poll(ch: Channel) {
