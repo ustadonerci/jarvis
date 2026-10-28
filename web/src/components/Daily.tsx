@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { deleteExpense, downloadExpensesCsv, getDaily, getExpenses, openJarvisBrowser, showJarvisBrowser, runDaily, saveDaily, type DailyCfg, type DailyData, type DailyKind, type ExpensesData } from '../lib/api';
+import { deleteExpense, downloadExpensesCsv, finishLogin, getDaily, getExpenses, getKeys, openJarvisBrowser, saveKeys, showJarvisBrowser, runDaily, saveDaily, type DailyCfg, type DailyData, type DailyKind, type ExpensesData } from '../lib/api';
 
 const ADI = { aksam: '📋 Günlük rapor', eposta: '📧 E-posta', github: '🐙 GitHub', harcama: '💳 Kart harcamaları', ay: '💳 Ay sonu gider tablosu' } as const;
 /** Rapordaki https linkleri tıklanabilir */
@@ -41,15 +41,7 @@ export function DailySettings({ flash }: { flash(t: string): void }) {
         <span className="small">Akşam raporu:</span>
         <select value={a.raporSaati} onChange={e => set({ raporSaati: Number(e.target.value) })}>{hours.map(h => <option key={h} value={h}>{h}:00</option>)}</select>
       </div>
-      {!d.eposta && (
-        <>
-          {d.epostaSifreReddedildi && <p className="warn small">⚠️ Ayarlar → API anahtarları'ndaki e-posta şifresi Gmail tarafından reddedildi (normal Gmail şifresi çalışmaz). Sorun değil: Jarvis artık Chrome'daki Gmail'i kullanıyor. İsterseniz o şifreyi Ayarlar'dan silin.</p>}
-          <p className="small">🌐 Uygulama şifresi girilmemiş: Jarvis Gmail'i <b>kendi Chrome penceresinden</b> düzenler (Chrome güvenlik gereği normal Chrome pencerenizin dışarıdan yönetilmesine izin vermez; bu yüzden Jarvis'in ayrı bir Chrome penceresi var). Aşağıdaki düğmeyle pencereyi açın ve Gmail'e <b>bir kez kendiniz</b> giriş yapın (şifrenizi Jarvis'e söylemeyin). Sonra pencereyi açık bırakabilir ya da kapatabilirsiniz; oturum hatırlanır.</p>
-          <div className="seg"><button onClick={() => openJarvisBrowser().then(() => flash('Normal bir Chrome penceresi açıldı: Gmail\'e kendiniz girin, sonra o pencereyi kapatın')).catch(e => flash(e.message))}>🌐 Gmail'e giriş penceresini aç</button></div>
-          <p className="muted small">Google, programın yönettiği pencerede girişi reddeder ("bu tarayıcı güvenli olmayabilir"). Bu düğme Jarvis'in bağlanmadığı normal bir Chrome penceresi açar: girin, sonra pencereyi <b>kapatın</b>; Jarvis arka planda devam eder.</p>
-          <p className="small">✅ <b>Önerilen ve Google'ın resmî yolu: uygulama şifresi.</b> Google Hesabı → Güvenlik → 2 Adımlı Doğrulama'yı açın, sonra <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer">myaccount.google.com/apppasswords</a> adresinden "Jarvis" adlı bir uygulama şifresi (16 harf) oluşturup Ayarlar → API anahtarları → "E-posta uygulama şifresi"ne yapıştırın. Böylece tarayıcı gerekmez.</p>
-        </>
-      )}
+      {!d.eposta && <GmailConnect flash={flash} reddedildi={!!d.epostaSifreReddedildi} onSaved={load} />}
       <p className="muted small">E-posta düzenleme: tanıtım/reklam, bülten ve spam Çöp'e taşınır (30 gün geri alınabilir), aboneliklerden çıkılır; kişisel, fatura, kargo ve güvenlik e-postaları silinmez, önemliler özetlenir. Repolar: beceri içeren ve en az 25 yıldızlı olanlar kurulur (günde en fazla 5); MCP içerenler güvenlik için kapalı eklenir.</p>
       <div className="seg">
         <span className="small">Jarvis'in tarayıcısı arka planda (küçültülmüş) çalışır:</span>
@@ -119,5 +111,49 @@ export function ExpenseSettings({ flash }: { flash(t: string): void }) {
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * Gmail bağlantısı. En kolay ve kalıcı yol: Google uygulama şifresi (Jarvis her seferinde kendisi girer, pencere
+ * gerekmez). Yedek: normal Chrome penceresinde kullanıcının kendisi girmesi + "Girişi bitirdim".
+ */
+function GmailConnect({ flash, reddedildi, onSaved }: { flash(t: string): void; reddedildi: boolean; onSaved(): void }) {
+  const [adres, setAdres] = useState('');
+  const [adresVar, setAdresVar] = useState(true);
+  const [sifre, setSifre] = useState('');
+  useEffect(() => { getKeys().then(k => { const f = k.fields.find(x => x.name === 'EMAIL_ADDRESS'); setAdresVar(!!f?.set); }).catch(() => {}); }, []);
+  const kaydet = () => {
+    const temiz = sifre.replace(/\s+/g, '');
+    if (!/^[a-z]{16}$/i.test(temiz)) return flash('Uygulama şifresi 16 harftir (ör. abcd efgh ijkl mnop). Normal Gmail şifreniz burada çalışmaz.');
+    if (!adresVar && !/^[^@\s]+@[^@\s]+$/.test(adres.trim())) return flash('Gmail adresinizi yazın');
+    saveKeys({ EMAIL_APP_PASSWORD: temiz, ...(!adresVar ? { EMAIL_ADDRESS: adres.trim() } : {}) })
+      .then(() => { setSifre(''); flash('Kaydedildi · Jarvis yeniden başlıyor; artık Gmail\'e kendisi girer'); setTimeout(onSaved, 6000); })
+      .catch(e => flash(e.message));
+  };
+  return (
+    <div className="ext-box" style={{ padding: 10 }}>
+      <p className="small"><b>📧 Gmail'i bağla: Jarvis her seferinde kendisi girsin (en kolay, 2 dakika)</b></p>
+      {reddedildi && <p className="warn small">Kayıtlı şifre Gmail tarafından reddedildi (normal Gmail şifresi çalışmaz; uygulama şifresi gerekir).</p>}
+      <ol className="small" style={{ margin: '4px 0 8px 18px', padding: 0 }}>
+        <li><a href="https://myaccount.google.com/signinoptions/twosv" target="_blank" rel="noopener noreferrer">2 Adımlı Doğrulama</a> açık değilse açın.</li>
+        <li><a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer">Uygulama şifreleri</a> sayfasında ad olarak "Jarvis" yazıp <b>Oluştur</b>'a basın.</li>
+        <li>Çıkan 16 harfli şifreyi aşağıya yapıştırıp <b>Kaydet</b>'e basın.</li>
+      </ol>
+      <div className="seg">
+        {!adresVar && <input className="ext-input" value={adres} onChange={e => setAdres(e.target.value)} placeholder="Gmail adresiniz" autoComplete="off" />}
+        <input className="ext-input" type="password" value={sifre} onChange={e => setSifre(e.target.value)} placeholder="16 harfli uygulama şifresi" autoComplete="off" spellCheck={false} />
+        <button className="on" disabled={!sifre.trim()} onClick={kaydet}>💾 Kaydet</button>
+      </div>
+      <p className="muted small">Bu şifre normal Gmail şifreniz değildir, yalnız Jarvis içindir ve istediğiniz zaman aynı sayfadan iptal edilebilir. Yalnız bu bilgisayara kaydedilir.</p>
+      <details>
+        <summary className="small">Uygulama şifresi istemiyorum: tarayıcıyla bağlan</summary>
+        <p className="small">Normal bir Chrome penceresi açılır (Jarvis o pencereye dokunmaz). Gmail'e kendiniz girin, sonra <b>✅ Girişi bitirdim</b>'e basın.</p>
+        <div className="seg">
+          <button onClick={() => openJarvisBrowser().then(() => flash('Chrome penceresi açıldı: Gmail\'e girin, sonra "Girişi bitirdim"e basın')).catch(e => flash(e.message))}>🌐 Gmail giriş penceresini aç</button>
+          <button className="on" onClick={() => finishLogin().then(() => flash('Tamam: Jarvis arka planda devam ediyor')).catch(e => flash(e.message))}>✅ Girişi bitirdim</button>
+        </div>
+      </details>
+    </div>
   );
 }
