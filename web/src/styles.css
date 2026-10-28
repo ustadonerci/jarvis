@@ -901,3 +901,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .save-bar span { flex: 1; min-width: 140px; font-size: 13px; }
 .save-bar button { padding: 8px 16px; border-radius: 8px; }
 .tg-diag { margin: 6px 0; } .tg-diag p { margin: 0 0 4px; overflow-wrap: anywhere; }
+
+/* Sohbet modu düğmesi: durumuna göre nabız */
+.conv-pill.on { box-shadow: 0 0 0 1px var(--accent) inset; }
+.conv-pill.s-dinliyor { animation: conv-pulse 1.4s ease-in-out infinite; }
+@keyframes conv-pulse { 0%, 100% { box-shadow: 0 0 0 1px var(--accent) inset, 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); } 50% { box-shadow: 0 0 0 1px var(--accent) inset, 0 0 0 8px transparent; } }

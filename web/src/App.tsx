@@ -38,6 +38,7 @@ import { TgChannelSettings } from './components/TgChannels';
 import { IndicatorSettings } from './components/Indicators';
 import { Markdown } from './lib/markdown';
 import { createRecognizer, speechRecognitionSupported, voice } from './lib/speech';
+import { Conversation, classify, type ConvState } from './lib/conversation';
 import { DEVICE_LABEL, type PersonaOption, type ThemeOption, type CoreState, type CurrencyCode, type Dashboard, type Device, type GreetingPeriod, type Health, type JarvisReply, type Sahne, type ServerEvent, type StoredMessage, type UiMode, type VoiceOption, type VoiceSel, type WakeConfig } from './lib/types';
 import { atServerTime, clockInfo, keepAwake, listenForCommand, preciseTimeout, startClockSync, syncClock, type CommandListen } from './lib/wake';
 
@@ -128,6 +129,8 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const playToken = useRef(0);
+  /** Oynatılan sahne (söze girilince kaldığı yer) */
+  const sceneIdxRef = useRef(-1);
   const recRef = useRef<{ stop(): void } | null>(null);
   const liveRef = useRef<Live | null>(null);
   /** Gönderme anı: "ilk sahne geldi" ve "ilk ses çalmaya başladı" ölçümü için */
@@ -156,6 +159,8 @@ export default function App() {
   // Brifing komutunda açılış, cevap yazılmadan önce çalınır; brifing gelince o sahne atlanır.
   const openingRef = useRef<{ text: string; done: Promise<void> } | null>(null);
   const [preCaption, setPreCaption] = useState('');
+  const preCaptionRef = useRef('');
+  preCaptionRef.current = preCaption;
   // Sabah panosu: ilk yüklemede çekilir, sonra sunucu 5 dakikada bir SSE ile yeniler.
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [dashTried, setDashTried] = useState(false);
@@ -232,11 +237,11 @@ export default function App() {
   const syncReply = (l: Live) => setReply({ ...l.base, sahneler: l.scenes.slice() });
 
   // ---- Sahne oynatıcı: sahneler geldikçe çalar; sahne süresini sesin kendisi belirler ----
-  const runPlayer = useCallback(async (l: Live) => {
+  const runPlayer = useCallback(async (l: Live, from = 0) => {
     // Açılış komut anında çalındıysa bitmesini bekle, brifinge 2. sahneden devam et.
     const pre = openingRef.current;
     openingRef.current = null;
-    let start = 0;
+    let start = from;
     if (pre) {
       const before = playToken.current;
       await waitScene(l, 0);
@@ -265,6 +270,7 @@ export default function App() {
       const ctx = (j: number) => ({ prev: l.scenes[j - 1]?.ses, next: l.scenes[j + 1]?.ses });
       l.scenes.slice(i, i + 3).forEach((s, k) => voice.preload(s.ses, l.voice, i + k + 1, n, false, ctx(i + k)));
       setSceneIdx(i);
+      sceneIdxRef.current = i;
       voice.blip();
       // Eskiden her sahneye max(2,6 sn, 45 ms × karakter) zorla bekleniyordu. Artık süreyi ses belirler;
       // yalnızca görselli sahnelerde animasyon tamamlansın diye en fazla 1,2 sn alt sınır var.
@@ -345,7 +351,7 @@ export default function App() {
   const greet = (e: WakeEvent, isGreeter: boolean) => {
     const text = e.greeting.text;
     const my = ++playToken.current;
-    setSceneIdx(-1);
+    setSceneIdx(-1); sceneIdxRef.current = -1;
     setPreCaption(text);
     setCore('speaking');
     const end = () => {
@@ -586,7 +592,7 @@ export default function App() {
           voice.serverTts = e.voice.model !== 'browser' && !mock;
           break;
         case 'dashboard': setDash(e.data); setDashTried(true); break;
-        case 'cleared': setMessages([]); setReply(null); setSceneIdx(-1); break;
+        case 'cleared': setMessages([]); setReply(null); setSceneIdx(-1); sceneIdxRef.current = -1; break;
         // Ayarlar'dan anahtar kaydedildi: sunucu yeni değerlerle açılınca sayfa da baştan yüklensin (demo modu vb.)
         case 'restarting': setTimeout(() => location.reload(), 4000); break;
         case 'onay': setApprovalKey(k => k + 1); if (e.yeni) flash(`Onay bekliyor: ${e.yeni.baslik}`); break;
@@ -691,7 +697,7 @@ export default function App() {
     setInterim('');
     setTelemetry([]);
     setCore('thinking');
-    setSceneIdx(-1);
+    setSceneIdx(-1); sceneIdxRef.current = -1;
     t0Ref.current = performance.now();
     try {
       await sendChat(t, device, image);
@@ -722,6 +728,8 @@ export default function App() {
   const toggleMic = async () => {
     voice.unlock();
     if (core === 'listening') { recRef.current?.stop(); return; }
+    // Sohbet modu açıksa elle kayıt sürerken onun dinlemesi susar (tarayıcıda aynı anda tek ses tanıma)
+    convRef.current?.suspend();
     stopPlayback();
     setVideo(null); // mikrofon videonun sesini duymasın
     if (!recorderSupported()) return startWebSpeech();
@@ -752,6 +760,7 @@ export default function App() {
         maxMs: 10 * 60_000, // emniyet: 10 dk (Ayarlar'da seçilen mikrofon; alkış dinleyicisinin akışı değil)
         onStop: async (blob, info) => {
           recRef.current = null;
+          setTimeout(() => { convRef.current?.resume(); convRef.current?.begin(); }, 300);
           const backup = sideText();
           // Mikrofondan neredeyse hiç ses gelmediyse kaydı göndermeye değmez; sebebini söyle (eskiden sessizce kapanıyordu)
           if ((!blob || info.peak < 0.004) && !(await backup)) {
@@ -794,7 +803,7 @@ export default function App() {
   const speakLine = (text: string, delay = 0) => {
     if (!voiceSel) return;
     const my = ++playToken.current;
-    setSceneIdx(-1);
+    setSceneIdx(-1); sceneIdxRef.current = -1;
     setPreCaption(text);
     setCore('speaking');
     voice.rate = voiceSel.speed;
@@ -808,6 +817,131 @@ export default function App() {
       });
     }, delay);
   };
+
+  // =================================================================== Sohbet modu (ChatGPT sesli sohbeti gibi)
+  // "Merhaba Jarvis" / "Selam" ile uyanır, cevaptan sonra yeniden dinler; Jarvis konuşurken söze girilirse durur,
+  // soruyu cevaplar, sonra kaldığı yerden devam etmeyi önerir ("devam et" her zaman kaldığı yerden sürdürür).
+  const convPref = (k: string, d: boolean) => { try { const v = localStorage.getItem(`jarvis.sohbet.${k}`); return v === null ? d : v === '1'; } catch { return d; } };
+  const convSupported = Conversation.supported() && !/iPad|iPhone|iPod/.test(navigator.userAgent);
+  const [convOn, setConvOn] = useState(() => convSupported && convPref('acik', true));
+  const [convBarge, setConvBarge] = useState(() => convPref('soze', true));
+  const [convBare, setConvBare] = useState(() => convPref('selam', true));
+  const [convState, setConvState] = useState<ConvState>('kapali');
+  const convRef = useRef<Conversation | null>(null);
+  /** Söze girilen cevap ve sahnesi: "devam et" buradan sürer */
+  const interruptedRef = useRef<{ l: Live; i: number } | null>(null);
+  /** Araya giren soru cevaplanınca "kaldığım yerden devam edeyim mi?" sorulsun */
+  const askResumeRef = useRef(false);
+  /** "Devam edeyim mi?" sorusunun cevabı bekleniyor */
+  const awaitingResumeRef = useRef(false);
+  const saveConvPref = (k: string, v: boolean) => { try { localStorage.setItem(`jarvis.sohbet.${k}`, v ? '1' : '0'); } catch { /* yok say */ } };
+
+  const resumeInterrupted = () => {
+    const it = interruptedRef.current;
+    interruptedRef.current = null;
+    awaitingResumeRef.current = false;
+    askResumeRef.current = false;
+    if (!it) return false;
+    liveRef.current = it.l;
+    syncReply(it.l);
+    runPlayer(it.l, Math.max(0, it.i));
+    return true;
+  };
+
+  const convHandlers = useRef({
+    onWake: (_rest: string) => {},
+    onUtterance: (_t: string) => {},
+    onInterrupt: () => {},
+  });
+  convHandlers.current.onWake = (rest: string) => {
+    lastActive.current = Date.now();
+    if (wstateRef.current !== 'awake') { postWake('ses: merhaba Jarvis', rest || undefined).catch(() => {}); if (rest) setTimeout(() => submit(rest), 6500); return; }
+    if (rest) { submit(rest); return; }
+    const hi = ['Buyurun efendim.', 'Dinliyorum efendim.', 'Evet efendim?', 'Sizi dinliyorum.'];
+    speakLine(hi[Math.floor(Math.random() * hi.length)]);
+  };
+  convHandlers.current.onInterrupt = () => {
+    // Yalnız gerçek bir cevap okunurken kaldığı yer saklanır (tek cümlelik selamlaşmada değil)
+    const l = liveRef.current;
+    if (l && coreRef.current === 'speaking' && sceneIdxRef.current >= 0 && sceneIdxRef.current < l.scenes.length) {
+      interruptedRef.current = { l, i: sceneIdxRef.current };
+    }
+    stopPlayback();
+    setCore('listening');
+    setInterim('dinliyorum…');
+    // Söze girip bir şey söylenmezse "dinliyorum"da takılı kalmasın
+    setTimeout(() => { if (coreRef.current === 'listening' && !recRef.current) { setCore('idle'); setInterim(''); } }, 9000);
+  };
+  convHandlers.current.onUtterance = (text: string) => {
+    lastActive.current = Date.now();
+    setInterim('');
+    const intent = classify(text);
+    if (intent === 'devam' || (awaitingResumeRef.current && intent === 'evet')) {
+      if (!resumeInterrupted()) speakLine('Devam edecek bir konuşmamız yok efendim, ne sormak istersiniz?');
+      return;
+    }
+    if (awaitingResumeRef.current && intent === 'hayir') {
+      interruptedRef.current = null; awaitingResumeRef.current = false;
+      speakLine('Peki efendim.');
+      return;
+    }
+    if (intent === 'dur') { stopPlayback(); setCore('idle'); return; }
+    if (intent === 'bitir') {
+      interruptedRef.current = null; awaitingResumeRef.current = false; askResumeRef.current = false;
+      speakLine('Rica ederim efendim. İhtiyacınız olursa "Merhaba Jarvis" demeniz yeterli.');
+      return;
+    }
+    awaitingResumeRef.current = false;
+    askResumeRef.current = !!interruptedRef.current;
+    submit(text);
+  };
+
+  // Motor bir kez kurulur; kancalar güncel durumu ref'lerden okur
+  useEffect(() => {
+    if (!convOn) { convRef.current?.stop(); convRef.current = null; setConvState('kapali'); return; }
+    const c = new Conversation({
+      speaking: () => coreRef.current === 'speaking' || voice.isPlaying(),
+      thinking: () => coreRef.current === 'thinking',
+      spokenTexts: () => {
+        const l = liveRef.current, i = sceneIdxRef.current;
+        return [preCaptionRef.current, l?.scenes[i]?.ses ?? '', l?.scenes[i - 1]?.ses ?? '', l?.scenes[i + 1]?.ses ?? ''].filter(Boolean);
+      },
+      onWake: r => convHandlers.current.onWake(r),
+      onUtterance: t => convHandlers.current.onUtterance(t),
+      onInterrupt: () => convHandlers.current.onInterrupt(),
+      onState: (st, heard) => {
+        setConvState(st);
+        if (st === 'hata') flash(`Sohbet modu: ${heard}. Tarayıcıda mikrofon izni verin.`);
+        else if (heard && (st === 'dinliyor' || st === 'uyandirma')) setInterim(heard);
+      },
+    });
+    c.bargeIn = convBarge;
+    c.bareGreeting = convBare;
+    convRef.current = c;
+    c.start();
+    // Tarayıcı ses çalmak için bir dokunuş ister: ilk tıklamada sesin kilidi açılır
+    const unlock = () => voice.unlock();
+    window.addEventListener('pointerdown', unlock, { once: true });
+    return () => { window.removeEventListener('pointerdown', unlock); c.stop(); if (convRef.current === c) convRef.current = null; };
+  }, [convOn]);
+  useEffect(() => { if (convRef.current) { convRef.current.bargeIn = convBarge; convRef.current.bareGreeting = convBare; } }, [convBarge, convBare]);
+
+  // Jarvis konuşmayı bitirince: dinleme süresi yeniden başlar; araya giren soru cevaplandıysa devam önerisi
+  const prevCore = useRef(core);
+  useEffect(() => {
+    const was = prevCore.current;
+    prevCore.current = core;
+    const c = convRef.current;
+    if (!c) return;
+    if (was === 'speaking' && core === 'idle') {
+      c.spokeEnded();
+      if (askResumeRef.current && interruptedRef.current && c.active) {
+        askResumeRef.current = false;
+        awaitingResumeRef.current = true;
+        speakLine('Kaldığım yerden devam etmemi ister misiniz efendim?');
+      }
+    } else c.touched();
+  }, [core]);
 
   /** Yüz kilidi: seçili sesle tek cümle. Sesi sunucuda önceden hazır (server/src/scripted.ts YUZ_KILIDI ile aynı metin).
    *  En fazla dakikada bir; Jarvis başka bir şey anlatıyorsa araya girmez. */
@@ -1260,6 +1394,16 @@ export default function App() {
             <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
           </button>
           {core === 'speaking' && <button className="icon-btn" onClick={stopPlayback} aria-label="Durdur">■</button>}
+          {convSupported && (
+            <button
+              className={`icon-btn conv-pill ${convOn ? `on s-${convState}` : ''}`}
+              onClick={() => { voice.unlock(); setConvOn(v => { saveConvPref('acik', !v); flash(!v ? 'Sohbet modu açık: "Merhaba Jarvis" deyin' : 'Sohbet modu kapalı'); return !v; }); }}
+              title={!convOn ? 'Sohbet modu kapalı (açmak için dokunun)' : convState === 'uyandirma' ? '"Merhaba Jarvis" ya da "Selam" deyin' : convState === 'dinliyor' ? 'Sohbetteyiz: konuşun' : convState === 'konusuyor' ? 'Jarvis konuşuyor: söze girebilirsiniz' : convState === 'hata' ? 'Mikrofon izni yok' : 'Sohbet modu'}
+              aria-label="Sohbet modu"
+            >
+              {!convOn ? '💬' : convState === 'dinliyor' ? '🟢' : convState === 'konusuyor' ? '🗣️' : convState === 'dusunuyor' ? '⏳' : convState === 'hata' ? '⚠️' : '👂'}
+            </button>
+          )}
         </footer>
         </>
       )}
@@ -1335,6 +1479,18 @@ export default function App() {
                   <ExpenseSettings flash={flash} />
                   <TgChannelSettings flash={flash} />
                   <IndicatorSettings flash={flash} />
+                  <label>Sohbet modu (ChatGPT gibi sesli sohbet)</label>
+                  {!convSupported ? <p className="muted small">Bu tarayıcıda sürekli dinleme yok. Bilgisayarda Chrome ya da Edge ile açın (iPhone Safari desteklemiyor).</p> : (
+                    <>
+                      <p className="muted small">Açıkken Jarvis sürekli dinler: "Merhaba Jarvis", "Selam Jarvis", "Hey Jarvis" ya da "Jarvis, …" deyince uyanır; cevaptan sonra mikrofona basmadan konuşmaya devam edersiniz. Jarvis konuşurken söze girerseniz durur, sorunuzu cevaplar ve "kaldığım yerden devam edeyim mi?" diye sorar ("devam et" deyince sürdürür). 30 saniye konuşulmazsa ya da "görüşürüz / teşekkürler bu kadar" deyince yeniden "Merhaba Jarvis" bekler. Hoparlörle söze girme bazen Jarvis'in kendi sesine takılabilir; kulaklık en iyisidir.</p>
+                      <div className="seg">
+                        <button className={convOn ? 'on' : ''} onClick={() => { voice.unlock(); setConvOn(v => { saveConvPref('acik', !v); return !v; }); }}>{convOn ? '✅ Sohbet modu açık' : 'Sohbet modu kapalı'}</button>
+                        <button className={convBarge ? 'on' : ''} onClick={() => setConvBarge(v => { saveConvPref('soze', !v); return !v; })}>{convBarge ? '✅' : '⬜'} Konuşurken söze girebileyim</button>
+                        <button className={convBare ? 'on' : ''} onClick={() => setConvBare(v => { saveConvPref('selam', !v); return !v; })}>{convBare ? '✅' : '⬜'} Yalnız "Selam / Merhaba" da uyandırsın</button>
+                      </div>
+                      {convOn && <p className="small">Durum: <b>{convState === 'uyandirma' ? '"Merhaba Jarvis" bekleniyor' : convState === 'dinliyor' ? 'sohbetteyiz, dinliyorum' : convState === 'konusuyor' ? 'Jarvis konuşuyor' : convState === 'dusunuyor' ? 'düşünüyor' : convState === 'hata' ? 'mikrofon izni yok' : 'kapalı'}</b></p>}
+                    </>
+                  )}
                   <MicTest flash={flash} />
                   <KeySettings flash={flash} />
                   <ProviderSettings flash={flash} />
