@@ -39,6 +39,7 @@ import { IndicatorSettings } from './components/Indicators';
 import { Markdown } from './lib/markdown';
 import { createRecognizer, speechRecognitionSupported, voice } from './lib/speech';
 import { Conversation, classify, type ConvState } from './lib/conversation';
+import { ConvDiagnostics } from './components/ConvDiagnostics';
 import { DEVICE_LABEL, type PersonaOption, type ThemeOption, type CoreState, type CurrencyCode, type Dashboard, type Device, type GreetingPeriod, type Health, type JarvisReply, type Sahne, type ServerEvent, type StoredMessage, type UiMode, type VoiceOption, type VoiceSel, type WakeConfig } from './lib/types';
 import { atServerTime, clockInfo, keepAwake, listenForCommand, preciseTimeout, startClockSync, syncClock, type CommandListen } from './lib/wake';
 
@@ -827,6 +828,9 @@ export default function App() {
   const [convBarge, setConvBarge] = useState(() => convPref('soze', true));
   const [convBare, setConvBare] = useState(() => convPref('selam', true));
   const [convState, setConvState] = useState<ConvState>('kapali');
+  /** Mikrofondan son duyulan (sorun giderme: Jarvis beni duyuyor mu) */
+  const [convHeard, setConvHeard] = useState('');
+  const heardTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const convRef = useRef<Conversation | null>(null);
   /** Söze girilen cevap ve sahnesi: "devam et" buradan sürer */
   const interruptedRef = useRef<{ l: Live; i: number } | null>(null);
@@ -886,6 +890,7 @@ export default function App() {
       return;
     }
     if (intent === 'dur') { stopPlayback(); setCore('idle'); return; }
+    if (intent === 'kapat') { speakLine('Sohbet modunu kapattım efendim. Açmak için alttaki simgeye dokunun.'); setTimeout(() => { setConvOn(false); saveConvPref('acik', false); }, 2500); return; }
     if (intent === 'bitir') {
       interruptedRef.current = null; awaitingResumeRef.current = false; askResumeRef.current = false;
       speakLine('Rica ederim efendim. İhtiyacınız olursa "Merhaba Jarvis" demeniz yeterli.');
@@ -909,6 +914,11 @@ export default function App() {
       onWake: r => convHandlers.current.onWake(r),
       onUtterance: t => convHandlers.current.onUtterance(t),
       onInterrupt: () => convHandlers.current.onInterrupt(),
+      onHeard: t => {
+        setConvHeard(t);
+        if (heardTimer.current) clearTimeout(heardTimer.current);
+        heardTimer.current = setTimeout(() => setConvHeard(''), 5000);
+      },
       onState: (st, heard) => {
         setConvState(st);
         if (st === 'hata') flash(`Sohbet modu: ${heard}. Tarayıcıda mikrofon izni verin.`);
@@ -1397,13 +1407,21 @@ export default function App() {
           {convSupported && (
             <button
               className={`icon-btn conv-pill ${convOn ? `on s-${convState}` : ''}`}
-              onClick={() => { voice.unlock(); setConvOn(v => { saveConvPref('acik', !v); flash(!v ? 'Sohbet modu açık: "Merhaba Jarvis" deyin' : 'Sohbet modu kapalı'); return !v; }); }}
-              title={!convOn ? 'Sohbet modu kapalı (açmak için dokunun)' : convState === 'uyandirma' ? '"Merhaba Jarvis" ya da "Selam" deyin' : convState === 'dinliyor' ? 'Sohbetteyiz: konuşun' : convState === 'konusuyor' ? 'Jarvis konuşuyor: söze girebilirsiniz' : convState === 'hata' ? 'Mikrofon izni yok' : 'Sohbet modu'}
+              onClick={() => {
+                voice.unlock();
+                // Dokunuş sohbeti KAPATMAZ: kapalıysa açar, açıksa "sizi dinliyorum" der (kapatmak: Ayarlar ya da "sohbet modunu kapat")
+                if (!convOn) { saveConvPref('acik', true); setConvOn(true); setTimeout(() => { convRef.current?.begin(); speakLine('Sohbet modu açık. Dinliyorum efendim.'); }, 600); return; }
+                if (convState === 'konusuyor') { stopPlayback(); return; }
+                convRef.current?.begin();
+                speakLine('Dinliyorum efendim.');
+              }}
+              title={!convOn ? 'Sohbet modu kapalı: açmak için dokunun' : convState === 'uyandirma' ? '"Merhaba Jarvis" deyin ya da dokunun' : convState === 'dinliyor' ? 'Sohbetteyiz: konuşun' : convState === 'konusuyor' ? 'Jarvis konuşuyor: söze girebilirsiniz (dokunursanız susar)' : convState === 'hata' ? 'Mikrofon izni yok' : 'Sohbet modu'}
               aria-label="Sohbet modu"
             >
               {!convOn ? '💬' : convState === 'dinliyor' ? '🟢' : convState === 'konusuyor' ? '🗣️' : convState === 'dusunuyor' ? '⏳' : convState === 'hata' ? '⚠️' : '👂'}
             </button>
           )}
+          {convOn && convHeard && <span className="conv-heard" title="Mikrofonun duyduğu">🎙️ “{convHeard.slice(-60)}”</span>}
         </footer>
         </>
       )}
@@ -1488,6 +1506,7 @@ export default function App() {
                         <button className={convBarge ? 'on' : ''} onClick={() => setConvBarge(v => { saveConvPref('soze', !v); return !v; })}>{convBarge ? '✅' : '⬜'} Konuşurken söze girebileyim</button>
                         <button className={convBare ? 'on' : ''} onClick={() => setConvBare(v => { saveConvPref('selam', !v); return !v; })}>{convBare ? '✅' : '⬜'} Yalnız "Selam / Merhaba" da uyandırsın</button>
                       </div>
+                      {convOn && <ConvDiagnostics conv={convRef} flash={flash} />}
                       {convOn && <p className="small">Durum: <b>{convState === 'uyandirma' ? '"Merhaba Jarvis" bekleniyor' : convState === 'dinliyor' ? 'sohbetteyiz, dinliyorum' : convState === 'konusuyor' ? 'Jarvis konuşuyor' : convState === 'dusunuyor' ? 'düşünüyor' : convState === 'hata' ? 'mikrofon izni yok' : 'kapalı'}</b></p>}
                     </>
                   )}

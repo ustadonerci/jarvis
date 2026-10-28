@@ -34,11 +34,12 @@ function restOf(original: string, foldedRest: string): string {
   return words.slice(-n).join(' ').replace(/^[,.!?;:\s]+/, '').trim();
 }
 
-export type Intent = 'devam' | 'dur' | 'bitir' | 'evet' | 'hayir' | 'soru';
+export type Intent = 'devam' | 'dur' | 'bitir' | 'kapat' | 'evet' | 'hayir' | 'soru';
 export function classify(text: string): Intent {
   const t = fold(text);
   if (/^(?:evet\s+)?(?:devam(?:\s+et(?:in)?)?|kaldigin yerden devam(?:\s+et)?|devam edebilirsin|devam edelim|surdur)$/.test(t)) return 'devam';
   if (/^(?:dur|sus|bekle|kes|yeter|tamam yeter|bir dakika|dur bir dakika|durdur|sessiz ol)$/.test(t)) return 'dur';
+  if (/sohbet modunu kapat|dinlemeyi kapat|beni dinleme/.test(t)) return 'kapat';
   if (/(?:gorusuruz|hosca kal|hoscakal|sohbeti bitir|bu kadar yeter|bu kadar|tesekkurler (?:jarvis )?bu kadar|kapat sohbeti|iyi geceler)/.test(t)) return 'bitir';
   if (/^(?:evet|olur|tabi|tabii|tamam|lutfen|evet lutfen)$/.test(t)) return 'evet';
   if (/^(?:hayir|gerek yok|istemiyorum|yok)$/.test(t)) return 'hayir';
@@ -78,7 +79,12 @@ export interface ConvHooks {
   /** Jarvis konuşurken kullanıcı söze girdi (ilk anlamlı sözcüklerde) */
   onInterrupt(): void;
   onState(s: ConvState, heard: string): void;
+  /** Tanıma ne duyarsa (uyandırma sözü olmasa da): ekranda "duyduğum" göstergesi için */
+  onHeard?(t: string): void;
 }
+
+/** Sorun giderme: ses tanıma çalışıyor mu, ne duydu, hangi hata */
+export interface ConvStats { basladi: number; sonuc: number; sonDuyulan: string; sonDuyulanAt: number; sonHata: string; sonHataAt: number }
 
 export class Conversation {
   private rec: any = null;
@@ -99,6 +105,7 @@ export class Conversation {
   bareGreeting = true;
   /** Jarvis konuşurken söze girilebilsin mi */
   bargeIn = true;
+  stats: ConvStats = { basladi: 0, sonuc: 0, sonDuyulan: '', sonDuyulanAt: 0, sonHata: '', sonHataAt: 0 };
 
   constructor(private h: ConvHooks) {}
 
@@ -160,10 +167,13 @@ export class Conversation {
         const r = e.results[i];
         const t = String(r[0]?.transcript ?? '').trim();
         if (!t) continue;
+        this.stats.sonuc++; this.stats.sonDuyulan = t; this.stats.sonDuyulanAt = Date.now();
+        this.h.onHeard?.(t);
         r.isFinal ? this.final(t) : this.interim(t);
       }
     };
     rec.onerror = (e: any) => {
+      if (e.error !== 'no-speech' && e.error !== 'aborted') { this.stats.sonHata = String(e.error); this.stats.sonHataAt = Date.now(); }
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed' || e.error === 'audio-capture') {
         this.on = false;
         this.h.onState('hata', e.error === 'audio-capture' ? 'Mikrofon bulunamadı' : 'Mikrofon izni verilmedi');
@@ -174,7 +184,7 @@ export class Conversation {
       // Tarayıcı sürekli dinlemeyi zaman zaman kendisi kapatır: hemen yeniden aç (hata üst üste gelirse yavaşla)
       if (this.on && !this.suspended) setTimeout(() => this.on && !this.suspended && !this.rec && this.open(), this.errors > 3 ? 3000 : 150);
     };
-    try { rec.start(); this.rec = rec; } catch { setTimeout(() => this.open(), 1000); }
+    try { rec.start(); this.rec = rec; this.stats.basladi++; } catch { setTimeout(() => this.open(), 1000); }
   }
 
   private interim(t: string) {
