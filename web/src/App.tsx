@@ -910,24 +910,38 @@ export default function App() {
   // Tarayıcının sürekli ses tanıması bazı bilgisayarlarda hiç sonuç vermiyor (yanlış varsayılan mikrofon, tarayıcı);
   // bu yüzden kullanıcının sırası mikrofon düğmesiyle aynı yoldan alınır: seçili mikrofon → kayıt → sunucuda yazıya.
   const turnRef = useRef<{ stop(): void } | null>(null);
+  /** Son sıranın dökümü (Ayarlar → Sohbet modu): kayıt süresi, ses duyuldu mu, en yüksek seviye, yazıya çevrilen */
+  const lastTurnRef = useRef<{ sn: number; duyuldu: boolean; tepe: number; metin: string; hata: string } | null>(null);
   const emptyTurns = useRef(0);
   const listenTurn = async () => {
     const c = convRef.current;
     if (!c || !c.active || turnRef.current || recRef.current || coreRef.current !== 'idle' || !recorderSupported()) return;
     c.suspend();
     setCore('listening');
-    setInterim('🟢 dinliyorum… konuşun');
+    setInterim('🟢 dinliyorum… konuşun (bitirince susun ya da simgeye dokunun)');
+    // Canlı gösterge: mikrofon seviyesi ve geçen süre (sorun giderme: kayıt bitiyor mu, ses geliyor mu)
+    const tStart = performance.now();
+    let lvMax = 0;
+    const bars = (v: number) => '▮'.repeat(Math.round(Math.min(1, v) * 8)).padEnd(8, '▯');
+    let lastUi = 0;
     try {
       turnRef.current = await startRecording({
         silenceMs: 1100,
         noSpeechMs: 9000,
-        maxMs: 60_000,
+        maxMs: 25_000,
         sendSilent: true,
-        onLevel: lv => { if (lv > 0.08) lastActive.current = Date.now(); },
+        onLevel: lv => {
+          if (lv > 0.08) lastActive.current = Date.now();
+          lvMax = Math.max(lvMax * 0.9, lv);
+          const now = performance.now();
+          if (now - lastUi > 200) { lastUi = now; setInterim(`🟢 dinliyorum ${bars(lvMax)} ${Math.round((now - tStart) / 1000)} sn · bitirince susun ya da simgeye dokunun`); }
+        },
         onStop: async (blob, info) => {
           turnRef.current = null;
           const cc = convRef.current;
           cc?.resume();
+          const turn = { sn: Math.round(info.ms / 100) / 10, duyuldu: info.heard, tepe: Math.round(info.peak * 1000) / 1000, metin: '', hata: '' };
+          lastTurnRef.current = turn;
           // Kısık masaüstü mikrofonlarında konuşma algılanmayabilir: biraz ses varsa yine de yazıya çevrilir
           const something = !!blob && (info.heard || info.peak >= 0.02);
           if (!something) {
@@ -944,9 +958,10 @@ export default function App() {
           emptyTurns.current = 0;
           setInterim('anlıyorum…');
           let text = '';
-          try { text = blob ? await stt(blob, info.ms) : ''; } catch (e: any) { flash(`Ses yazıya çevrilemedi: ${e.message}`); }
+          try { text = blob ? await stt(blob, info.ms) : ''; } catch (e: any) { turn.hata = String(e?.message || e); flash(`Ses yazıya çevrilemedi: ${e.message}`); }
+          turn.metin = text;
           setInterim('');
-          if (!text.trim()) { setCore(cs => (cs === 'listening' ? 'idle' : cs)); return; }
+          if (!text.trim()) { flash('Sizi anlayamadım efendim, tekrar söyler misiniz?'); setCore(cs => (cs === 'listening' ? 'idle' : cs)); return; }
           setConvHeard(text);
           cc?.touched();
           convHandlers.current.onUtterance(text);
@@ -1416,7 +1431,7 @@ export default function App() {
           <div className="caption">
             <AnimatePresence mode="wait">
               {caption && (
-                <motion.p key={caption} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+                <motion.p key={core === 'listening' ? 'dinliyor' : caption} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
                   {caption}
                 </motion.p>
               )}
@@ -1577,7 +1592,7 @@ export default function App() {
                         <button className={convBarge ? 'on' : ''} onClick={() => setConvBarge(v => { saveConvPref('soze', !v); return !v; })}>{convBarge ? '✅' : '⬜'} Konuşurken söze girebileyim</button>
                         <button className={convBare ? 'on' : ''} onClick={() => setConvBare(v => { saveConvPref('selam', !v); return !v; })}>{convBare ? '✅' : '⬜'} Yalnız "Selam / Merhaba" da uyandırsın</button>
                       </div>
-                      {convOn && <ConvDiagnostics conv={convRef} flash={flash} />}
+                      {convOn && <ConvDiagnostics conv={convRef} lastTurn={lastTurnRef} flash={flash} />}
                       {convOn && <p className="small">Durum: <b>{convState === 'uyandirma' ? '"Merhaba Jarvis" bekleniyor' : convState === 'dinliyor' ? 'sohbetteyiz, dinliyorum' : convState === 'konusuyor' ? 'Jarvis konuşuyor' : convState === 'dusunuyor' ? 'düşünüyor' : convState === 'hata' ? 'mikrofon izni yok' : 'kapalı'}</b></p>}
                     </>
                   )}

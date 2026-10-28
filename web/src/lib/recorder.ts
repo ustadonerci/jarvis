@@ -134,7 +134,12 @@ export async function startRecording(h: {
   const t0 = performance.now();
   let heard = blind;
   let lastVoice = t0;
-  let floor = Infinity; // gürültü tabanı: yumuşatılmış seviyenin şimdiye kadarki en düşüğü
+  // Gürültü tabanı: yumuşatılmış seviyenin en düşüğü, ama sürekli bir uğultu (fan, oda, mikrofonun otomatik
+  // kazancı) varsa birkaç saniyede ona doğru yükselir. Eskiden yalnız en düşük değer tutuluyordu: uğultu eşiğin
+  // üstünde kalınca kullanıcı hiç "susmuyor" sayılıyor, kayıt süre sonuna (60 sn) kadar sürüyordu.
+  let floor = Infinity;
+  /** Konuşmanın ulaştığı (yavaş sönen) seviye: bunun üçte birinin altı da sessizlik sayılır */
+  let speech = 0;
   let smooth = 0;
   let peak = 0;
   let stopped = false;
@@ -162,12 +167,14 @@ export async function startRecording(h: {
     const rms = Math.sqrt(sum / buf.length);
     peak = Math.max(peak, rms);
     smooth = smooth ? smooth * 0.7 + rms * 0.3 : rms;
-    floor = Math.min(floor, smooth);
+    floor = smooth < floor ? smooth : floor + (smooth - floor) * 0.012;
     h.onLevel?.(Math.min(1, rms * 4));
     const now = performance.now();
     // Konuşma: gürültü tabanının ~3 katı (en az 0,012). Eski sabit eşik (0,035) kısık mikrofonlarda hiç aşılmıyordu.
-    const thr = Math.max(0.012, Math.min(0.05, floor * 3));
-    if (!blind && now - t0 > 150 && rms > thr) { heard = true; lastVoice = now; }
+    const thr = Math.max(0.012, Math.min(0.08, floor * 2.5));
+    speech = Math.max(speech * 0.995, heard ? smooth : 0);
+    const loud = smooth > thr && !(heard && smooth < speech * 0.33);
+    if (!blind && now - t0 > 150 && loud && rms > thr) { if (!heard) speech = smooth; heard = true; lastVoice = now; }
     if (h.manual) return;
     if ((heard && !blind && now - lastVoice > silenceMs) || (!heard && now - t0 > noSpeechMs) || (blind && now - t0 > noSpeechMs)) finish();
   };
