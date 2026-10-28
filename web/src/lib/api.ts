@@ -321,7 +321,7 @@ export const testProvider = (id: string) => fetch(`/api/saglayicilar/${id}/test`
 export interface DailyCfg { raporSaati: number; sabahSaati: number; epostaOto: boolean; epostaGrupla: boolean; repoOto: boolean; gonder: boolean; harcamaOto: boolean }
 export type DailyKind = 'aksam' | 'eposta' | 'github' | 'harcama' | 'ay';
 export interface DailyReport { tarih: string; aksam?: string; eposta?: string; github?: string; harcama?: string; ay?: string; gonderildi?: Partial<Record<DailyKind, string[]>> }
-export interface DailyData { ayar: DailyCfg; calisiyor: string | null; eposta: boolean; raporlar: DailyReport[] }
+export interface DailyData { ayar: DailyCfg; calisiyor: string | null; eposta: boolean; epostaSifreReddedildi?: boolean; raporlar: DailyReport[] }
 export const getDaily = () => fetch('/api/gunluk', { headers: headers() }).then(r => json<DailyData>(r));
 export const saveDaily = (patch: Partial<DailyCfg>) => fetch('/api/gunluk/ayar', { method: 'POST', headers: headers(), body: JSON.stringify(patch) }).then(r => json<DailyData>(r));
 export const runDaily = (is: DailyKind) => fetch('/api/gunluk/simdi', { method: 'POST', headers: headers(), body: JSON.stringify({ is }) }).then(r => json<DailyData>(r));

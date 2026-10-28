@@ -150,8 +150,12 @@ async function imapMails(gun: number, skip: Set<string>): Promise<RawMail[]> {
 /** Son N günün banka e-postalarını okur, yeni harcamaları tabloya ekler. Eklenen sayısı. */
 export async function collectExpenses(gun: number): Promise<{ eklenen: number; okunan: number; kaynak: string }> {
   const skip = new Set(store.islenen);
-  const kaynak = emailReady() ? 'e-posta (IMAP)' : 'tarayıcıdaki Gmail';
-  const mails = emailReady() ? await imapMails(gun, skip) : await readSearch(QUERY(gun), 60, skip);
+  let kaynak = 'tarayıcıdaki Gmail';
+  let mails: RawMail[] | null = null;
+  if (emailReady()) {
+    try { mails = await imapMails(gun, skip); kaynak = 'e-posta (IMAP)'; } catch (e) { if (emailReady()) throw e; /* şifre reddedildi: tarayıcıyla */ }
+  }
+  mails ??= await readSearch(QUERY(gun), 60, skip);
   const found = await extract(mails);
   const have = new Set(store.items.map(e => e.id));
   const yeni = found.filter(e => !have.has(e.id));

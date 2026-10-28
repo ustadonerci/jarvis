@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import express, { type Router } from 'express';
 import { GUNLUK, activitiesOf, logActivity, today } from './activity.js';
-import { emailReady } from './email.js';
+import { emailReady, imapAuthFailed } from './email.js';
 import { GmailLoginNeeded, gmailWebRoutine } from './gmailweb.js';
 import { errorList } from './errors.js';
 import { serverStats } from './extensions.js';
@@ -82,11 +82,13 @@ export function mailText(r: MailRoutineResult, ozet: string, kaynak = ''): strin
 
 export async function runMail(send = true): Promise<string> {
   const gun = cfg.epostaIlkYapildi ? 2 : 30;
-  let r: MailRoutineResult;
+  let r: MailRoutineResult | null = null;
   let kaynak = '';
-  if (emailReady()) r = await autoMailRoutine({ gun, grupla: cfg.epostaGrupla });
-  else {
-    // Uygulama şifresi yok: Jarvis'in tarayıcısındaki Gmail oturumuyla
+  if (emailReady()) {
+    try { r = await autoMailRoutine({ gun, grupla: cfg.epostaGrupla }); } catch (e) { if (emailReady()) throw e; /* şifre reddedildi: tarayıcıyla devam */ }
+  }
+  if (!r) {
+    // Uygulama şifresi yok ya da reddedildi: Jarvis'in tarayıcısındaki Gmail oturumuyla
     try {
       r = await gmailWebRoutine({ gun, grupla: cfg.epostaGrupla });
       kaynak = ' · tarayıcıyla Gmail';
@@ -225,7 +227,7 @@ function listReports() {
 export function dailyRouter(): Router {
   const r = express.Router();
   r.use('/api/gunluk', adminOnly);
-  const view = () => ({ ayar: cfg, calisiyor: running, eposta: emailReady(), raporlar: listReports() });
+  const view = () => ({ ayar: cfg, calisiyor: running, eposta: emailReady(), epostaSifreReddedildi: !!imapAuthFailed(), raporlar: listReports() });
   r.get('/api/gunluk', (_req, res) => res.json(view()));
   r.post('/api/gunluk/ayar', (req, res) => {
     const b = req.body ?? {};

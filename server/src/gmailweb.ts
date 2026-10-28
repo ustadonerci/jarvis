@@ -238,3 +238,24 @@ export async function organizeLabels(gun: number): Promise<Record<string, number
   }
   return out;
 }
+
+// ---------------------------------------------------------------- Okuma (eposta_listele / eposta_oku yedeği)
+
+export async function webInbox(o: { gun: number; ara: string; sadece_okunmamis: boolean; adet: number }) {
+  const p = await browserPage();
+  await open(p, `search/${encodeURIComponent(`in:inbox newer_than:${Math.min(Math.max(o.gun, 1), 90)}d${o.sadece_okunmamis ? ' is:unread' : ''}${o.ara ? ` ${o.ara}` : ''}`)}`);
+  return (await rows(p, Math.min(Math.max(o.adet, 1), 50))).map(r => ({ id: r.id, kimden: `${r.ad} <${r.adres}>`, konu: r.konu, tarih: r.tarih, okunmadi: r.okunmadi, ozet: r.onizleme }));
+}
+
+export async function webRead(id: string) {
+  if (!/^[\w-]+$/.test(id)) throw new Error('geçersiz e-posta kimliği');
+  const p = await browserPage();
+  await p.goto(`${BASE}#all/${id}`, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  if (/accounts\.google\.com/.test(p.url())) throw new GmailLoginNeeded();
+  await p.waitForSelector('div.a3s', { timeout: 20_000 });
+  return p.evaluate(() => ({
+    konu: (document.querySelector('h2.hP') as HTMLElement | null)?.innerText || '',
+    kimden: Array.from(document.querySelectorAll('span.gD[email]')).map(e => `${e.getAttribute('name')} <${e.getAttribute('email')}>`).pop() || '',
+    metin: Array.from(document.querySelectorAll('div.a3s')).map(e => (e as HTMLElement).innerText).join('\n---\n').slice(0, 6000),
+  }));
+}

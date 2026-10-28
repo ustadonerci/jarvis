@@ -43,6 +43,7 @@ export function DailySettings({ flash }: { flash(t: string): void }) {
       </div>
       {!d.eposta && (
         <>
+          {d.epostaSifreReddedildi && <p className="warn small">⚠️ Ayarlar → API anahtarları'ndaki e-posta şifresi Gmail tarafından reddedildi (normal Gmail şifresi çalışmaz). Sorun değil: Jarvis artık Chrome'daki Gmail'i kullanıyor. İsterseniz o şifreyi Ayarlar'dan silin.</p>}
           <p className="small">🌐 Uygulama şifresi girilmemiş: Jarvis Gmail'i <b>kendi Chrome penceresinden</b> düzenler (Chrome güvenlik gereği normal Chrome pencerenizin dışarıdan yönetilmesine izin vermez; bu yüzden Jarvis'in ayrı bir Chrome penceresi var). Aşağıdaki düğmeyle pencereyi açın ve Gmail'e <b>bir kez kendiniz</b> giriş yapın (şifrenizi Jarvis'e söylemeyin). Sonra pencereyi açık bırakabilir ya da kapatabilirsiniz; oturum hatırlanır.</p>
           <div className="seg"><button onClick={() => openJarvisBrowser().then(() => flash('Jarvis tarayıcısı açıldı: Gmail\'e giriş yapın')).catch(e => flash(e.message))}>🌐 Jarvis'in Chrome'unu aç (Gmail girişi)</button></div>
         </>
