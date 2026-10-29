@@ -44,6 +44,7 @@ import { expensesRouter } from './expenses.js';
 import { initTgChannels, tgChannelsRouter } from './tgchannels.js';
 import { indicatorsRouter } from './indicators.js';
 import { tgWebRouter } from './telegramweb.js';
+import { realtimeRouter, setLiveAsk } from './realtime.js';
 import { financeRouter, initFinance } from './finance.js';
 import { exchangesRouter } from './exchanges.js';
 import { getBrainProvider, initialBrain, providersRouter, setBrainProvider } from './providers.js';
@@ -423,6 +424,7 @@ app.use(expensesRouter());
 app.use(tgChannelsRouter());
 app.use(indicatorsRouter());
 app.use(tgWebRouter());
+app.use(realtimeRouter());
 app.use(providersRouter(id => { state.beyin = id; saveState(); }));
 
 // ---------- Onay kartları ve otomasyon (webhook) ----------
@@ -623,7 +625,7 @@ async function askRemote(text: string, kanal: Kanal): Promise<string> {
   const replyId = randomUUID();
   const voice = { ...currentVoice() };
   try {
-    const userMsg: StoredMessage = { role: 'user', text: `${kanal === 'whatsapp' ? '💬' : '✈️'} ${text}`, device: 'telefon', at: new Date().toISOString() };
+    const userMsg: StoredMessage = { role: 'user', text: `${kanal === 'whatsapp' ? '💬' : kanal === 'canli' ? '🎙️' : '✈️'} ${text}`, device: kanal === 'canli' ? (state.lastDevice ?? 'masaustu') : 'telefon', at: new Date().toISOString() };
     const history = state.messages.slice();
     state.messages.push(userMsg);
     broadcast({ type: 'user', message: userMsg, origin });
@@ -645,6 +647,7 @@ async function askRemote(text: string, kanal: Kanal): Promise<string> {
   }
 }
 setRemoteAsk(askRemote);
+setLiveAsk(text => askRemote(text, 'canli'));
 
 // Sahne sesi. v = cevaba sabitlenmiş ses (model:voice); i/n yalnızca log için.
 app.get('/api/tts', async (req, res) => {

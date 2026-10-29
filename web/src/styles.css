@@ -907,3 +907,5 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .conv-pill.s-dinliyor { animation: conv-pulse 1.4s ease-in-out infinite; }
 @keyframes conv-pulse { 0%, 100% { box-shadow: 0 0 0 1px var(--accent) inset, 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); } 50% { box-shadow: 0 0 0 1px var(--accent) inset, 0 0 0 8px transparent; } }
 .conv-heard { font-size: 12px; opacity: .8; max-width: 38vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; align-self: center; }
+
+.live-call.on { animation: conv-pulse 1.2s ease-in-out infinite; box-shadow: 0 0 0 1px #e5484d inset; }
