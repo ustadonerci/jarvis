@@ -42,6 +42,7 @@ import { checkImapLogin } from './email.js';
 import { browserRouter } from './browser.js';
 import { expensesRouter } from './expenses.js';
 import { initTgChannels, tgChannelsRouter } from './tgchannels.js';
+import { initDisRobot } from './disrobot.js';
 import { indicatorsRouter } from './indicators.js';
 import { tgWebRouter } from './telegramweb.js';
 import { financeRouter, initFinance } from './finance.js';
@@ -175,6 +176,7 @@ initAndroid(broadcast);
 initAgents(broadcast);
 initDaily({ messages: () => state.messages, broadcast });
 initTgChannels(broadcast);
+initDisRobot(broadcast);
 initVoiceStudio();
 
 const app = express();
