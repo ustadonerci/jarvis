@@ -824,12 +824,12 @@ export default function App() {
   // soruyu cevaplar, sonra kaldığı yerden devam etmeyi önerir ("devam et" her zaman kaldığı yerden sürdürür).
   const convPref = (k: string, d: boolean) => { try { const v = localStorage.getItem(`jarvis.sohbet.${k}`); return v === null ? d : v === '1'; } catch { return d; } };
   const convSupported = Conversation.supported() && !/iPad|iPhone|iPod/.test(navigator.userAgent);
-  const [convOn, setConvOn] = useState(() => convSupported && convPref('acik', true));
+  const [convOn, setConvOn] = useState(() => convSupported && convPref('acik2', false));
   const [convBarge, setConvBarge] = useState(() => convPref('soze', true));
   const [convBare, setConvBare] = useState(() => convPref('selam', true));
   const [convState, setConvState] = useState<ConvState>('kapali');
   /** Mikrofondan son duyulan (sorun giderme: Jarvis beni duyuyor mu) */
-  const [convHeard, setConvHeard] = useState('');
+  const [, setConvHeard] = useState('');
   const heardTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const convRef = useRef<Conversation | null>(null);
   /** Söze girilen cevap ve sahnesi: "devam et" buradan sürer */
@@ -894,7 +894,7 @@ export default function App() {
       return;
     }
     if (intent === 'dur') { stopPlayback(); setCore('idle'); return; }
-    if (intent === 'kapat') { speakLine('Sohbet modunu kapattım efendim. Açmak için alttaki simgeye dokunun.'); setTimeout(() => { setConvOn(false); saveConvPref('acik', false); }, 2500); return; }
+    if (intent === 'kapat') { speakLine('Sohbet modunu kapattım efendim. Açmak için Ayarlardan açabilirsiniz.'); setTimeout(() => { setConvOn(false); saveConvPref('acik2', false); }, 2500); return; }
     if (intent === 'bitir') {
       convRef.current?.end();
       interruptedRef.current = null; awaitingResumeRef.current = false; askResumeRef.current = false;
@@ -1489,25 +1489,6 @@ export default function App() {
             <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
           </button>
           {core === 'speaking' && <button className="icon-btn" onClick={stopPlayback} aria-label="Durdur">■</button>}
-          {convSupported && (
-            <button
-              className={`icon-btn conv-pill ${convOn ? `on s-${convState}` : ''}`}
-              onClick={() => {
-                voice.unlock();
-                // Dokunuş sohbeti KAPATMAZ: kapalıysa açar, açıksa "sizi dinliyorum" der (kapatmak: Ayarlar ya da "sohbet modunu kapat")
-                if (!convOn) { saveConvPref('acik', true); setConvOn(true); setTimeout(() => { convRef.current?.begin(); speakLine('Sohbet modu açık. Dinliyorum efendim.'); }, 600); return; }
-                if (convState === 'konusuyor' || core === 'speaking') { saveInterrupted(); convRef.current?.begin(); stopPlayback(); return; }
-                if (turnRef.current) { turnRef.current.stop(); return; }
-                convRef.current?.begin();
-                speakLine('Dinliyorum efendim.');
-              }}
-              title={!convOn ? 'Sohbet modu kapalı: açmak için dokunun' : convState === 'uyandirma' ? '"Merhaba Jarvis" deyin ya da dokunun' : convState === 'dinliyor' ? 'Sohbetteyiz: konuşun' : convState === 'konusuyor' ? 'Jarvis konuşuyor: söze girebilirsiniz (dokunursanız susar)' : convState === 'hata' ? 'Mikrofon izni yok' : 'Sohbet modu'}
-              aria-label="Sohbet modu"
-            >
-              {!convOn ? '💬' : convState === 'dinliyor' ? '🟢' : convState === 'konusuyor' ? '🗣️' : convState === 'dusunuyor' ? '⏳' : convState === 'hata' ? '⚠️' : '👂'}
-            </button>
-          )}
-          {convOn && convHeard && <span className="conv-heard" title="Mikrofonun duyduğu">🎙️ “{convHeard.slice(-60)}”</span>}
         </footer>
         </>
       )}
@@ -1588,7 +1569,7 @@ export default function App() {
                     <>
                       <p className="muted small">Açıkken Jarvis sürekli dinler: "Merhaba Jarvis", "Selam Jarvis", "Hey Jarvis" ya da "Jarvis, …" deyince uyanır; cevaptan sonra mikrofona basmadan konuşmaya devam edersiniz. Jarvis konuşurken söze girerseniz durur, sorunuzu cevaplar ve "kaldığım yerden devam edeyim mi?" diye sorar ("devam et" deyince sürdürür). 30 saniye konuşulmazsa ya da "görüşürüz / teşekkürler bu kadar" deyince yeniden "Merhaba Jarvis" bekler. Hoparlörle söze girme bazen Jarvis'in kendi sesine takılabilir; kulaklık en iyisidir.</p>
                       <div className="seg">
-                        <button className={convOn ? 'on' : ''} onClick={() => { voice.unlock(); setConvOn(v => { saveConvPref('acik', !v); return !v; }); }}>{convOn ? '✅ Sohbet modu açık' : 'Sohbet modu kapalı'}</button>
+                        <button className={convOn ? 'on' : ''} onClick={() => { voice.unlock(); setConvOn(v => { saveConvPref('acik2', !v); return !v; }); }}>{convOn ? '✅ Sohbet modu açık' : 'Sohbet modu kapalı'}</button>
                         <button className={convBarge ? 'on' : ''} onClick={() => setConvBarge(v => { saveConvPref('soze', !v); return !v; })}>{convBarge ? '✅' : '⬜'} Konuşurken söze girebileyim</button>
                         <button className={convBare ? 'on' : ''} onClick={() => setConvBare(v => { saveConvPref('selam', !v); return !v; })}>{convBare ? '✅' : '⬜'} Yalnız "Selam / Merhaba" da uyandırsın</button>
                       </div>
