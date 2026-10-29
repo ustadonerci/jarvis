@@ -35,6 +35,7 @@ import { isTgChannelTool, runTgChannelTool } from './tgchannels.js';
 import { isIndicatorTool, runIndicatorTool } from './indicators.js';
 import { isTgWebTool, runTgWebTool } from './telegramweb.js';
 import { isDisRobotTool, runDisRobotTool } from './disrobot.js';
+import { isWaTidyTool, runWaTidyTool } from './watidy.js';
 import { isBrainTool, runBrainTool } from './providers.js';
 import { isMicDiagTool, runMicDiagTool } from './micdiag.js';
 import { isExchangeTool, runExchangeTool } from './exchanges.js';
@@ -335,6 +336,7 @@ async function runToolOnce(name: string, rawArgs: string, progress: ToolProgress
   if (isIndicatorTool(name)) return runIndicatorTool(args, progress);
   if (isTgWebTool(name)) return runTgWebTool(args, progress);
   if (isDisRobotTool(name)) return runDisRobotTool(args, progress);
+  if (isWaTidyTool(name)) return runWaTidyTool(args, progress);
   if (isBrainTool(name)) return runBrainTool(args);
   if (isMicDiagTool(name)) return runMicDiagTool(args, progress);
   if (isExchangeTool(name)) return runExchangeTool(args, progress);

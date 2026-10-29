@@ -292,6 +292,41 @@ function isSelfChat(jid: string): boolean {
 }
 const waReady = () => fs.existsSync(path.join(WA_AUTH, 'creds.json'));
 
+// ---- Sohbet özeti (WhatsApp düzenleme için: grup/kanal/işletme sohbetlerinin son mesajları; yalnız bu bilgisayarda)
+export interface WaChat { jid: string; ad?: string; son?: { key: any; ts: number }; metinler: string[]; isletme?: boolean }
+const WA_CHATS_FILE = path.join(DATA, 'wa-sohbetler.json');
+const waChats = new Map<string, WaChat>(Object.entries(readJsonSafe<Record<string, WaChat>>(WA_CHATS_FILE, {})));
+function readJsonSafe<T>(f: string, d: T): T { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } }
+let waChatsTimer: NodeJS.Timeout | null = null;
+const saveWaChats = () => {
+  waChatsTimer ??= setTimeout(() => {
+    waChatsTimer = null;
+    const keep = [...waChats.values()].sort((a, b) => (b.son?.ts ?? 0) - (a.son?.ts ?? 0)).slice(0, 1500);
+    fs.mkdirSync(DATA, { recursive: true });
+    fs.writeFileSync(WA_CHATS_FILE, JSON.stringify(Object.fromEntries(keep.map(c => [c.jid, c]))));
+  }, 5000);
+};
+function trackWaChat(jid: string, o: { ad?: string; m?: any }) {
+  if (!jid || jid === 'status@broadcast' || isSelfChat(jid)) return;
+  const c = waChats.get(jid) ?? { jid, metinler: [] };
+  if (o.ad) c.ad = o.ad;
+  const m = o.m;
+  if (m?.key) {
+    const ts = Number(m.messageTimestamp ?? 0);
+    if (!c.son || ts >= c.son.ts) c.son = { key: { remoteJid: m.key.remoteJid, id: m.key.id, fromMe: !!m.key.fromMe, participant: m.key.participant }, ts };
+    const t = waText(m);
+    if (t && !m.key.fromMe) c.metinler = [...c.metinler, t.slice(0, 300)].slice(-5);
+    if (m.verifiedBizName) { c.isletme = true; c.ad ??= m.verifiedBizName; }
+    if (!c.ad && m.pushName && !jid.endsWith('@g.us')) c.ad = m.pushName;
+  }
+  waChats.set(jid, c);
+  saveWaChats();
+}
+/** Bağlıysa WhatsApp soketi (düzenleme modülü için) */
+export const waSocket = (): any => (wa.sock && wa.durum === 'bağlı' ? wa.sock : null);
+export const waChatList = (): WaChat[] => [...waChats.values()];
+export const waForget = (jid: string) => { waChats.delete(jid); saveWaChats(); };
+
 function waText(m: any): string {
   const x = m.message ?? {};
   return x.conversation || x.extendedTextMessage?.text || x.imageMessage?.caption || x.videoMessage?.caption
@@ -403,6 +438,13 @@ async function waConnect(fresh = false) {
     }
   });
   sock.ev.on('contacts.upsert', (cs: any[]) => cs.forEach(c => (c.name || c.notify) && waNames.set(c.id, c.name || c.notify)));
+  // Düzenleme için sohbet özeti: geçmiş eşitlemesi, yeni sohbetler ve her mesaj
+  sock.ev.on('messaging-history.set', ({ chats, messages }: any) => {
+    for (const c of chats ?? []) trackWaChat(c.id, { ad: c.name });
+    for (const m of messages ?? []) trackWaChat(m.key?.remoteJid ?? '', { m });
+  });
+  sock.ev.on('chats.upsert', (cs: any[]) => cs.forEach(c => trackWaChat(c.id, { ad: c.name })));
+  sock.ev.on('messages.upsert', ({ messages }: any) => { for (const m of messages ?? []) trackWaChat(m.key?.remoteJid ?? '', { m }); });
   sock.ev.on('messages.upsert', ({ messages, type }: any) => {
     if (type !== 'notify') return;
     for (const m of messages) {
