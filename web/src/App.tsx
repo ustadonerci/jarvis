@@ -40,8 +40,6 @@ import { Markdown } from './lib/markdown';
 import { createRecognizer, speechRecognitionSupported, voice } from './lib/speech';
 import { Conversation, classify, type ConvState } from './lib/conversation';
 import { ConvDiagnostics } from './components/ConvDiagnostics';
-import { LiveVoice, type LiveState } from './lib/realtime';
-import { LiveSettings } from './components/LiveSettings';
 import { DEVICE_LABEL, type PersonaOption, type ThemeOption, type CoreState, type CurrencyCode, type Dashboard, type Device, type GreetingPeriod, type Health, type JarvisReply, type Sahne, type ServerEvent, type StoredMessage, type UiMode, type VoiceOption, type VoiceSel, type WakeConfig } from './lib/types';
 import { atServerTime, clockInfo, keepAwake, listenForCommand, preciseTimeout, startClockSync, syncClock, type CommandListen } from './lib/wake';
 
@@ -917,7 +915,7 @@ export default function App() {
   const emptyTurns = useRef(0);
   const listenTurn = async () => {
     const c = convRef.current;
-    if (!c || !c.active || turnRef.current || recRef.current || callRef.current || coreRef.current !== 'idle' || !recorderSupported()) return;
+    if (!c || !c.active || turnRef.current || recRef.current || coreRef.current !== 'idle' || !recorderSupported()) return;
     c.suspend();
     setCore('listening');
     setInterim('🟢 dinliyorum… konuşun (bitirince susun ya da simgeye dokunun)');
@@ -987,43 +985,6 @@ export default function App() {
   }, [core, convOn, convState]);
   // Sohbet modu kapanırsa ya da sohbet biterse açık kayıt kapanır
   useEffect(() => { if (!convOn) { turnRef.current?.stop(); turnRef.current = null; } }, [convOn]);
-
-  // =================================================================== Canlı sohbet (gerçek zamanlı ses)
-  // Ses doğrudan modele gider, model sesle cevap verir: bekleme yok, söze girilince anında susar. Jarvis'in
-  // yetenekleri "jarvis_sor" aracıyla (sunucu → Jarvis'in beyni) kullanılır. OpenAI API anahtarı gerekir.
-  const callRef = useRef<LiveVoice | null>(null);
-  const [liveState, setLiveState] = useState<LiveState>('kapali');
-  const startLive = () => {
-    voice.unlock();
-    if (callRef.current && callRef.current.state !== 'kapali' && callRef.current.state !== 'hata') { callRef.current.stop('kapattınız'); return; }
-    stopPlayback();
-    turnRef.current?.stop();
-    convRef.current?.suspend();
-    setSceneIdx(-1); sceneIdxRef.current = -1;
-    const lv = new LiveVoice({
-      onState: (st, info) => {
-        setLiveState(st);
-        if (st === 'baglaniyor') { setCore('thinking'); setInterim(''); setPreCaption('Canlı sohbete bağlanıyor…'); }
-        else if (st === 'dinliyor') { voice.mimic(0); setCore('listening'); setInterim('📞 Canlı sohbet: konuşun (kapatmak için 📞)'); }
-        else if (st === 'konusuyor') { setCore('speaking'); }
-        else if (st === 'dusunuyor') { voice.mimic(0); setCore('thinking'); setTelemetry(['Jarvis\'e soruluyor…']); }
-        else {
-          voice.mimic(0);
-          setCore('idle'); setInterim(''); setPreCaption('');
-          callRef.current = null;
-          convRef.current?.resume();
-          if (st === 'hata') flash(`Canlı sohbet: ${info}`);
-          else if (info) flash(`Canlı sohbet kapandı: ${info}`);
-        }
-      },
-      onUser: t => { setInterim(`“${t}”`); setMessages(m => [...m]); },
-      onJarvis: t => { setPreCaption(t); },
-      onLevel: v => { if (v > 0.04) voice.mimic(250); },
-    });
-    callRef.current = lv;
-    lv.start();
-  };
-  useEffect(() => () => callRef.current?.stop(), []);
 
   // Motor bir kez kurulur; kancalar güncel durumu ref'lerden okur
   useEffect(() => {
@@ -1546,11 +1507,6 @@ export default function App() {
               {!convOn ? '💬' : convState === 'dinliyor' ? '🟢' : convState === 'konusuyor' ? '🗣️' : convState === 'dusunuyor' ? '⏳' : convState === 'hata' ? '⚠️' : '👂'}
             </button>
           )}
-          {LiveVoice.supported() && (
-            <button className={`icon-btn live-call ${liveState !== 'kapali' && liveState !== 'hata' ? 'on' : ''}`} onClick={startLive} aria-label="Canlı sohbet" title={liveState === 'kapali' || liveState === 'hata' ? 'Canlı sohbet: Jarvis\'le telefonda konuşur gibi (gerçek zamanlı)' : 'Canlı sohbeti kapat'}>
-              {liveState === 'kapali' || liveState === 'hata' ? '📞' : '🔴'}
-            </button>
-          )}
           {convOn && convHeard && <span className="conv-heard" title="Mikrofonun duyduğu">🎙️ “{convHeard.slice(-60)}”</span>}
         </footer>
         </>
@@ -1627,7 +1583,6 @@ export default function App() {
                   <ExpenseSettings flash={flash} />
                   <TgChannelSettings flash={flash} />
                   <IndicatorSettings flash={flash} />
-                  <LiveSettings onStart={() => { setDrawer(null); startLive(); }} active={liveState !== 'kapali' && liveState !== 'hata'} />
                   <label>Sohbet modu (ChatGPT gibi sesli sohbet)</label>
                   {!convSupported ? <p className="muted small">Bu tarayıcıda sürekli dinleme yok. Bilgisayarda Chrome ya da Edge ile açın (iPhone Safari desteklemiyor).</p> : (
                     <>

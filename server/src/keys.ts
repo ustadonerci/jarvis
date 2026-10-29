@@ -51,8 +51,6 @@ export const KEY_FIELDS: KeyField[] = [
   { name: 'DEEPGRAM_API_KEY', label: 'Deepgram (ses tanıma)', hint: 'İsteğe bağlı. Konuşmanızı daha hızlı yazıya döker. console.deepgram.com', secret: true },
   { name: 'OPENAI_API_KEY', label: 'API anahtarı', hint: 'Anahtar: https://platform.openai.com/api-keys · Ses tanımada (Whisper) da kullanılır.', secret: true, saglayici: 'openai' },
   { name: 'OPENAI_CHAT_MODEL', label: 'Model', hint: 'Boş: gpt-4.1', secret: false, saglayici: 'openai' },
-  { name: 'OPENAI_REALTIME_MODEL', label: 'Canlı sohbet modeli', hint: 'Boş: gpt-realtime (canlı sesli sohbet; hesabınızda farklı adla görünüyorsa buraya yazın)', secret: false, saglayici: 'openai' },
-  { name: 'OPENAI_REALTIME_VOICE', label: 'Canlı sohbet sesi', hint: 'Boş: cedar (erkek). Diğerleri: marin, ash, echo, verse, ballad, alloy, coral, sage, shimmer', secret: false, saglayici: 'openai' },
   { name: 'ANTHROPIC_API_KEY', label: 'API anahtarı', hint: 'Anahtar: https://console.anthropic.com/settings/keys · Daha hızlı/ucuz: claude-sonnet-5-5, claude-haiku-5-5', secret: true, saglayici: 'anthropic' },
   { name: 'ANTHROPIC_MODEL', label: 'Model', hint: 'Boş: claude-opus-5-5', secret: false, saglayici: 'anthropic' },
   { name: 'GEMINI_API_KEY', label: 'API anahtarı', hint: 'Anahtar: https://aistudio.google.com/app/apikey · Ücretsiz kullanım kotası var.', secret: true, saglayici: 'gemini' },

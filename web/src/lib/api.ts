@@ -36,7 +36,7 @@ export function detectDevice(): Device {
 }
 export function saveDevice(d: Device) { safeSet('jarvis.device', d); }
 
-export const headers = (): HeadersInit => ({ 'Content-Type': 'application/json', ...(token ? { 'x-jarvis-token': token } : {}) });
+const headers = (): HeadersInit => ({ 'Content-Type': 'application/json', ...(token ? { 'x-jarvis-token': token } : {}) });
 
 export interface AppState {
   messages: StoredMessage[];

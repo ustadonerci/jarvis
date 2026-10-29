@@ -4,7 +4,7 @@
 // (satın alma, borsa) yalnızca Jarvis ekranından onaylanır.
 import { actionList, decideAction } from './approvals.js';
 
-export type Kanal = 'whatsapp' | 'telegram' | 'canli';
+export type Kanal = 'whatsapp' | 'telegram';
 type Ask = (text: string, kanal: Kanal) => Promise<string>;
 let ask: Ask | null = null;
 export const setRemoteAsk = (fn: Ask) => { ask = fn; };
