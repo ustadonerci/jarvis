@@ -5,9 +5,12 @@
 //  - Günlük zarar sınırına ulaşınca robot kendini durdurur ve haber verir. "Robotu durdur" her zaman anında çalışır.
 // Modlar:
 //  - kagit (varsayılan): sanal bakiyeyle simülasyon; gerçek para yok. BIST, ABD hissesi, kripto, altın hepsi olur.
-//  - canli: yalnızca kripto, Binance spot (BINANCE_API_KEY / BINANCE_API_SECRET). Açmak, yeniden başlatmak, ayarları
+//  - canli: yalnızca kripto; Binance spot (BINANCE_API_KEY / BINANCE_API_SECRET) ya da OKX TR spot (OKX_API_KEY /
+//    OKX_API_SECRET / OKX_API_PASSPHRASE, adres OKX_API_URL), USDT pariteleri. Açmak, yeniden başlatmak, ayarları
 //    değiştirmek ve elle pozisyon kapatmak onay kartıyla. Çekim (withdraw) izni açık anahtar reddedilir; işlem başı
 //    tutar ROBOT_CANLI_MAX'ı (varsayılan 100 USDT) geçemez. BINANCE_API_URL=https://testnet.binance.vision ile test ağı.
+// strateji_gelistir: tüm indikatörleri ve varsayılan puanı seçili sembollerde geriye dönük dener, getiri/düşüş/tutarlılığa
+// göre sıralar ve en iyisini seçer (canlı modda onay kartıyla).
 // Yatırım tavsiyesi değildir; geçmiş sonuç geleceği göstermez.
 import { createHmac, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
@@ -15,7 +18,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { propose } from './approvals.js';
 import { analyze, getSeries, resolveSymbol, round, type Series } from './finance.js';
-import { findIndicator, indicatorDecision } from './indicators.js';
+import { okxSign } from './exchanges.js';
+import { findIndicator, indicatorDecision, INDICATORS } from './indicators.js';
 
 const DATA = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
 const CFG_FILE = path.join(DATA, 'robot.json');
@@ -27,8 +31,11 @@ export interface RobotConfig {
   islem_basi: number; max_pozisyon: number; gunluk_zarar_limiti: number; aralik_dk: number; min_risk_odul: number; baslangic_bakiye: number;
   /** 'varsayilan': piyasa_analiz puanı; ya da bir indikatör id'si (indicators.ts: supertrend, utbot, squeeze…) */
   strateji?: string;
+  /** Canlı modun borsası (varsayılan binance) */
+  borsa?: Venue;
 }
-interface Position { sembol: string; para: string; adet: number; giris: number; stop: number; hedef1: number; hedef2: number; h1: boolean; maliyet_usd: number; at: string; mod: 'kagit' | 'canli' }
+type Venue = 'binance' | 'okx';
+interface Position { sembol: string; para: string; adet: number; giris: number; stop: number; hedef1: number; hedef2: number; h1: boolean; maliyet_usd: number; at: string; mod: 'kagit' | 'canli'; borsa?: Venue }
 interface Trade { id: string; at: string; sembol: string; yon: 'AL' | 'SAT'; fiyat: number; adet: number; tutar_usd: number; neden: string; kar_usd?: number; mod: 'kagit' | 'canli' }
 interface RobotState { nakit_usd: number; pozisyonlar: Record<string, Position>; islemler: Trade[]; gun: { tarih: string; pnl: number }; son_kapanis: Record<string, string>; son_tur?: string; durdu?: string; hata_sayisi: number; /** Günlük sınır sonrası: yeni alış yok ama açık pozisyonların stop/hedefi izlenir */ koruma?: boolean }
 
@@ -39,8 +46,8 @@ const freshState = (c: RobotConfig): RobotState => ({ nakit_usd: c.baslangic_bak
 const today = () => new Date().toISOString().slice(0, 10);
 
 /** Seçili stratejiye göre sinyal ve işlem planı */
-function decide(s: Series): { sinyal: string; puan?: number; islem_plani?: any } {
-  const id = cfg.strateji && cfg.strateji !== 'varsayilan' ? cfg.strateji : '';
+function decide(s: Series, strateji = cfg.strateji): { sinyal: string; puan?: number; islem_plani?: any } {
+  const id = strateji && strateji !== 'varsayilan' ? strateji : '';
   return id ? indicatorDecision(id, s) : (analyze(s) as any);
 }
 
@@ -127,6 +134,83 @@ async function liveSell(sym: string, adet: number): Promise<{ adet: number; fiya
   return { adet: Number(o.executedQty), fiyat: tutar / Number(o.executedQty), tutar };
 }
 
+// ---------------------------------------------------------------- OKX TR (canlı)
+// İmza exchanges.ts'teki gibi: base64(HMAC-SHA256(secret, ISO zaman + METOT + yol + gövde)). Piyasa emri, USDT paritesi, nakit (cash) hesap.
+
+const OKX = () => (process.env.OKX_API_URL || 'https://www.okx.com').replace(/\/$/, '');
+export const okxReady = () => !!(process.env.OKX_API_KEY && process.env.OKX_API_SECRET && process.env.OKX_API_PASSPHRASE);
+const instOf = (sym: string) => `${sym.split('-')[0]}-USDT`;
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+async function okxReq(method: 'GET' | 'POST', p: string, body?: object): Promise<any[]> {
+  const ts = new Date().toISOString(), b = body ? JSON.stringify(body) : '';
+  const r = await fetch(`${OKX()}${p}`, {
+    method, body: b || undefined, signal: AbortSignal.timeout(15_000),
+    headers: { 'Content-Type': 'application/json', 'OK-ACCESS-KEY': process.env.OKX_API_KEY!, 'OK-ACCESS-SIGN': okxSign(process.env.OKX_API_SECRET!, ts, method, p, b), 'OK-ACCESS-TIMESTAMP': ts, 'OK-ACCESS-PASSPHRASE': process.env.OKX_API_PASSPHRASE! },
+  });
+  const j: any = await r.json().catch(() => ({}));
+  if (!r.ok || String(j?.code ?? '') !== '0') {
+    const d = j?.data?.[0];
+    throw new Error(`OKX ${r.status}: ${String(d?.sMsg || j?.msg || '').slice(0, 160)} (${d?.sCode || j?.code || '?'})`);
+  }
+  return j.data ?? [];
+}
+
+async function checkKeyOkx(): Promise<{ ok: boolean; neden?: string; usdt?: number }> {
+  if (!okxReady()) return { ok: false, neden: 'OKX TR anahtarı yok (Ayarlar → Borsalar → OKX TR: API Key, Secret Key, Passphrase).' };
+  try {
+    const perm = String((await okxReq('GET', '/api/v5/account/config'))[0]?.perm ?? '');
+    if (/withdraw/i.test(perm)) return { ok: false, neden: 'Bu OKX anahtarının ÇEKİM izni açık. Güvenlik için OKX TR\'de çekim izni kapalı, yalnız "Okuma" ve "İşlem" izni olan yeni bir anahtar oluşturun.' };
+    if (!/trade/i.test(perm)) return { ok: false, neden: 'Bu OKX anahtarının "İşlem" (Trade) izni yok. OKX TR → API\'de anahtara İşlem iznini verin (çekim izni kapalı kalsın).' };
+    const det: any[] = (await okxReq('GET', '/api/v5/account/balance?ccy=USDT'))[0]?.details ?? [];
+    return { ok: true, usdt: Number(det.find(d => d.ccy === 'USDT')?.availBal ?? 0) };
+  } catch (e: any) {
+    return { ok: false, neden: String(e?.message || e) };
+  }
+}
+
+/** Emrin dolmasını bekler; dolan adet, ortalama fiyat ve komisyon */
+async function okxFill(instId: string, ordId: string) {
+  let d: any = null;
+  for (let i = 0; i < 8; i++) {
+    d = (await okxReq('GET', `/api/v5/trade/order?instId=${instId}&ordId=${ordId}`))[0];
+    if (d && (d.state === 'filled' || d.state === 'canceled' || d.state === 'mmp_canceled')) break;
+    await sleep(750);
+  }
+  const sz = Number(d?.accFillSz ?? 0), px = Number(d?.avgPx ?? 0);
+  if (!sz || !px) throw new Error(`OKX: emir dolmadı (${d?.state ?? 'bilinmiyor'})`);
+  return { sz, px, fee: Number(d.fee ?? 0), feeCcy: String(d.feeCcy ?? '') }; // fee eksi işaretli
+}
+
+async function okxBuy(sym: string, usd: number) {
+  const instId = instOf(sym), base = sym.split('-')[0];
+  const o = (await okxReq('POST', '/api/v5/trade/order', { instId, tdMode: 'cash', side: 'buy', ordType: 'market', sz: usd.toFixed(2), tgtCcy: 'quote_ccy' }))[0];
+  const f = await okxFill(instId, o.ordId);
+  return { adet: f.sz + (f.feeCcy === base ? f.fee : 0), fiyat: f.px, tutar: f.sz * f.px };
+}
+
+async function okxSell(sym: string, adet: number) {
+  const instId = instOf(sym);
+  const r = await fetch(`${OKX()}/api/v5/public/instruments?instType=SPOT&instId=${instId}`, { signal: AbortSignal.timeout(10_000) }).then(x => x.json()).catch(() => null);
+  const ins = r?.data?.[0];
+  const qty = floorStep(adet, Number(ins?.lotSz) || 0.000001);
+  if (ins?.minSz && qty < Number(ins.minSz)) throw new Error(`OKX: satılacak miktar (${qty}) en küçük emir miktarının (${ins.minSz}) altında`);
+  const o = (await okxReq('POST', '/api/v5/trade/order', { instId, tdMode: 'cash', side: 'sell', ordType: 'market', sz: String(qty) }))[0];
+  const f = await okxFill(instId, o.ordId);
+  return { adet: f.sz, fiyat: f.px, tutar: f.sz * f.px + (f.feeCcy === 'USDT' ? f.fee : 0) };
+}
+
+// ---------------------------------------------------------------- Canlı borsa seçimi
+
+const venue = (c: RobotConfig = cfg): Venue => c.borsa === 'okx' ? 'okx' : 'binance';
+const venueName = (v: Venue) => v === 'okx' ? 'OKX TR' : 'Binance';
+const venueKey = (v: Venue) => v === 'okx' ? checkKeyOkx() : checkKey();
+const venueBuy = (sym: string, usd: number) => venue() === 'okx' ? okxBuy(sym, usd) : liveBuy(sym, usd);
+const venueSell = (sym: string, adet: number, v: Venue = venue()) => v === 'okx' ? okxSell(sym, adet) : liveSell(sym, adet);
+const keyHelp = (v: Venue) => v === 'okx'
+  ? 'Kullanıcıya OKX TR → API bölümünde ÇEKİM izni KAPALI, yalnız Okuma + İşlem izni olan bir anahtar oluşturup Ayarlar → Borsalar → OKX TR kartına (API Key, Secret, Passphrase) girmesini söyle; anahtarı sohbete yazmasın. Bölge hatası olursa karttaki "API adresi" alanı.'
+  : 'Kullanıcıya Binance\'te çekim izni KAPALI, yalnız Spot Trading açık bir API anahtarı oluşturup Ayarlar → Anahtarlar\'a girmesini söyle; anahtarı sohbete yazmasın.';
+
 // ---------------------------------------------------------------- Al / sat
 
 function rollDay() {
@@ -139,12 +223,12 @@ async function open(sym: string, s: Series, plan: any): Promise<Trade | null> {
   if (cfg.mod === 'kagit') usd = Math.min(usd, st.nakit_usd);
   if (usd < 5) return null;
   let adet: number, fiyat: number;
-  if (cfg.mod === 'canli') ({ adet, fiyat, tutar: usd } = await liveBuy(sym, usd));
+  if (cfg.mod === 'canli') ({ adet, fiyat, tutar: usd } = await venueBuy(sym, usd));
   else { fiyat = s.fiyat; adet = usd / (fiyat * per); st.nakit_usd -= usd; }
   // Gerçekleşen fiyat analizdekinden farklıysa stop ve hedefler aynı mesafede kalacak şekilde kaydırılır
   const kay = fiyat - plan.giris;
   plan = { ...plan, stop_loss: round(plan.stop_loss + kay), hedef1: round(plan.hedef1 + kay), hedef2: round(plan.hedef2 + kay) };
-  st.pozisyonlar[sym] = { sembol: sym, para: s.para, adet, giris: fiyat, stop: plan.stop_loss, hedef1: plan.hedef1, hedef2: plan.hedef2, h1: false, maliyet_usd: usd, at: new Date().toISOString(), mod: cfg.mod };
+  st.pozisyonlar[sym] = { sembol: sym, para: s.para, adet, giris: fiyat, stop: plan.stop_loss, hedef1: plan.hedef1, hedef2: plan.hedef2, h1: false, maliyet_usd: usd, at: new Date().toISOString(), mod: cfg.mod, ...(cfg.mod === 'canli' ? { borsa: venue() } : {}) };
   const t: Trade = { id: randomUUID().slice(0, 8), at: new Date().toISOString(), sembol: sym, yon: 'AL', fiyat: round(fiyat)!, adet, tutar_usd: round(usd, 2)!, neden: `sinyal AL, risk/ödül ${plan.risk_odul}`, mod: cfg.mod };
   st.islemler.push(t);
   tell(`${cfg.mod === 'canli' ? 'CANLI' : 'Kâğıt'} ALIŞ: ${s.ad} @ ${round(fiyat)} ${s.para} · ${round(usd, 2)} USD · stop ${plan.stop_loss}, hedef ${plan.hedef1}/${plan.hedef2}`, cfg.mod === 'canli');
@@ -154,7 +238,7 @@ async function open(sym: string, s: Series, plan: any): Promise<Trade | null> {
 async function close(sym: string, price: number, neden: string): Promise<Trade> {
   const p = st.pozisyonlar[sym];
   let usd: number, fiyat = price;
-  if (p.mod === 'canli') { const r = await liveSell(sym, p.adet); usd = r.tutar; fiyat = r.fiyat; }
+  if (p.mod === 'canli') { const r = await venueSell(sym, p.adet, p.borsa ?? 'binance'); usd = r.tutar; fiyat = r.fiyat; }
   else { usd = p.adet * price * (await usdPer(p.para)); st.nakit_usd += usd; }
   const kar = usd - p.maliyet_usd;
   delete st.pozisyonlar[sym];
@@ -202,7 +286,7 @@ export async function tick(force = false): Promise<string[]> {
         log.push(t ? `${sym}: ALINDI @ ${t.fiyat}` : `${sym}: bakiye yetersiz`);
       } catch (e: any) {
         log.push(`${sym}: hata ${String(e?.message || e).slice(0, 120)}`);
-        if (cfg.mod === 'canli' && /Binance/.test(String(e?.message))) st.hata_sayisi++;
+        if (cfg.mod === 'canli' && /Binance|OKX/.test(String(e?.message))) st.hata_sayisi++;
       }
     }
     if (st.gun.pnl <= -cfg.gunluk_zarar_limiti && cfg.aktif) {
@@ -210,7 +294,7 @@ export async function tick(force = false): Promise<string[]> {
       tell(`Robot DURDU: ${st.durdu}. Yeni alış yok${st.koruma ? '; açık pozisyonların stop/hedefi izlenmeye devam ediyor' : ''}.`, true);
     }
     if (st.hata_sayisi >= 3 && cfg.aktif) {
-      cfg.aktif = false; st.durdu = 'Binance üst üste hata verdi'; st.hata_sayisi = 0; saveCfg();
+      cfg.aktif = false; st.durdu = `${venueName(venue())} üst üste hata verdi`; st.hata_sayisi = 0; saveCfg();
       tell(`Robot DURDU: ${st.durdu}. Anahtarı ve bakiyeyi kontrol edin.`, true);
     }
     if (st.koruma && !Object.keys(st.pozisyonlar).length) st.koruma = false;
@@ -225,8 +309,9 @@ export async function tick(force = false): Promise<string[]> {
 // ---------------------------------------------------------------- Geriye dönük test
 
 /** Son ~1 yılın günlük verisinde aynı kuralları uygular (kapanışta giriş; gün içi düşük/yüksekle stop/hedef) */
-export async function backtest(raw: string) {
-  const s = await getSeries(raw);
+export async function backtest(raw: string | Series, strateji = cfg.strateji) {
+  const s = typeof raw === 'string' ? await getSeries(raw) : raw;
+  const decide_ = (x: Series) => decide(x, strateji);
   const o = s.ohlc;
   if (!o || s.kapanis.length < 230) throw new Error('Geriye dönük test için en az ~230 günlük OHLC verisi gerekli');
   const sub = (i: number): Series => ({ ...s, kapanis: s.kapanis.slice(0, i + 1), tarih: s.tarih.slice(0, i + 1), fiyat: s.kapanis[i],
@@ -243,7 +328,7 @@ export async function backtest(raw: string) {
       else if (o.yuksek[i] >= pos.h2) { exit = pos.h2; neden = 'hedef 2'; }
       else {
         if (!pos.hit1 && o.yuksek[i] >= pos.h1) { pos.hit1 = true; pos.stop = Math.max(pos.stop, pos.giris); }
-        if (decide(sub(i)).sinyal === 'SAT') { exit = s.kapanis[i]; neden = 'sinyal SAT'; }
+        if (decide_(sub(i)).sinyal === 'SAT') { exit = s.kapanis[i]; neden = 'sinyal SAT'; }
       }
       if (exit !== null) {
         const g = exit / pos.giris - 1 - 0.002; // alış+satış komisyonu ~%0,2
@@ -252,7 +337,7 @@ export async function backtest(raw: string) {
         pos = null;
       }
     } else {
-      const a: any = decide(sub(i));
+      const a: any = decide_(sub(i));
       if (a.sinyal === 'AL' && a.islem_plani && a.islem_plani.risk_odul >= cfg.min_risk_odul) {
         pos = { giris: s.kapanis[i], stop: a.islem_plani.stop_loss, h1: a.islem_plani.hedef1, h2: a.islem_plani.hedef2, hit1: false };
         entryAt = day;
@@ -272,6 +357,38 @@ export async function backtest(raw: string) {
   };
 }
 
+// ---------------------------------------------------------------- Strateji geliştirme
+
+/** Varsayılan puan + her indikatör, her sembolde geriye dönük; puan = ort. getiri + ort. en büyük düşüş/2 (düşüş eksi) */
+export async function developStrategy(syms: string[], progress: (l: string) => void = () => {}) {
+  const ids = ['varsayilan', ...INDICATORS.map(i => i.id)];
+  const series: Series[] = [];
+  for (const sym of syms) {
+    try { series.push(await getSeries(sym)); } catch (e: any) { progress(`${sym}: veri yok (${String(e?.message || e).slice(0, 60)})`); }
+  }
+  if (!series.length) throw new Error('Test için veri alınamadı');
+  const rows: { id: string; ad: string; getiri: number; dusus: number; islem: number; kazanma: number | null; pozitif: number; puan: number; al_tut: number }[] = [];
+  for (const id of ids) {
+    progress(`strateji deneniyor: ${id}`);
+    const rs: Awaited<ReturnType<typeof backtest>>[] = [];
+    for (const s of series) { try { rs.push(await backtest(s, id)); } catch { /* veri yetersiz */ } }
+    if (!rs.length) continue;
+    const avg = (f: (r: typeof rs[number]) => number) => rs.reduce((t, r) => t + f(r), 0) / rs.length;
+    const islem = rs.reduce((t, r) => t + r.islem_sayisi, 0);
+    const kaz = rs.filter(r => r.kazanma_orani_yuzde != null);
+    const getiri = avg(r => r.toplam_getiri_yuzde ?? 0), dusus = avg(r => r.en_buyuk_dusus_yuzde ?? 0);
+    rows.push({
+      id, ad: id === 'varsayilan' ? 'Varsayılan (RSI+MACD+ortalamalar+Bollinger puanı)' : findIndicator(id)?.ad ?? id,
+      getiri: round(getiri, 2)!, dusus: round(dusus, 2)!, islem, kazanma: kaz.length ? round(kaz.reduce((t, r) => t + (r.kazanma_orani_yuzde ?? 0), 0) / kaz.length, 1)! : null,
+      pozitif: rs.filter(r => (r.toplam_getiri_yuzde ?? 0) > 0).length, puan: round(getiri + dusus / 2, 2)!, al_tut: round(avg(r => r.al_tut_getiri_yuzde ?? 0), 2)!,
+    });
+  }
+  // Az işlemli (şans eseri) sonuçlar ve sembollerin yarısından fazlasında kaybettirenler elenir
+  const enough = rows.filter(r => r.islem >= Math.max(2, series.length) && r.pozitif * 2 >= series.length);
+  const ranked = (enough.length ? enough : rows).sort((a, b) => b.puan - a.puan);
+  return { semboller: series.map(s => s.sembol), denenen: rows.length, en_iyi: ranked[0], ilk5: ranked.slice(0, 5), uygun_yok: !enough.length };
+}
+
 // ---------------------------------------------------------------- Durum ve başlatma
 
 async function status() {
@@ -287,6 +404,7 @@ async function status() {
   const closed = st.islemler.filter(t => t.yon === 'SAT');
   return {
     aktif: cfg.aktif, mod: cfg.mod, ayarlar: { ...cfg, aktif: undefined },
+    ...(cfg.mod === 'canli' ? { borsa: venueName(venue()) } : {}),
     ...(cfg.mod === 'kagit' ? { kagit_bakiye: { nakit_usd: round(st.nakit_usd, 2), pozisyon_usd: round(posUsd, 2), toplam_usd: round(st.nakit_usd + posUsd, 2), baslangic_usd: cfg.baslangic_bakiye } } : { canli_islem_basi_sinir_usdt: LIVE_MAX() }),
     pozisyonlar: pos, bugun_kar_zarar_usd: round(st.gun.pnl, 2),
     kapanan_islem: closed.length, kazanan: closed.filter(t => (t.kar_usd ?? 0) > 0).length, toplam_kar_usd: round(closed.reduce((t, x) => t + (x.kar_usd ?? 0), 0), 2),
@@ -304,6 +422,7 @@ function applySettings(a: any): RobotConfig {
   next.aralik_dk = Math.round(n(a.aralik_dk, 5, 1440, cfg.aralik_dk));
   next.min_risk_odul = n(a.min_risk_odul, 1, 5, cfg.min_risk_odul);
   next.baslangic_bakiye = n(a.baslangic_bakiye, 50, 10_000_000, cfg.baslangic_bakiye);
+  if (a.borsa !== undefined && a.borsa !== null && a.borsa !== '') next.borsa = /okx/i.test(String(a.borsa)) ? 'okx' : 'binance';
   if (typeof a.strateji === 'string' && a.strateji.trim()) {
     const q = a.strateji.trim();
     if (/^(varsay[ıi]lan|default|puan)$/i.test(q)) next.strateji = 'varsayilan';
@@ -313,7 +432,7 @@ function applySettings(a: any): RobotConfig {
 }
 
 const liveSummary = (c: RobotConfig) => [
-  `Borsa: Binance spot (${BIN()})`, `Semboller: ${c.semboller.filter(isCrypto).join(', ') || '(kripto yok!)'}`,
+  `Borsa: ${venue(c) === 'okx' ? `OKX TR spot, USDT pariteleri (${OKX()})` : `Binance spot (${BIN()})`}`, `Semboller: ${c.semboller.filter(isCrypto).join(', ') || '(kripto yok!)'}`,
   `İşlem başı: ${Math.min(c.islem_basi, LIVE_MAX())} USDT (üst sınır ${LIVE_MAX()})`, `En fazla açık pozisyon: ${c.max_pozisyon}`,
   `Günlük zarar sınırı: ${c.gunluk_zarar_limiti} USDT (aşılırsa robot durur)`, `Kontrol aralığı: ${c.aralik_dk} dk`,
   `Strateji: ${c.strateji && c.strateji !== 'varsayilan' ? `${findIndicator(c.strateji)?.ad ?? c.strateji} indikatörü` : 'piyasa_analiz puanı'}; ` + 'sinyal AL + risk/ödül ≥ ' + c.min_risk_odul + '; stop, hedef 1\'de maliyete koruma, hedef 2 ya da sinyal SAT\'ta satış',
@@ -337,16 +456,18 @@ export const ROBOT_TOOLS = [
     type: 'function',
     function: {
       name: 'borsa_robotu',
-      description: "Otomatik alım-satım robotu. Varsayılan KÂĞIT (sanal para, simülasyon) modudur; canlı mod yalnız kripto/Binance ve onay kartıyla. İşlemler: durum (bakiye, pozisyonlar, kâr/zarar), baslat, durdur (anında), ayarla (semboller, islem_basi USD, max_pozisyon, gunluk_zarar_limiti USD, aralik_dk, min_risk_odul, baslangic_bakiye, strateji: 'varsayilan' ya da indikatör id'si: ott, most, pmax, alphatrend, tillson_t3, supertrend, utbot, squeeze, wavetrend, ichimoku, ema_kesisim, golden_cross, rsi, stoch_rsi, macd, bollinger, psar, adx, hull, donchian, chandelier, obv, cci, mfi, williams_r), tur (şimdi bir kontrol turu), test_et (sembolün son 1 yılında stratejiyi geriye dönük dener), gecmis (son işlemler), pozisyon_kapat (sembol ya da 'hepsi'), canli_ac (onay kartı), kagida_don, sifirla (kâğıt bakiyeyi sıfırla).",
+      description: "Otomatik alım-satım robotu. Varsayılan KÂĞIT (sanal para, simülasyon) modudur; canlı mod yalnız kripto, Binance ya da OKX TR (borsa: 'okx'), onay kartıyla. İşlemler: durum (bakiye, pozisyonlar, kâr/zarar), baslat, durdur (anında), ayarla (semboller, islem_basi USD, max_pozisyon, gunluk_zarar_limiti USD, aralik_dk, min_risk_odul, baslangic_bakiye, strateji: 'varsayilan' ya da indikatör id'si: ott, most, pmax, alphatrend, tillson_t3, supertrend, utbot, squeeze, wavetrend, ichimoku, ema_kesisim, golden_cross, rsi, stoch_rsi, macd, bollinger, psar, adx, hull, donchian, chandelier, obv, cci, mfi, williams_r), tur (şimdi bir kontrol turu), strateji_gelistir (tüm indikatörleri ve varsayılan puanı sembollerde son 1 yılda dener, en iyisini seçip robota uygular; uygula:false yalnız sıralar), test_et (sembolün son 1 yılında stratejiyi geriye dönük dener), gecmis (son işlemler), pozisyon_kapat (sembol ya da 'hepsi'), canli_ac (onay kartı; borsa: binance|okx), kagida_don, sifirla (kâğıt bakiyeyi sıfırla).",
       parameters: {
         type: 'object',
         properties: {
-          islem: { type: 'string', enum: ['durum', 'baslat', 'durdur', 'ayarla', 'tur', 'test_et', 'gecmis', 'pozisyon_kapat', 'canli_ac', 'kagida_don', 'sifirla'] },
+          islem: { type: 'string', enum: ['durum', 'baslat', 'durdur', 'ayarla', 'tur', 'strateji_gelistir', 'test_et', 'gecmis', 'pozisyon_kapat', 'canli_ac', 'kagida_don', 'sifirla'] },
           sembol: { type: 'string' },
           semboller: { type: 'array', items: { type: 'string' }, description: 'Ör. ["BTC-USD","ETH-USD","THYAO"]' },
           islem_basi: { type: 'number' }, max_pozisyon: { type: 'number' }, gunluk_zarar_limiti: { type: 'number' },
           aralik_dk: { type: 'number' }, min_risk_odul: { type: 'number' }, baslangic_bakiye: { type: 'number' },
           strateji: { type: 'string', description: "'varsayilan' ya da indikatör id'si (ör. supertrend)" },
+          borsa: { type: 'string', enum: ['binance', 'okx'], description: 'Canlı modun borsası (okx = OKX TR)' },
+          uygula: { type: 'boolean', description: 'strateji_gelistir: en iyi stratejiyi robota uygula (varsayılan true)' },
         },
         required: ['islem'],
       },
@@ -371,6 +492,22 @@ export async function runRobotTool(a: any, progress: (l: string) => void): Promi
         progress(`geriye dönük test: ${sym}`);
         return j(await backtest(sym));
       }
+      case 'strateji_gelistir': {
+        const syms = (Array.isArray(a.semboller) && a.semboller.length ? a.semboller.map((x: unknown) => resolveSymbol(String(x))) : cfg.semboller).slice(0, 6);
+        const r = await developStrategy(syms, progress);
+        const best = r.en_iyi;
+        const out = { ...r, not: 'Günlük veriyle geçmiş simülasyon (komisyon dahil). Geçmiş sonuç geleceği göstermez; az işlemli sonuçlar elendi.' };
+        if (a.uygula === false || !best) return j(out);
+        if (best.puan <= 0 || r.uygun_yok) return j({ ...out, uygulanmadi: 'Hiçbir strateji bu sembollerde tutarlı kazandırmadı; robotun stratejisi değiştirilmedi. Beklemek de bir stratejidir.' });
+        const next = { ...cfg, strateji: best.id };
+        if (cfg.mod === 'canli') {
+          return propose('borsa', `Canlı robotun stratejisi: ${best.ad}`, `${liveSummary(next)}\nGeçmiş test (ort.): getiri %${best.getiri}, en büyük düşüş %${best.dusus}, ${best.islem} işlem, kazanma %${best.kazanma ?? '-'} (al-tut %${best.al_tut})`, 'Onaylarsanız canlı robot bu stratejiyle gerçek parayla işlem yapar.', async () => {
+            cfg = { ...next, aktif: cfg.aktif, mod: 'canli' }; saveCfg(); return `Canlı robot stratejisi: ${best.ad}`;
+          });
+        }
+        cfg = { ...next }; saveCfg();
+        return j({ ...out, uygulandi: best.id });
+      }
       case 'tur': progress('robot turu'); return j({ tur: await tick(true), durum: await status() });
       case 'sifirla':
         if (cfg.mod !== 'kagit') return j({ hata: 'Sıfırlama yalnız kâğıt modunda' });
@@ -380,6 +517,10 @@ export async function runRobotTool(a: any, progress: (l: string) => void): Promi
       case 'ayarla': {
         const next = applySettings(a);
         if (cfg.mod === 'canli') {
+          if (venue(next) !== venue()) {
+            const k = await venueKey(venue(next));
+            if (!k.ok) return j({ hata: k.neden, not: keyHelp(venue(next)) });
+          }
           return propose('borsa', 'Borsa robotu (CANLI) ayarlarını değiştir', liveSummary(next), 'Onaylarsanız canlı robot bu ayarlarla gerçek parayla işlem yapar.', async () => {
             cfg = { ...next, aktif: cfg.aktif, mod: 'canli' }; saveCfg(); return 'Canlı robot ayarları güncellendi.';
           });
@@ -390,9 +531,9 @@ export async function runRobotTool(a: any, progress: (l: string) => void): Promi
       case 'baslat': {
         if (a.semboller || a.islem_basi || a.gunluk_zarar_limiti) cfg = { ...applySettings(a), aktif: cfg.aktif, mod: cfg.mod };
         if (cfg.mod === 'canli') {
-          const k = await checkKey();
-          if (!k.ok) return j({ hata: k.neden });
-          return propose('borsa', 'Borsa robotunu CANLI başlat (gerçek para)', `${liveSummary(cfg)}\nUSDT bakiye: ${k.usdt}`, 'Onaylarsanız robot Binance hesabınızda gerçek parayla otomatik alım-satım yapar. "Robotu durdur" deyince anında durur.', async () => {
+          const k = await venueKey(venue());
+          if (!k.ok) return j({ hata: k.neden, not: keyHelp(venue()) });
+          return propose('borsa', 'Borsa robotunu CANLI başlat (gerçek para)', `${liveSummary(cfg)}\nUSDT bakiye: ${k.usdt}`, `Onaylarsanız robot ${venueName(venue())} hesabınızda gerçek parayla otomatik alım-satım yapar. "Robotu durdur" deyince anında durur.`, async () => {
             cfg.aktif = true; st.durdu = undefined; st.hata_sayisi = 0; saveCfg(); saveState();
             tell('CANLI robot başladı.', true);
             return (await tick()).join('\n') || 'Canlı robot başladı.';
@@ -418,19 +559,19 @@ export async function runRobotTool(a: any, progress: (l: string) => void): Promi
         return j({ ok: true, sonuc: await doClose() });
       }
       case 'canli_ac': {
-        const k = await checkKey();
-        if (!k.ok) return j({ hata: k.neden, not: 'Kullanıcıya Binance\'te çekim izni KAPALI, yalnız Spot Trading açık bir API anahtarı oluşturup Ayarlar → Anahtarlar\'a girmesini söyle; anahtarı sohbete yazmasın.' });
         const next = applySettings(a);
+        const k = await venueKey(venue(next));
+        if (!k.ok) return j({ hata: k.neden, not: keyHelp(venue(next)) });
         if (!next.semboller.some(isCrypto)) next.semboller = ['BTC-USD', 'ETH-USD'];
         if (Object.values(st.pozisyonlar).some(p => p.mod === 'kagit')) return j({ hata: 'Açık kâğıt pozisyonları var; önce pozisyon_kapat hepsi ya da sifirla.' });
-        return propose('borsa', 'Borsa robotunu CANLI moda al (gerçek para)', `${liveSummary(next)}\nUSDT bakiye: ${k.usdt}`, 'Onaylarsanız robot canlı moda geçer ve hemen başlar: Binance hesabınızda gerçek parayla işlem yapar. Kayıp riski vardır.', async () => {
+        return propose('borsa', 'Borsa robotunu CANLI moda al (gerçek para)', `${liveSummary(next)}\nUSDT bakiye: ${k.usdt}`, `Onaylarsanız robot canlı moda geçer ve hemen başlar: ${venueName(venue(next))} hesabınızda gerçek parayla işlem yapar. Kayıp riski vardır.`, async () => {
           cfg = { ...next, mod: 'canli', aktif: true }; st.durdu = undefined; st.hata_sayisi = 0; saveCfg(); saveState();
           tell('Robot CANLI moda geçti ve başladı.', true);
           return (await tick()).join('\n') || 'Canlı robot başladı.';
         });
       }
       case 'kagida_don':
-        if (Object.values(st.pozisyonlar).some(p => p.mod === 'canli')) return j({ hata: 'Açık canlı pozisyon var; önce kapatın ya da Binance\'te elle yönetin.', acik: Object.keys(st.pozisyonlar) });
+        if (Object.values(st.pozisyonlar).some(p => p.mod === 'canli')) return j({ hata: 'Açık canlı pozisyon var; önce kapatın ya da borsada elle yönetin.', acik: Object.keys(st.pozisyonlar) });
         cfg.mod = 'kagit'; cfg.aktif = false; saveCfg();
         return j({ ok: true, mod: 'kagit', not: 'Kâğıt moda dönüldü; robot durdu. "Robotu başlat" ile simülasyon başlar.' });
     }

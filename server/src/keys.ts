@@ -30,7 +30,7 @@ export const KEY_FIELDS: KeyField[] = [
   { name: 'ROBOT_CANLI_MAX', label: 'Robot canlı işlem başı üst sınır (USDT)', hint: 'İsteğe bağlı, varsayılan 100: canlı robot tek işlemde bundan fazla harcamaz', secret: false, borsa: 'binance' },
   { name: 'BTCTURK_API_KEY', label: 'Public Key', hint: 'BtcTurk → Hesabım → API Erişimi: yalnız "Okuma" (ve gerekiyorsa "İşlem") yetkisi, ÇEKİM yetkisi KAPALI; IP adresi olarak bu bilgisayarın internet IP\'sini girin', secret: true, borsa: 'btcturk' },
   { name: 'BTCTURK_API_SECRET', label: 'Private Key', hint: 'API anahtarıyla birlikte verilen gizli anahtar', secret: true, borsa: 'btcturk' },
-  { name: 'OKX_API_KEY', label: 'API Key', hint: 'OKX TR → Profil → API: yalnız "Okuma" (ve gerekiyorsa "İşlem") izni, ÇEKİM izni KAPALI', secret: true, borsa: 'okx' },
+  { name: 'OKX_API_KEY', label: 'API Key', hint: 'OKX TR → Profil → API: "Okuma" + robotun alım-satımı için "İşlem" izni; ÇEKİM izni KAPALI', secret: true, borsa: 'okx' },
   { name: 'OKX_API_SECRET', label: 'Secret Key', hint: 'Anahtarla birlikte verilen gizli anahtar', secret: true, borsa: 'okx' },
   { name: 'OKX_API_PASSPHRASE', label: 'Passphrase (API şifresi)', hint: 'API anahtarını oluştururken kendi belirlediğiniz şifre', secret: true, borsa: 'okx' },
   { name: 'OKX_API_URL', label: 'API adresi', hint: 'Boş: https://www.okx.com. Bağlantı testi bölge hatası verirse OKX TR\'nin size verdiği API adresini yazın', secret: false, borsa: 'okx' },
