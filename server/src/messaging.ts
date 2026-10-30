@@ -739,10 +739,10 @@ export function messagingRouter(): Router {
 }
 
 /** Kullanıcıya bildirim: eşleşmiş Telegram sohbetine ve WhatsApp'ta kendine. Gönderilebilen kanalları döner. */
-export async function notifyOwner(text: string): Promise<string[]> {
+export async function notifyOwner(text: string, platform: 'telegram' | 'whatsapp' | 'hepsi' = 'hepsi'): Promise<string[]> {
   const out: string[] = [];
   const owner = cfg.telegramSahip || (process.env.TELEGRAM_SAHIP_ID || '').trim();
-  if (TG() && owner) {
+  if (platform !== 'whatsapp' && TG() && owner) {
     try {
       // Telegram mesaj sınırı 4096 karakter: satır sonlarından bölünür
       const parts: string[] = [];
@@ -758,8 +758,17 @@ export async function notifyOwner(text: string): Promise<string[]> {
       console.warn(`[mesaj] Telegram rapor gönderilemedi: ${String(e?.message || e).slice(0, 120)}`);
     }
   }
-  if (await notifySelf(text)) out.push('WhatsApp');
+  if (platform !== 'telegram' && await notifySelf(text)) out.push('WhatsApp');
   return out;
+}
+
+/** Kullanıcıya mesaj kanalları hazır mı (neden hazır değilse açıklamasıyla) */
+export function ownerChannels(): { telegram: string | true; whatsapp: string | true } {
+  const owner = cfg.telegramSahip || (process.env.TELEGRAM_SAHIP_ID || '').trim();
+  return {
+    telegram: !TG() ? 'Telegram bot anahtarı yok (Ayarlar → Mesajlaşma → Telegram: BotFather\'dan alınan anahtar)' : !owner ? 'Telegram botu sizinle eşleşmemiş: telefondan bota /start yazın' : true,
+    whatsapp: wa.sock && wa.durum === 'bağlı' && wa.numara ? true : 'WhatsApp bağlı değil (Ayarlar → Mesajlaşma → WhatsApp: QR okutun)',
+  };
 }
 
 /** Kullanıcının WhatsApp'ta kendine yazdığı sohbete mesaj (bağlı değilse false) */
