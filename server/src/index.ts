@@ -53,7 +53,7 @@ import { setRemoteAsk, type Kanal } from './remote.js';
 import { clearErrors, errorList, initErrors, logError } from './errors.js';
 import { approvalsRouter, initApprovals } from './approvals.js';
 import { automationRouter } from './automation.js';
-import { explainRepo } from './github.js';
+import { explainRepo, translateTr } from './github.js';
 import { adminOnly, isLocalRequest, listKeys, restartServer, saveKeys } from './keys.js';
 import { PERSONAS, isPersona, setPersona, type PersonaId } from './persona.js';
 import { THEMES, isTheme, voiceGender, type ThemeId } from './look.js';
@@ -446,6 +446,14 @@ app.get('/api/github/ozet', async (req, res) => {
   } catch (e: any) {
     res.status(502).json({ error: String(e?.message || e) });
   }
+});
+
+// GitHubta (telefon): repo açıklamaları ve etiketleri toplu Türkçeye çevrilir
+app.post('/api/github/ceviri', async (req, res) => {
+  const metinler: string[] = Array.isArray(req.body?.metinler)
+    ? req.body.metinler.filter((m: unknown) => typeof m === 'string').map((m: string) => m.slice(0, 1000)).slice(0, 60)
+    : [];
+  res.json({ ceviriler: await translateTr(metinler) });
 });
 
 // ---------- API anahtarları (server/.env) ----------
