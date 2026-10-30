@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   clearErrorLog, getErrors, type ErrorView, addWebhook, deleteWebhook, getWebhooks, type WebhookView,
-  addServer, addSkill, deleteServer, deleteSkill, getExtensions, getKeys, installGitHub, removeRepo, installBulk, removeBroken, retryServer, setAutoOpen, logoutServer, saveKeys, toggleServer, toggleSkill,
+  addServer, addSkill, deleteServer, deleteSkill, getExtensions, getKeys, installGitHub, removeRepo, tidyRepos, installBulk, removeBroken, retryServer, setAutoOpen, logoutServer, saveKeys, toggleServer, toggleSkill,
   type ExtensionsData, type KeysData, type KeyView,
   addTakip, checkTakip, getTakip, removeTakip, type SosyalPlatform, type TakipData,
 } from '../lib/api';
@@ -170,6 +170,7 @@ export function ExtensionSettings({ flash }: { flash(t: string): void }) {
     return () => clearInterval(t);
   }, [pending]);
 
+  const [busyTidy, setBusyTidy] = useState(false);
   const act = (p: Promise<ExtensionsData>, ok?: string) => p.then(d => { setData(d); if (ok) flash(ok); }).catch(e => flash(e.message));
 
   const install = () => {
@@ -245,15 +246,21 @@ export function ExtensionSettings({ flash }: { flash(t: string): void }) {
 
       {data.repos.length > 0 && (
         <Kutu baslik={`Kurulu repolar (${data.repos.length})`}>
-        <ul className="memory">
-          {data.repos.map(r => (
-            <li key={r.slug}>
-              <span>📦 {r.url.replace('https://github.com/', '')}</span>
-              <em>{data.skills.filter(s => s.repo === r.slug).length + data.servers.filter(s => s.repo === r.slug).length} öğe</em>
-              <button aria-label="Repoyu kaldır" onClick={() => confirm(`${r.url} ve ondan gelen tüm yetenekler kaldırılsın mı?`) && act(removeRepo(r.slug), 'Repo kaldırıldı')}>✕</button>
-            </li>
-          ))}
-        </ul>
+        <button className="save" disabled={busyTidy} onClick={() => { setBusyTidy(true); act(tidyRepos(), 'Repolar başlıklara ayrıldı, güncellemeler yapıldı').finally(() => setBusyTidy(false)); }}>{busyTidy ? '⏳ Düzenleniyor (biraz sürebilir)…' : '🗂️ Başlıklara ayır ve güncelle'}</button>
+        {Object.entries(data.repos.reduce<Record<string, typeof data.repos>>((g, r) => { (g[r.kategori ?? 'Başlıksız'] ??= []).push(r); return g; }, {})).sort(([a], [b]) => (a === 'Başlıksız' ? 1 : b === 'Başlıksız' ? -1 : a.localeCompare(b, 'tr'))).map(([k, list]) => (
+          <div key={k}>
+            <h4 className="small">{k} ({list.length})</h4>
+            <ul className="memory">
+              {list.map(r => (
+                <li key={r.slug}>
+                  <span>📦 {r.url.replace('https://github.com/', '')}</span>
+                  <em>{data.skills.filter(s => s.repo === r.slug).length + data.servers.filter(s => s.repo === r.slug).length} öğe</em>
+                  <button aria-label="Repoyu kaldır" onClick={() => confirm(`${r.url} ve ondan gelen tüm yetenekler kaldırılsın mı?`) && act(removeRepo(r.slug), 'Repo kaldırıldı')}>✕</button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
         </Kutu>
       )}
 
