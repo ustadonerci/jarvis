@@ -29,7 +29,7 @@ import { emitCamera, getCameras, getRole, isCameraEvent, onCamera, setRole, togg
 import { type ElevenUsage, clearConversation, cloneVoice, uploadFile, detectDevice, getDashboard, getHealth, getState, getVoices, metric, postAttention, postSleep, postWake, previewUrl, saveDevice, saveSettings, sendChat, setPhotoMode, stt, subscribe, token, clientId } from './lib/api';
 import { startClapListener, type ClapListener } from './lib/clap';
 import { shrinkImage } from './lib/image';
-import { micInfo, recorderSupported, startRecording, suspiciousMic, warmMic } from './lib/recorder';
+import { findWorkingMic, micInfo, recorderSupported, startRecording, suspiciousMic, warmMic } from './lib/recorder';
 import { MicTest } from './components/MicTest';
 import { ExchangeSettings } from './components/Exchanges';
 import { ProviderSettings } from './components/Providers';
@@ -767,8 +767,13 @@ export default function App() {
           if ((!blob || info.peak < 0.004) && !(await backup)) {
             setInterim('');
             setCore(c => (c === 'listening' ? 'idle' : c));
+            if (info.peak < 0.004) {
+              // Hoparlör/kulaklık takılınca Windows girişi değiştirebiliyor: çalışan başka bir mikrofon aranır ve seçilir
+              const alt = await findWorkingMic().catch(() => null);
+              if (alt) { flash(`Mikrofon ses vermiyordu; "${alt.ad}" girişine geçtim. Tekrar konuşun.`); speakLine('Mikrofonu değiştirdim efendim, tekrar söyler misiniz?'); return; }
+            }
             flash(info.peak < 0.004
-              ? 'Mikrofondan ses gelmiyor. Windows → Ayarlar → Ses → Giriş: doğru mikrofon seçili mi, seviyesi açık mı? Tarayıcıda da mikrofon izni verilmiş olmalı.'
+              ? 'Mikrofondan ses gelmiyor. Hoparlörü/kulaklığı bilgisayarın mikrofonlu kulaklık girişine taktıysanız Windows dahili mikrofonu kapatmış olabilir: açılan "Hangi cihazı taktınız?" penceresinde "Kulaklık" (mikrofonsuz) seçin ya da hoparlörü arka çıkışa takın. Windows → Ayarlar → Ses → Giriş\'ten de mikrofonu seçebilirsiniz.'
               : 'Sizi duyamadım efendim.');
             return;
           }

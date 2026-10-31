@@ -58,7 +58,57 @@ export function micInfo(): MediaTrackSettings & { label?: string } | null {
 let warm: MediaStream | null = null;
 let warmUsers = 0;
 let warmTimer: ReturnType<typeof setTimeout> | undefined;
-const live = (s: MediaStream | null) => !!s && s.getAudioTracks().some(t => t.readyState === 'live');
+// Sessiz (muted) iz de ölü sayılır: hoparlör/kulaklık takılınca Windows girişi değiştirir, eski iz açık kalıp ses vermez
+const live = (s: MediaStream | null) => !!s && s.getAudioTracks().some(t => t.readyState === 'live' && !t.muted);
+
+// Ses cihazı takılıp çıkarılınca (hoparlör, kulaklık, USB) açık tutulan mikrofon akışı bırakılır; sonraki kayıt güncel
+// cihazla açılır.
+try {
+  navigator.mediaDevices?.addEventListener?.('devicechange', () => {
+    if (warmUsers === 0) { warm?.getTracks().forEach(t => t.stop()); warm = null; }
+  });
+} catch { /* eski tarayıcı */ }
+
+/**
+ * Ses vermeyen mikrofon yerine çalışan bir giriş arar: her girişi ~0,7 sn açıp ölçer. Takılı olmayan/kapalı bir
+ * giriş tam sessizlik (0) verir; gerçek bir mikrofonda her zaman biraz oda sesi olur. Bilgisayarın kendi sesini
+ * kaydeden girişler (Stereo Karışımı) atlanır. Bulunursa seçilir.
+ */
+export async function findWorkingMic(): Promise<{ id: string; ad: string } | null> {
+  const cur = micDevice();
+  const mics = (await listMics().catch(() => [])).filter(m => !m.supheli && m.id !== cur);
+  if (cur) mics.unshift({ id: '', ad: 'Varsayılan mikrofon', supheli: false });
+  const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  const ctx = new AC();
+  try {
+    if (ctx.state !== 'running') await ctx.resume().catch(() => {});
+    if (ctx.state !== 'running') return null;
+    for (const m of mics) {
+      let s: MediaStream | null = null;
+      try {
+        s = await navigator.mediaDevices.getUserMedia({ audio: { ...MIC, ...(m.id ? { deviceId: { exact: m.id } } : {}) } });
+        const an = ctx.createAnalyser();
+        an.fftSize = 1024;
+        const src = ctx.createMediaStreamSource(s);
+        src.connect(an);
+        const buf = new Uint8Array(an.fftSize);
+        let max = 0;
+        for (let i = 0; i < 14; i++) {
+          await new Promise(r => setTimeout(r, 50));
+          an.getByteTimeDomainData(buf);
+          let sum = 0;
+          for (let k = 0; k < buf.length; k++) { const v = (buf[k] - 128) / 128; sum += v * v; }
+          max = Math.max(max, Math.sqrt(sum / buf.length));
+        }
+        src.disconnect();
+        if (max > 0.0008) { setMicDevice(m.id); return { id: m.id, ad: m.ad }; }
+      } catch { /* bu giriş açılamadı */ } finally { s?.getTracks().forEach(t => t.stop()); }
+    }
+    return null;
+  } finally {
+    ctx.close().catch(() => {});
+  }
+}
 
 /** Mikrofonu önceden aç (ör. düğmeye basılırken); başarısızsa sessizce geçer */
 export async function warmMic(): Promise<MediaStream | null> {
