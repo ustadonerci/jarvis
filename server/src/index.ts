@@ -448,6 +448,15 @@ app.get('/api/github/ozet', async (req, res) => {
   }
 });
 
+// GitHubta güncellemesi: bilgisayarda derlenen APK ve sürümü data/githubta/ altına konur, telefon açılışta denetler
+const GITHUBTA_DIR = path.join(__dirname, '..', 'data', 'githubta');
+app.get('/api/githubta/surum', (_req, res) => {
+  try { res.json(JSON.parse(fs.readFileSync(path.join(GITHUBTA_DIR, 'surum.json'), 'utf8'))); } catch { res.json({ versionCode: 0 }); }
+});
+app.get('/api/githubta/apk', (_req, res) => {
+  res.sendFile(path.join(GITHUBTA_DIR, 'githubta.apk'), { headers: { 'Content-Type': 'application/vnd.android.package-archive' } }, err => err && !res.headersSent && res.status(404).end());
+});
+
 // GitHubta (telefon): repo açıklamaları ve etiketleri toplu Türkçeye çevrilir
 app.post('/api/github/ceviri', async (req, res) => {
   const metinler: string[] = Array.isArray(req.body?.metinler)

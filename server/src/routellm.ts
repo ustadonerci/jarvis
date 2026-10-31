@@ -113,10 +113,10 @@ export interface ChatResponse {
 }
 
 /** Kısa tek seferlik metin isteği (özet, sınıflandırma). Demo modunda ya da hata olursa boş döner. */
-export async function askText(system: string, user: string): Promise<string> {
+export async function askText(system: string, user: string, model = CHAT_MODEL): Promise<string> {
   if (MOCK) return '';
   try {
-    const r = await routellm<ChatResponse>('/chat/completions', { model: CHAT_MODEL, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] });
+    const r = await routellm<ChatResponse>('/chat/completions', { model, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] });
     const c = r.choices?.[0]?.message?.content;
     return typeof c === 'string' ? c.trim() : '';
   } catch (e: any) {
