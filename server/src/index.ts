@@ -442,7 +442,7 @@ app.get('/api/github/ozet', async (req, res) => {
   const repo = String(req.query.repo ?? '');
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) return res.status(400).json({ error: 'repo sahip/ad biçiminde olmalı' });
   try {
-    res.json({ repo, ozet: await explainRepo(repo) });
+    res.json({ repo, ozet: await explainRepo(repo, String(req.query.aciklama ?? '').slice(0, 300)) });
   } catch (e: any) {
     res.status(502).json({ error: String(e?.message || e) });
   }
