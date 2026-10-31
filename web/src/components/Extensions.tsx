@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   clearErrorLog, getErrors, type ErrorView, addWebhook, deleteWebhook, getWebhooks, type WebhookView,
-  addServer, addSkill, deleteServer, deleteSkill, getExtensions, getKeys, installGitHub, removeRepo, tidyRepos, installBulk, removeBroken, retryServer, setAutoOpen, logoutServer, saveKeys, toggleServer, toggleSkill,
+  addServer, addSkill, getDaily, saveDaily, deleteServer, deleteSkill, getExtensions, getKeys, installGitHub, removeRepo, tidyRepos, installBulk, removeBroken, retryServer, setAutoOpen, logoutServer, saveKeys, toggleServer, toggleSkill,
   type ExtensionsData, type KeysData, type KeyView,
   addTakip, checkTakip, getTakip, removeTakip, type SosyalPlatform, type TakipData,
 } from '../lib/api';
@@ -205,6 +205,7 @@ export function ExtensionSettings({ flash }: { flash(t: string): void }) {
   return (
     <>
       <label>Yetenekler · {data.skills.filter(s => s.aktif).length} beceri/iş akışı · {data.servers.filter(s => s.durum === 'bağlı').length} MCP</label>
+      <AutoRepoToggle flash={flash} />
       <p className="muted small">GitHub reposu ekleyin; Jarvis içindeki becerileri (SKILL.md), iş akışlarını (commands/, workflows/ altında .md) ve MCP sunucularını (.mcp.json ya da MCP paketi) kendisi bulup kurar.</p>
       <form className="memory-add" onSubmit={e => { e.preventDefault(); install(); }}>
         <input value={repo} onChange={e => setRepo(e.target.value)} placeholder="https://github.com/kullanici/repo  ya da  gh repo clone kullanici/repo" disabled={busy} />
@@ -472,5 +473,19 @@ export function TakipSettings({ flash }: { flash(t: string): void }) {
         <div className="seg"><button disabled={busy} onClick={() => act(checkTakip(), 'Yeni videolar kontrol edildi')}>{busy ? 'Kontrol ediliyor…' : 'Yeni videolara şimdi bak'}</button></div>
       )}
     </>
+  );
+}
+
+/** Günlük GitHub taramasında bulunan uygun repoları Jarvis kendisi kursun mu (Ayarlar → Günlük rapor'daki ayarla aynı) */
+function AutoRepoToggle({ flash }: { flash(t: string): void }) {
+  const [on, setOn] = useState<boolean | null>(null);
+  useEffect(() => { getDaily().then(d => setOn(d.ayar.repoOto)).catch(() => {}); }, []);
+  if (on === null) return null;
+  const toggle = () => saveDaily({ repoOto: !on }).then(d => { setOn(d.ayar.repoOto); flash(d.ayar.repoOto ? 'Otomatik repo kurulumu AÇIK' : 'Otomatik repo kurulumu KAPALI: yeni repolar yalnız raporlanır'); }).catch(e => flash(e.message));
+  return (
+    <div className="row">
+      <button className={on ? 'on' : ''} onClick={toggle}>{on ? '✅ Otomatik repo kurulumu: AÇIK' : '⬜ Otomatik repo kurulumu: KAPALI'}</button>
+      <small className="muted">{on ? 'Her sabah bulunan uygun repolar kendiliğinden kurulur.' : 'Yeni repolar yalnız raporlanır; siz isteyince kurulur.'}</small>
+    </div>
   );
 }

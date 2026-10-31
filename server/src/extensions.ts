@@ -747,8 +747,8 @@ export const EXT_TOOLS = [
     type: 'function',
     function: {
       name: 'mcp_yonet',
-      description: "Kurulu MCP sunucularının durumunu söyler (bağlı / hata / giriş gerekli / kapalı) ya da bozuk olanları (kurulamayan, bağlanamayan) siler. 'MCP'ler çalışıyor mu', 'bozuk MCP'leri sil', 'hatalı eklentileri temizle' isteklerinde.",
-      parameters: { type: 'object', properties: { islem: { type: 'string', enum: ['durum', 'bozuklari_sil', 'hepsini_ac'] } }, required: ['islem'] },
+      description: "ac: adı verilen MCP sunucusunu (ör. HeyGen) açar, çalıştırıp dener; giriş gerekiyorsa giriş sayfasını bilgisayarın tarayıcısında açar ('HeyGen'i kur/çalıştır'). Kurulu MCP sunucularının durumunu söyler (bağlı / hata / giriş gerekli / kapalı) ya da bozuk olanları (kurulamayan, bağlanamayan) siler. 'MCP'ler çalışıyor mu', 'bozuk MCP'leri sil', 'hatalı eklentileri temizle' isteklerinde.",
+      parameters: { type: 'object', properties: { islem: { type: 'string', enum: ['durum', 'bozuklari_sil', 'hepsini_ac', 'ac'] }, ad: { type: 'string', description: "ac için sunucu adı (ör. HeyGen, Higgsfield)" } }, required: ['islem'] },
     },
   },
 ] as const;
@@ -791,6 +791,25 @@ export async function runExtensionTool(name: string, args: any, progress: (l: st
       progress('bozuk MCP sunucuları siliniyor');
       const silinen = await removeBroken();
       return JSON.stringify({ silinen, not: silinen.length ? 'Silinenleri söyle; istenirse aynı repo tekrar kurulabilir.' : 'Silinecek bozuk sunucu yoktu.' });
+    }
+    if (args.islem === 'ac') {
+      const q = norm(String(args.ad ?? '')).replace(/\s+/g, '');
+      if (!q) return JSON.stringify({ hata: 'Sunucu adı verin (ör. HeyGen)' });
+      let s = store.servers.find(x => norm(x.ad).replace(/\s+/g, '').includes(q) || q.includes(norm(x.ad).replace(/\s+/g, '')));
+      const auto = AUTO_SERVERS.find(a => q.includes(a.key) || a.key.includes(q));
+      if (!s && auto) { s = { id: randomUUID().slice(0, 8), ad: auto.ad, aktif: true, tur: 'http', url: auto.url }; store.servers.push(s); }
+      if (!s) return JSON.stringify({ hata: `"${args.ad}" adlı MCP sunucusu kurulu değil`, kurulu: store.servers.map(x => x.ad), not: 'GitHub linki varsa yetenek_kur ile kurulabilir.' });
+      delete s.elleKapali;
+      progress(`${s.ad} açılıyor`);
+      const p = await probeServer(s);
+      changed();
+      if (p.durum === 'giris') {
+        const url = pendingAuth.get(s.id);
+        if (url && WIN) execFile('explorer.exe', [url], () => {});
+        return JSON.stringify({ ad: s.ad, durum: 'giriş gerekli', tarayicida_acildi: !!url && WIN, not: `${s.ad} giriş sayfası bilgisayarın tarayıcısında açıldı: kullanıcı kendi ${s.ad} hesabıyla girip "İzin ver/Allow" demeli; sonra sunucu kendiliğinden bağlanır. Açılmadıysa Ayarlar → Yetenekler → ${s.ad} → "Giriş yap".` });
+      }
+      const l = live.get(s.id);
+      return JSON.stringify({ ad: s.ad, durum: p.durum === 'ok' ? 'çalışıyor' : p.durum === 'eksik' ? 'gereksinim eksik' : 'çalışmıyor', araclar: l?.tools?.map(t => t.name).slice(0, 40), hata: p.neden });
     }
     if (args.islem === 'hepsini_ac') {
       store.otoAc = true;
