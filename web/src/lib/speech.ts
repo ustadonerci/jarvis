@@ -39,6 +39,44 @@ class VoiceEngine {
   /** Cevap tarayıcı sesine geçince */
   onFallback: ((reason: string) => void) | null = null;
 
+  // ---- Çoklu hoparlör: Jarvis'in sesi seçili tüm çıkışlardan (Bluetooth hoparlör, kulaklık, bilgisayar) aynı anda ----
+  /** Ses grafiğinin akış kopyası: ek çıkışlar bunu çalar */
+  private mirror: MediaStreamAudioDestinationNode | null = null;
+  private extras: HTMLAudioElement[] = [];
+  /** 'hepsi': bağlı bütün hoparlörler (yeni takılan/bağlanan da); 'secili': outputIds; '' (varsayılan): yalnız Windows'un varsayılanı */
+  get outputMode(): '' | 'hepsi' | 'secili' { const v = safeGet('jarvis.cikisMod'); return v === 'hepsi' || v === 'secili' ? v : ''; }
+  set outputMode(v: '' | 'hepsi' | 'secili') { safeSet('jarvis.cikisMod', v || null); void this.applyOutputs(); }
+  get outputIds(): string[] { try { return JSON.parse(safeGet('jarvis.cikislar') || '[]'); } catch { return []; } }
+  set outputIds(ids: string[]) { safeSet('jarvis.cikislar', JSON.stringify(ids)); void this.applyOutputs(); }
+  /** Kullanılabilir hoparlörler ("default"/"communications" takma adları hariç) */
+  async outputs(): Promise<{ id: string; ad: string }[]> {
+    if (!navigator.mediaDevices?.enumerateDevices) return [];
+    const all = await navigator.mediaDevices.enumerateDevices();
+    return all.filter(d => d.kind === 'audiooutput' && d.deviceId !== 'default' && d.deviceId !== 'communications')
+      .map(d => ({ id: d.deviceId, ad: d.label || 'Hoparlör' }));
+  }
+  /** Çıkışları yeniden kurar: ilk çıkış ses bağlamının kendisi, diğerleri akış kopyasını çalan gizli <audio> öğeleri */
+  async applyOutputs(): Promise<string[]> {
+    for (const e of this.extras) { e.pause(); e.srcObject = null; }
+    this.extras = [];
+    const ctx = this.ctx as (AudioContext & { setSinkId?: (id: string) => Promise<void> }) | null;
+    if (!ctx || !this.analyser) return [];
+    const mode = this.outputMode;
+    const avail = await this.outputs().catch(() => []);
+    const ids = mode === 'hepsi' ? avail.map(d => d.id) : mode === 'secili' ? this.outputIds.filter(id => avail.some(d => d.id === id)) : [];
+    if (!ids.length || !ctx.setSinkId) { await ctx.setSinkId?.('').catch(() => {}); return []; }
+    await ctx.setSinkId(ids[0]).catch(() => {});
+    if (ids.length > 1) {
+      this.mirror ??= (() => { const m = ctx.createMediaStreamDestination(); this.analyser!.connect(m); return m; })();
+      for (const id of ids.slice(1)) {
+        const el = new Audio() as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
+        el.srcObject = this.mirror.stream;
+        try { await el.setSinkId?.(id); await el.play(); this.extras.push(el); } catch { /* bu çıkış açılamadı */ }
+      }
+    }
+    return ids.slice(0, 1 + this.extras.length).map(id => avail.find(d => d.id === id)?.ad ?? id);
+  }
+
   constructor() {
     this.audio.preload = 'auto';
     this.audio.setAttribute('playsinline', '');
@@ -88,6 +126,9 @@ class VoiceEngine {
         this.buf = new Uint8Array(this.analyser.fftSize);
         src.connect(this.analyser);
         this.analyser.connect(this.ctx.destination);
+        // Seçili hoparlörler; Bluetooth cihazı bağlanınca/çıkınca "hepsi" modunda kendiliğinden yeniden kurulur
+        void this.applyOutputs();
+        navigator.mediaDevices?.addEventListener?.('devicechange', () => { if (this.outputMode) setTimeout(() => void this.applyOutputs(), 800); });
       }
       this.ctx.resume();
       // Sessiz bir çalma ile <audio> öğesinin kilidini aç

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { checkWindowsMic, openMicSettings, stt, type MicReport } from '../lib/api';
 import { listMics, micDevice, micInfo, setMicDevice, startRecording } from '../lib/recorder';
-import { createRecognizer } from '../lib/speech';
+import { createRecognizer, voice } from '../lib/speech';
 
 type Mic = { id: string; ad: string; supheli: boolean };
 interface Result { peak: number; ms: number; url: string; sunucu: string; tarayici: string; hata?: string; ayar: string }
@@ -123,5 +123,43 @@ export function MicTest({ flash }: { flash(t: string): void }) {
         );
       })()}
     </>
+  );
+}
+
+/**
+ * Ayarlar → Hoparlörler: Jarvis'in sesi Windows'un varsayılan çıkışından, seçili çıkışlardan ya da bağlı TÜM
+ * hoparlörlerden (Bluetooth dahil) aynı anda çalar. "Hepsi" modunda yeni bağlanan Bluetooth hoparlör kendiliğinden eklenir.
+ */
+export function SpeakerSettings({ flash }: { flash(t: string): void }) {
+  const [outs, setOuts] = useState<{ id: string; ad: string }[] | null>(null);
+  const [mode, setMode] = useState(voice.outputMode);
+  const [ids, setIds] = useState(voice.outputIds);
+  const load = () => { voice.unlock(); voice.outputs().then(setOuts).catch(() => flash('Hoparlör listesi alınamadı')); };
+  const apply = () => voice.applyOutputs().then(a => flash(a.length ? `Jarvis şu hoparlörlerden konuşacak: ${a.join(', ')}` : 'Jarvis Windows\'un varsayılan hoparlöründen konuşacak'));
+  const pick = (m: '' | 'hepsi' | 'secili') => { voice.unlock(); setMode(m); voice.outputMode = m; setTimeout(apply, 300); };
+  const toggle = (id: string) => { const n = ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id]; setIds(n); voice.outputIds = n; setTimeout(apply, 300); };
+  return (
+    <div>
+      <label>Hoparlörler · Bluetooth</label>
+      <p className="muted small">Jarvis'in sesi hangi hoparlörlerden çıksın? Bluetooth hoparlör ve kulaklıklar Windows'ta bir kez eşleştirildiyse açıldıklarında kendiliğinden bağlanır.</p>
+      <div className="row">
+        <button className={mode === '' ? 'on' : ''} onClick={() => pick('')}>Varsayılan</button>
+        <button className={mode === 'hepsi' ? 'on' : ''} onClick={() => pick('hepsi')}>🔊 Hepsi aynı anda</button>
+        <button className={mode === 'secili' ? 'on' : ''} onClick={() => { pick('secili'); load(); }}>Seçtiklerim</button>
+        <button onClick={load}>Listeyi yenile</button>
+      </div>
+      {outs && (
+        <ul className="memory">
+          {outs.map(o => (
+            <li key={o.id}>
+              <span>{/bluetooth|bt|airpods|jbl|buds|headset|hands-free/i.test(o.ad) ? '🎧' : '🔈'} {o.ad}</span>
+              {mode === 'secili' && <button className="toggle" onClick={() => toggle(o.id)}>{ids.includes(o.id) ? 'açık' : 'kapalı'}</button>}
+            </li>
+          ))}
+          {!outs.length && <li><span>Hoparlör bulunamadı</span></li>}
+        </ul>
+      )}
+      <p className="muted small">Not: Bluetooth cihazlar birkaç yüz milisaniye gecikmeli çalar; aynı odada iki hoparlör hafif yankı gibi duyulabilir. Bluetooth kulaklığın "Hands-Free" girişi mikrofon olarak seçilirse ses kalitesi telefon görüşmesi kalitesine düşer; mikrofonu yukarıdan bilgisayarınkine sabitleyin.</p>
+    </div>
   );
 }

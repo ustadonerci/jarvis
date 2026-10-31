@@ -84,6 +84,38 @@ export function openPrivacySettings(): boolean {
   return true;
 }
 
+// ---------------------------------------------------------------- Bluetooth
+
+// Eşleşmiş Bluetooth cihazları ve bağlı olup olmadıkları (DEVPKEY_Device_IsConnected = {83DA6326-…} 15)
+const BT_PS = `$ErrorActionPreference='SilentlyContinue'
+$k='{83DA6326-97A6-4088-9453-A1923F573B29} 15'
+Get-PnpDevice -Class Bluetooth | Where-Object { $_.InstanceId -like 'BTH*DEV_*' -or $_.InstanceId -like 'BTHLE\\DEV_*' } | ForEach-Object {
+  $c = (Get-PnpDeviceProperty -InstanceId $_.InstanceId -KeyName $k).Data
+  [pscustomobject]@{ ad = $_.FriendlyName; bagli = [bool]$c; durum = "$($_.Status)" }
+} | ConvertTo-Json -Compress`;
+
+export function bluetoothDevices(): Promise<{ ad: string; bagli: boolean; durum: string }[]> {
+  if (process.platform !== 'win32') return Promise.reject(new Error('Bluetooth kontrolü yalnız Windows\'ta'));
+  return new Promise((resolve, reject) => {
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', BT_PS], { timeout: 25_000, windowsHide: true, maxBuffer: 1024 * 1024 }, (err, stdout) => {
+      if (err && !stdout) return reject(new Error('Bluetooth cihazları okunamadı'));
+      try {
+        const j = JSON.parse(stdout.trim() || '[]');
+        const list = (Array.isArray(j) ? j : [j]).filter((x: any) => x?.ad);
+        // Aynı cihaz klasik + LE olarak iki kez görünebilir: adına göre birleştir
+        const by = new Map<string, { ad: string; bagli: boolean; durum: string }>();
+        for (const x of list) { const o = by.get(x.ad); by.set(x.ad, { ad: x.ad, bagli: !!x.bagli || !!o?.bagli, durum: x.durum }); }
+        resolve([...by.values()]);
+      } catch { resolve([]); }
+    });
+  });
+}
+export function openBluetoothSettings(): boolean {
+  if (process.platform !== 'win32') return false;
+  spawn('cmd.exe', ['/c', 'start', '', 'ms-settings:bluetooth'], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+  return true;
+}
+
 export const MICDIAG_TOOLS = [
   {
     type: 'function',
@@ -93,10 +125,24 @@ export const MICDIAG_TOOLS = [
       parameters: { type: 'object', properties: { ac: { type: 'string', enum: ['kayit', 'gizlilik'] } } },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'bluetooth',
+      description: "Bilgisayarın eşleşmiş Bluetooth cihazlarını ve hangilerinin şu an bağlı olduğunu listeler; ayarlar_ac: Windows Bluetooth ayarlarını açar (yeni cihaz eşleştirme ya da bağlanmayan cihazda 'Bağlan'). Jarvis'in sesini birden çok hoparlörden aynı anda çalmak Ayarlar → Hoparlörler · Bluetooth bölümündedir ('Hepsi aynı anda').",
+      parameters: { type: 'object', properties: { islem: { type: 'string', enum: ['durum', 'ayarlar_ac'] } } },
+    },
+  },
 ] as const;
-export const isMicDiagTool = (n: string) => n === 'mikrofon_kontrol';
-export async function runMicDiagTool(a: any, progress: (l: string) => void): Promise<string> {
+export const isMicDiagTool = (n: string) => n === 'mikrofon_kontrol' || n === 'bluetooth';
+export async function runMicDiagTool(a: any, progress: (l: string) => void, name = 'mikrofon_kontrol'): Promise<string> {
   try {
+    if (name === 'bluetooth') {
+      if (a.islem === 'ayarlar_ac') return JSON.stringify({ ok: openBluetoothSettings(), not: 'Windows Bluetooth ayarları açıldı.' });
+      progress('Bluetooth cihazları okunuyor');
+      const list = await bluetoothDevices();
+      return JSON.stringify({ cihazlar: list, not: 'Bağlı olanları ve bağlı olmayanları söyle. Eşleşmiş cihazlar açılınca Windows kendiliğinden bağlar; bağlanmayan için cihazı açıp yakına getirmesini ya da Bluetooth ayarlarında "Bağlan"a basmasını öner. Jarvis\'in sesini hepsinden aynı anda çalmak için Ayarlar → Hoparlörler · Bluetooth → "Hepsi aynı anda".' });
+    }
     if (a.ac === 'kayit') return JSON.stringify({ ok: openRecordingSettings(), not: 'Windows Ses → Kayıt penceresi açıldı.' });
     if (a.ac === 'gizlilik') return JSON.stringify({ ok: openPrivacySettings(), not: 'Windows mikrofon gizlilik ayarı açıldı.' });
     progress('mikrofon ayarları okunuyor');

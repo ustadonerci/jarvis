@@ -342,7 +342,7 @@ async function runToolOnce(name: string, rawArgs: string, progress: ToolProgress
   if (isLinkReadTool(name)) return runLinkReadTool(args, progress);
   if (isOwnerMsgTool(name)) return runOwnerMsgTool(args, progress);
   if (isBrainTool(name)) return runBrainTool(args);
-  if (isMicDiagTool(name)) return runMicDiagTool(args, progress);
+  if (isMicDiagTool(name)) return runMicDiagTool(args, progress, name);
   if (isExchangeTool(name)) return runExchangeTool(args, progress);
   if (isSiteTool(name)) return runSiteTool(args, progress);
   if (name === 'get_news') {

@@ -30,7 +30,7 @@ import { type ElevenUsage, clearConversation, cloneVoice, uploadFile, detectDevi
 import { startClapListener, type ClapListener } from './lib/clap';
 import { shrinkImage } from './lib/image';
 import { findWorkingMic, micInfo, recorderSupported, startRecording, suspiciousMic, warmMic } from './lib/recorder';
-import { MicTest } from './components/MicTest';
+import { MicTest, SpeakerSettings } from './components/MicTest';
 import { ExchangeSettings } from './components/Exchanges';
 import { ProviderSettings } from './components/Providers';
 import { DailySettings, ExpenseSettings } from './components/Daily';
@@ -1583,6 +1583,7 @@ export default function App() {
                     </>
                   )}
                   <MicTest flash={flash} />
+                  <SpeakerSettings flash={flash} />
                   <KeySettings flash={flash} />
                   <ProviderSettings flash={flash} />
                   <ExchangeSettings flash={flash} />
