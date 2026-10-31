@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { checkWindowsMic, openMicSettings, stt, type MicReport } from '../lib/api';
-import { listMics, micDevice, micInfo, setMicDevice, startRecording } from '../lib/recorder';
+import { isBluetoothMic, listMics, micDevice, micInfo, setMicDevice, startRecording } from '../lib/recorder';
 import { createRecognizer, voice } from '../lib/speech';
 
 type Mic = { id: string; ad: string; supheli: boolean };
@@ -80,8 +80,8 @@ export function MicTest({ flash }: { flash(t: string): void }) {
         <div className="seg mic-list">
           <button className={sel === '' ? 'on' : ''} onClick={() => choose('')}>Varsayılan</button>
           {mics.filter(m => m.id).map(m => (
-            <button key={m.id} className={sel === m.id ? 'on' : ''} onClick={() => choose(m.id)} title={m.supheli ? 'Bu giriş bilgisayarın kendi sesini kaydeder' : ''}>
-              {m.supheli ? '⚠️ ' : '🎤 '}{m.ad}
+            <button key={m.id} className={sel === m.id ? 'on' : ''} onClick={() => choose(m.id)} title={m.supheli ? 'Bu giriş bilgisayarın kendi sesini kaydeder' : isBluetoothMic(m.ad) ? 'Bluetooth cihazın mikrofonu: uzakta ve telefon kalitesinde; açılınca hoparlörün sesi de bozulur' : ''}>
+              {m.supheli ? '⚠️ ' : isBluetoothMic(m.ad) ? '📶 ' : '🎤 '}{m.ad}{isBluetoothMic(m.ad) ? ' (Bluetooth – önerilmez)' : ''}
             </button>
           ))}
         </div>

@@ -30,13 +30,32 @@ export function micConstraints(extra: MediaTrackConstraints = MIC): MediaTrackCo
   const id = micDevice();
   return { ...extra, ...(id ? { deviceId: { exact: id } } : {}) };
 }
+/** Bluetooth hoparlör/kulaklığın "Hands-Free" mikrofonu: uzakta, telefon kalitesinde; açılınca hoparlörün sesi de bozulur */
+export const isBluetoothMic = (label: string) => /hands-?free|bluetooth|\bbt\b|bth|headset|airpods|buds|eller serbest/i.test(label);
+
 async function openMic(): Promise<MediaStream> {
-  try { return await navigator.mediaDevices.getUserMedia({ audio: micConstraints() }); }
+  let s: MediaStream;
+  try { s = await navigator.mediaDevices.getUserMedia({ audio: micConstraints() }); }
   catch (e: any) {
     // Seçili cihaz takılı değilse varsayılana dön
-    if (micDevice() && /Overconstrained|NotFound/i.test(String(e?.name))) return navigator.mediaDevices.getUserMedia({ audio: MIC });
-    throw e;
+    if (micDevice() && /Overconstrained|NotFound/i.test(String(e?.name))) s = await navigator.mediaDevices.getUserMedia({ audio: MIC });
+    else throw e;
   }
+  // Mikrofon elle seçilmediyse ve Windows varsayılanı bir Bluetooth Hands-Free girişiyse (Bluetooth hoparlör bağlanınca
+  // Windows bunu yapıyor), kablolu / dahili bir mikrofon varsa o kullanılır.
+  const label = s.getAudioTracks()[0]?.label ?? '';
+  if (!micDevice() && isBluetoothMic(label)) {
+    const all = await navigator.mediaDevices.enumerateDevices().catch(() => [] as MediaDeviceInfo[]);
+    const wired = all.find(d => d.kind === 'audioinput' && d.deviceId !== 'default' && d.deviceId !== 'communications' && d.label && !isBluetoothMic(d.label) && !suspiciousMic(d.label));
+    if (wired) {
+      try {
+        const w = await navigator.mediaDevices.getUserMedia({ audio: { ...MIC, deviceId: { exact: wired.deviceId } } });
+        s.getTracks().forEach(t => t.stop());
+        return w;
+      } catch { /* Bluetooth girişiyle devam */ }
+    }
+  }
+  return s;
 }
 export function setMicDevice(id: string) {
   try { id ? localStorage.setItem(MIC_KEY, id) : localStorage.removeItem(MIC_KEY); } catch { /* yok */ }
@@ -76,7 +95,8 @@ try {
  */
 export async function findWorkingMic(): Promise<{ id: string; ad: string } | null> {
   const cur = micDevice();
-  const mics = (await listMics().catch(() => [])).filter(m => !m.supheli && m.id !== cur);
+  // Bluetooth Hands-Free girişleri en sona (yalnız başka mikrofon yoksa)
+  const mics = (await listMics().catch(() => [])).filter(m => !m.supheli && m.id !== cur).sort((a, b) => Number(isBluetoothMic(a.ad)) - Number(isBluetoothMic(b.ad)));
   if (cur) mics.unshift({ id: '', ad: 'Varsayılan mikrofon', supheli: false });
   const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   const ctx = new AC();
