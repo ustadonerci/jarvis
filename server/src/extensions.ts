@@ -52,7 +52,7 @@ export interface McpServer {
   /** Kullanıcı elle kapattı: otomatik açma bunu açmaz */
   elleKapali?: boolean;
 }
-interface Repo { slug: string; url: string; at: string; /** kurulan commit (eski kurulumlarda yok) */ sha?: string; /** Başlık (repo_duzenle ile) */ kategori?: string }
+interface Repo { slug: string; url: string; at: string; /** kurulan commit (eski kurulumlarda yok) */ sha?: string; /** Başlık (repo_duzenle ile) */ kategori?: string; /** Çalışan sürüm etiketine sabitlendi (en son sürüm çalışmadığı için) */ surum?: string }
 interface Store { skills: Skill[]; servers: McpServer[]; repos: Repo[]; /** Yeni ve kapalı MCP sunucuları kendiliğinden açılsın (varsayılan: evet) */ otoAc?: boolean }
 
 const MAX_SKILL = 40_000;
@@ -739,8 +739,8 @@ export const EXT_TOOLS = [
     type: 'function',
     function: {
       name: 'repo_duzenle',
-      description: "Jarvis'e eklenen GitHub repolarını düzenler: başlıklara ayırır (Finans, Medya, Yapay zekâ, Otomasyon, Sosyal medya, Yazılım, Veri, Belgeler, Diğer), GitHub'da yeni sürümü olanları günceller ve eski sürümü siler (açık/kapalı durumları korunur), yarım kalmış eski klasörleri temizler, aynı projenin kopyalarını bulup eskilerini silmeyi onay kartıyla önerir. islem: liste (yalnız başlıklar), duzenle (hepsi).",
-      parameters: { type: 'object', properties: { islem: { type: 'string', enum: ['liste', 'duzenle'] } }, required: ['islem'] },
+      description: "Jarvis'e eklenen GitHub repolarını düzenler: başlıklara ayırır (Finans, Medya, Yapay zekâ, Otomasyon, Sosyal medya, Yazılım, Veri, Belgeler, Diğer), GitHub'da yeni sürümü olanları günceller ve eski sürümü siler (açık/kapalı durumları korunur), yarım kalmış eski klasörleri temizler, aynı projenin kopyalarını bulup eskilerini silmeyi onay kartıyla önerir. islem: liste (yalnız başlıklar), duzenle (hepsi), kontrol (MCP sunucularını çalıştırıp dener; çalışmayan için uyumlu eski sürümü bulup kurar, hiçbiri çalışmazsa kaldırır).",
+      parameters: { type: 'object', properties: { islem: { type: 'string', enum: ['liste', 'duzenle', 'kontrol'] } }, required: ['islem'] },
     },
   },
   {
@@ -863,6 +863,7 @@ export async function runExtensionTool(name: string, args: any, progress: (l: st
   if (name === 'repo_duzenle') {
     try {
       if (args.islem === 'liste') { await categorize(); return JSON.stringify({ toplam: store.repos.length, basliklar: reposByCategory() }); }
+      if (args.islem === 'kontrol') { progress('repolar deneniyor'); const v = await verifyAll(progress); return JSON.stringify({ ok: true, sonuc: v, not: 'Her repo için durumu söyle: çalışıyor / eski uyumlu sürüm kuruldu (hangi sürüm) / gereksinim eksik (ne gerekli) / uyumsuz, kaldırıldı. Yalnız becerilerden oluşan repolar her zaman çalışır.' }); }
       progress('repolar düzenleniyor');
       return JSON.stringify({ ok: true, ...(await tidyRepos(progress)) });
     } catch (e: any) {
@@ -872,7 +873,12 @@ export async function runExtensionTool(name: string, args: any, progress: (l: st
   if (name === 'yetenek_kur') {
     progress(`GitHub'dan kuruluyor: ${String(args.url ?? '').replace('https://github.com/', '')}`);
     try {
-      const r = await installFromGitHub(String(args.url ?? ''));
+      const r: any = await installFromGitHub(String(args.url ?? ''));
+      if (r.mcp && !r.guncel) {
+        const v = await verifyRepo(r.slug, progress).catch(() => null);
+        if (v?.durum === 'uyumsuz_kaldirildi' && !store.repos.some(x => x.slug === r.slug)) return JSON.stringify({ kurulmadi: true, neden: 'Bu repo bu bilgisayarda çalışmıyor; eski sürümleri de denendi, hiçbiri çalışmadı. Kurulmadı.', ayrinti: v.ayrinti });
+        if (v) r.kontrol = v;
+      }
       return JSON.stringify({ ok: true, ...r, not: r.mcp ? 'MCP sunucuları kapalı eklendi; kullanıcı Ayarlar → Yetenekler bölümünden açmalı.' : undefined, yetenekler: store.skills.filter(s => s.repo === r.slug).map(s => s.ad).slice(0, 30) });
     } catch (e: any) {
       return JSON.stringify({ hata: String(e?.message || e) });
@@ -1096,7 +1102,7 @@ function referenceSkill(root: string, slug: string, repoName: string): Skill | n
 }
 
 /** mcpKapali: repodaki MCP sunucuları kapalı eklenir ve otomatik açılmaz (günlük otomatik keşifte güvenlik için) */
-export async function installFromGitHub(url: string, o: { mcpKapali?: boolean; guncelle?: boolean } = {}) {
+export async function installFromGitHub(url: string, o: { mcpKapali?: boolean; guncelle?: boolean; ref?: string } = {}) {
   const m = GH.exec(extractRepoUrls(url)[0] ?? '');
   if (!m) throw new Error('Geçerli bir GitHub repo adresi değil (ör. https://github.com/kullanici/repo ya da gh repo clone kullanici/repo).');
   const [, owner, name, sub] = m;
@@ -1105,7 +1111,8 @@ export async function installFromGitHub(url: string, o: { mcpKapali?: boolean; g
   let slug = last ? `${slugify(`${owner}-${name}`).slice(0, 39 - last.length).replace(/-$/, '')}-${last}` : slugify(`${owner}-${name}`);
   // Alt klasör linki: /tree/<dal>/<yol>. Dal adında "/" olabilir; önce ilk parçayı dal sayıp deneriz.
   const parts = sub?.split('/') ?? [];
-  const branch = parts[0];
+  // ref: belirli bir sürüm etiketi (ör. v1.2.0); en son sürüm çalışmadığında uyumlu sürüm aranırken
+  const branch = o.ref ?? parts[0];
   const eski = store.repos.find(r => r.slug === slug);
   if (eski && !o.guncelle) throw new Error('Bu repo zaten kurulu. Güncellemek için önce kaldırın.');
   if (eski) {
@@ -1155,7 +1162,7 @@ export async function installFromGitHub(url: string, o: { mcpKapali?: boolean; g
     bilgi = true;
   }
   if (o.mcpKapali) for (const x of found.servers) { x.aktif = false; x.elleKapali = true; }
-  store.repos.push({ slug, url, at: new Date().toISOString(), sha });
+  store.repos.push({ slug, url, at: new Date().toISOString(), sha, ...(o.ref ? { surum: o.ref } : {}) });
   store.skills.push(...found.skills);
   store.servers.push(...found.servers);
   save();
@@ -1249,7 +1256,7 @@ export async function tidyRepos(progress: (l: string) => void = () => {}, guncel
     if (guncelle) {
       for (const r of [...store.repos]) {
         const m = GH.exec(r.url);
-        if (!m) continue;
+        if (!m || r.surum) continue; // uyumlu eski sürüme sabitlenmiş: kontrol (repo_duzenle kontrol) yenisini dener
         progress(`sürüm kontrolü: ${repoName(r)}`);
         try {
           const skillsOn = new Map(store.skills.filter(x => x.repo === r.slug).map(x => [x.ad, x.aktif]));
@@ -1267,6 +1274,14 @@ export async function tidyRepos(progress: (l: string) => void = () => {}, guncel
         }
       }
       if (guncellenen.length) { rebuildIndex(); startServers(store.servers.filter(s => s.aktif && !live.has(s.id))); }
+      // Güncellenen repo yeni sürümüyle çalışmıyorsa uyumlu sürüm aranır
+      for (const ad of guncellenen) {
+        const rr = store.repos.find(x => repoName(x) === ad);
+        if (rr && store.servers.some(x => x.repo === rr.slug && !x.elleKapali)) {
+          const v = await verifyRepo(rr.slug, progress).catch(() => null);
+          if (v && v.durum !== 'calisiyor' && v.durum !== 'beceri') hata.push(`${ad}: ${v.durum === 'eski_surum_kuruldu' ? `yeni sürüm çalışmadı, ${v.surum} kuruldu` : v.durum === 'gereksinim_eksik' ? `gereksinim eksik (${v.ayrinti?.[0] ?? ''})` : 'uyumsuz, MCP kaldırıldı'}`);
+        }
+      }
     }
     // 3) Aynı adlı kopyalar
     const byName = new Map<string, Repo[]>();
@@ -1297,6 +1312,96 @@ export async function tidyRepos(progress: (l: string) => void = () => {}, guncel
   }
 }
 
+// ---------------------------------------------------------------- Çalışıyor mu? Uyumlu sürüm arama
+
+type Probe = { durum: 'ok' | 'giris' | 'eksik' | 'bozuk'; neden?: string };
+/** Sunucuyu açıp bağlanmayı dener. eksik: bilgisayarda bir gereksinim yok (Python, derleme araçları, anahtar) — sürüm değiştirmek çözmez */
+async function probeServer(s: McpServer): Promise<Probe> {
+  s.aktif = true;
+  save();
+  await enableServer(s);
+  const l = live.get(s.id);
+  if (l?.tools) return { durum: 'ok' };
+  if (l?.girisGerekli) return { durum: 'giris', neden: 'giriş gerekli (Ayarlar → Yetenekler → Giriş yap)' };
+  const err = String(l?.error ?? 'bağlanamadı');
+  // Modül/dosya bulunamadı gibi hatalar kodun kendisinden: sürüm değiştirmek çözebilir (bozuk sayılır)
+  return /bulunamadı: |derleme araç|Visual Studio|python(3)?(\.exe)? (bulunamadı|yok|was not found|is not recognized)|api[_ ]?key|anahtar(ı)? (yok|gerekli|eksik)|missing .*token|environment variable|ortam değişkeni|unauthorized|\b401\b|\b403\b/i.test(err)
+    ? { durum: 'eksik', neden: err.slice(0, 200) } : { durum: 'bozuk', neden: err.slice(0, 200) };
+}
+
+/** Repodaki son sürüm etiketleri (yeniden eskiye; ön sürümler hariç) */
+async function releaseTags(owner: string, name: string, limit = 4): Promise<string[]> {
+  const out = (await run('git', ['ls-remote', '--tags', '--refs', `https://github.com/${owner}/${name}.git`], { timeout: 60_000 }).catch(() => ({ stdout: '' }))).stdout;
+  const tags = out.split('\n').map(l => l.split('refs/tags/')[1]?.trim()).filter((t): t is string => !!t && /^v?\d+(\.\d+){1,3}$/.test(t));
+  const num = (t: string) => t.replace(/^v/, '').split('.').map(Number);
+  return tags.sort((a, b) => { const x = num(a), y = num(b); for (let i = 0; i < 4; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (y[i] ?? 0) - (x[i] ?? 0); return 0; }).slice(0, limit);
+}
+
+export interface VerifyResult { repo: string; durum: 'calisiyor' | 'eski_surum_kuruldu' | 'gereksinim_eksik' | 'uyumsuz_kaldirildi' | 'beceri'; surum?: string; ayrinti?: string[] }
+
+/**
+ * Repodaki MCP sunucularını çalıştırıp dener (otomatik keşiften gelen, güvenlik için kapalı tutulanlar hariç).
+ * Çalışmayan varsa repo'nun son sürüm etiketlerini (yeniden eskiye) sırayla kurup dener; çalışan sürüm bulunursa
+ * ona sabitlenir. Hiçbiri çalışmazsa bozuk sunucular kaldırılır (repodan başka bir şey kalmadıysa repo da).
+ */
+export async function verifyRepo(slug: string, progress: (l: string) => void = () => {}): Promise<VerifyResult> {
+  const r0 = store.repos.find(r => r.slug === slug);
+  if (!r0) throw new Error('Repo bulunamadı');
+  const name = repoName(r0);
+  const test = async (sl: string) => {
+    const res: (Probe & { ad: string; id: string })[] = [];
+    for (const s of store.servers.filter(x => x.repo === sl && !x.elleKapali)) {
+      progress(`${name}: ${s.ad} deneniyor`);
+      res.push({ ...(await probeServer(s)), ad: s.ad, id: s.id });
+    }
+    return res;
+  };
+  let res = await test(slug);
+  if (!res.length) return { repo: name, durum: 'beceri' };
+  const line = (x: Probe & { ad: string }) => `${x.ad}: ${x.durum === 'ok' ? 'çalışıyor' : x.durum === 'giris' ? 'giriş gerekli' : x.neden}`;
+  if (!res.some(x => x.durum === 'bozuk')) {
+    return { repo: name, durum: res.some(x => x.durum === 'eksik') ? 'gereksinim_eksik' : 'calisiyor', surum: r0.surum, ayrinti: res.map(line) };
+  }
+  // Uyumlu sürüm ara
+  const m = GH.exec(r0.url);
+  if (m && !m[3]) {
+    const [, owner, repo] = m;
+    const keep = { kategori: r0.kategori, url: r0.url };
+    for (const tag of (await releaseTags(owner, repo)).filter(t => t !== r0.surum)) {
+      progress(`${name}: ${tag} sürümü deneniyor`);
+      try {
+        await removeRepo(slug);
+        const ins: any = await installFromGitHub(keep.url, { ref: tag });
+        const rr = store.repos.find(r => r.slug === ins.slug);
+        if (rr) { rr.kategori = keep.kategori; save(); }
+        res = await test(ins.slug);
+        if (res.length && !res.some(x => x.durum === 'bozuk')) {
+          logActivity('yetenek', `${name}: en son sürüm çalışmadı, uyumlu ${tag} sürümü kuruldu`);
+          return { repo: name, durum: res.some(x => x.durum === 'eksik') ? 'gereksinim_eksik' : 'eski_surum_kuruldu', surum: tag, ayrinti: res.map(line) };
+        }
+        slug = ins.slug;
+      } catch (e: any) {
+        res = [{ durum: 'bozuk', neden: String(e?.message || e).slice(0, 120), ad: tag, id: '' }];
+      }
+    }
+  }
+  // Çalışan sürüm yok: bozuk sunucular kaldırılır (beceriler kalır)
+  const bozuk = store.servers.filter(x => x.repo === slug && res.some(y => y.id === x.id && y.durum === 'bozuk'));
+  for (const s of bozuk) await deleteServer(s.id);
+  logActivity('yetenek', `${name}: uyumsuz (çalışan sürüm bulunamadı), kaldırıldı`);
+  return { repo: name, durum: 'uyumsuz_kaldirildi', ayrinti: res.map(line) };
+}
+
+/** Bütün repoları dener */
+export async function verifyAll(progress: (l: string) => void = () => {}) {
+  const out: VerifyResult[] = [];
+  for (const r of [...store.repos]) {
+    if (!store.servers.some(x => x.repo === r.slug && !x.elleKapali)) continue;
+    try { out.push(await verifyRepo(r.slug, progress)); } catch (e: any) { out.push({ repo: repoName(r), durum: 'uyumsuz_kaldirildi', ayrinti: [String(e?.message || e).slice(0, 150)] }); }
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------- HTTP
 
 // ---------------------------------------------------------------- Toplu kurulum
@@ -1313,8 +1418,11 @@ async function runBulk(urls: string[]) {
     changed();
     try {
       const r = await installFromGitHub(item.url);
+      // MCP içeren repo gerçekten çalışıyor mu: çalışmıyorsa uyumlu eski sürüm denenir, yoksa kurulmaz
+      const v = r.mcp ? await verifyRepo(r.slug).catch(() => null) : null;
+      if (v?.durum === 'uyumsuz_kaldirildi' && !store.repos.some(x => x.slug === r.slug)) { item.durum = 'atlandı'; item.mesaj = 'uyumsuz: bu bilgisayarda çalışmadı (eski sürümler de denendi), kurulmadı'; changed(); continue; }
       item.durum = 'tamam';
-      item.mesaj = r.bilgi ? 'uygulama: README bilgi kaynağı olarak eklendi' : [r.beceri && `${r.beceri} beceri`, r.is_akisi && `${r.is_akisi} iş akışı`, r.mcp && `${r.mcp} MCP${otoAc() ? '' : ' (kapalı)'}`].filter(Boolean).join(', ');
+      item.mesaj = v?.durum === 'eski_surum_kuruldu' ? `son sürüm çalışmadı; uyumlu ${v.surum} sürümü kuruldu` : r.bilgi ? 'uygulama: README bilgi kaynağı olarak eklendi' : [r.beceri && `${r.beceri} beceri`, r.is_akisi && `${r.is_akisi} iş akışı`, r.mcp && `${r.mcp} MCP${otoAc() ? '' : ' (kapalı)'}`].filter(Boolean).join(', ');
     } catch (e: any) {
       const m = String(e?.message || e);
       item.durum = /zaten kurulu/i.test(m) ? 'atlandı' : 'hata';
