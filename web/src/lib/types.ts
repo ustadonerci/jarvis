@@ -68,7 +68,7 @@ export type ServerEvent =
   | { type: 'reply'; message: StoredMessage; origin: string }
   | { type: 'error'; error: string; origin: string }
   | { type: 'handoff'; from: Device | null; to: Device; toClient: string }
-  | { type: 'settings'; photoMode: 'haber' | 'video'; voice: VoiceSel; sfx: boolean; wake: WakeConfig; ui: UiMode; persona?: string; theme?: string; hiz?: 'hizli' | 'dengeli' }
+  | { type: 'settings'; photoMode: 'haber' | 'video'; voice: VoiceSel; sfx: boolean; wake: WakeConfig; ui: UiMode; persona?: string; theme?: string; hiz?: 'hizli' | 'dengeli'; ekran?: Ekran }
   | { type: 'attention'; ms: number; by: Device }
   | { type: 'attention_end' }
   | { type: 'wake'; at: number; greeting: { period: GreetingPeriod; text: string }; greeter: Device; brief: boolean; voice: VoiceSel; via: string }
@@ -173,3 +173,6 @@ export const CATEGORY_LABEL: Record<string, string> = {
 };
 
 export const DEVICE_LABEL: Record<Device, string> = { masaustu: 'Masaüstü', tablet: 'Tablet', telefon: 'Telefon' };
+
+/** Ana ekran düzeni (sunucuda saklanır; Jarvis ekran_duzenle ile değiştirebilir) */
+export interface Ekran { genel: number; cekirdek: number; yazi: number; panel: number; paneller: 'hepsi' | 'sol' | 'sag' | 'gizli' }

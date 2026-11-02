@@ -32,6 +32,7 @@ import { shrinkImage } from './lib/image';
 import { findWorkingMic, micInfo, recorderSupported, startRecording, suspiciousMic, warmMic } from './lib/recorder';
 import { MicTest, SpeakerSettings } from './components/MicTest';
 import { ContactsSettings } from './components/Contacts';
+import { ScreenLayout } from './components/ScreenLayout';
 import { ExchangeSettings } from './components/Exchanges';
 import { ProviderSettings } from './components/Providers';
 import { DailySettings, ExpenseSettings } from './components/Daily';
@@ -41,7 +42,7 @@ import { Markdown } from './lib/markdown';
 import { createRecognizer, speechRecognitionSupported, voice } from './lib/speech';
 import { Conversation, classify, type ConvState } from './lib/conversation';
 import { ConvDiagnostics } from './components/ConvDiagnostics';
-import { DEVICE_LABEL, type PersonaOption, type ThemeOption, type CoreState, type CurrencyCode, type Dashboard, type Device, type GreetingPeriod, type Health, type JarvisReply, type Sahne, type ServerEvent, type StoredMessage, type UiMode, type VoiceOption, type VoiceSel, type WakeConfig } from './lib/types';
+import { DEVICE_LABEL, type PersonaOption, type ThemeOption, type CoreState, type Ekran, type CurrencyCode, type Dashboard, type Device, type GreetingPeriod, type Health, type JarvisReply, type Sahne, type ServerEvent, type StoredMessage, type UiMode, type VoiceOption, type VoiceSel, type WakeConfig } from './lib/types';
 import { atServerTime, clockInfo, keepAwake, listenForCommand, preciseTimeout, startClockSync, syncClock, type CommandListen } from './lib/wake';
 
 type Highlight = CurrencyCode | 'weather';
@@ -148,6 +149,16 @@ export default function App() {
   const [theme, setTheme] = useState('jarvis');
   const [themes, setThemes] = useState<ThemeOption[]>([]);
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
+  // Ana ekran düzeni: genel büyüklük (zoom), çekirdek, yazı, yan paneller
+  const [ekran, setEkran] = useState<Ekran>({ genel: 1, cekirdek: 1, yazi: 1, panel: 1, paneller: 'hepsi' });
+  useEffect(() => {
+    const r = document.documentElement;
+    r.style.setProperty('--ui-zoom', String(ekran.genel));
+    r.style.setProperty('--core-scale', String(ekran.cekirdek));
+    r.style.setProperty('--caption-scale', String(ekran.yazi));
+    r.style.setProperty('--side-scale', String(ekran.panel));
+    r.dataset.paneller = ekran.paneller;
+  }, [ekran]);
   // Onay kartları: SSE "onay" olayıyla yenilenir
   const [approvalKey, setApprovalKey] = useState(0);
   // Dokunulacak link kartları (ör. Google Play'de aç); en fazla 3, ✕ ile kapanır
@@ -475,6 +486,7 @@ export default function App() {
         setHizliModel(s.hizliModel ?? null);
         setPersonas(s.personas ?? []);
         if (s.theme) setTheme(s.theme);
+        if (s.ekran) setEkran(s.ekran);
         setThemes(s.themes ?? []);
         setCameraEnabled(!!s.camera?.enabled);
         setUserName(s.userName || '');
@@ -585,6 +597,7 @@ export default function App() {
           if (e.ui) setUi(e.ui);
           if (e.persona) setPersona(e.persona);
           if (e.theme) setTheme(e.theme);
+          if (e.ekran) setEkran(e.ekran);
           if (e.hiz) setHiz(e.hiz);
           setMode(e.photoMode);
           setVoiceSel(e.voice);
@@ -1550,6 +1563,7 @@ export default function App() {
                       </button>
                     ))}
                   </div>
+                  <ScreenLayout ekran={ekran} onChange={patch => { setEkran(x => ({ ...x, ...patch })); saveSettings({ ekran: patch }).catch(e => flash(e.message)); }} />
                   <label>Cevap hızı</label>
                   <div className="seg">
                     <button className={hiz === 'hizli' ? 'on' : ''} onClick={() => saveSettings({ hiz: 'hizli' }).then(() => flash('Hızlı mod: kısa sürede cevap')).catch(e => flash(e.message))}>⚡ Hızlı</button>

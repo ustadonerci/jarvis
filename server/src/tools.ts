@@ -38,6 +38,7 @@ import { isDisRobotTool, runDisRobotTool } from './disrobot.js';
 import { isWaTidyTool, runWaTidyTool } from './watidy.js';
 import { isLinkReadTool, runLinkReadTool } from './linkread.js';
 import { isOwnerMsgTool, runOwnerMsgTool } from './ownermsg.js';
+import { isScreenTool, runScreenTool } from './screen.js';
 import { isBrainTool, runBrainTool } from './providers.js';
 import { isMicDiagTool, runMicDiagTool } from './micdiag.js';
 import { isExchangeTool, runExchangeTool } from './exchanges.js';
@@ -341,6 +342,7 @@ async function runToolOnce(name: string, rawArgs: string, progress: ToolProgress
   if (isWaTidyTool(name)) return runWaTidyTool(args, progress);
   if (isLinkReadTool(name)) return runLinkReadTool(args, progress);
   if (isOwnerMsgTool(name)) return runOwnerMsgTool(args, progress);
+  if (isScreenTool(name)) return runScreenTool(args);
   if (isBrainTool(name)) return runBrainTool(args);
   if (isMicDiagTool(name)) return runMicDiagTool(args, progress, name);
   if (isExchangeTool(name)) return runExchangeTool(args, progress);

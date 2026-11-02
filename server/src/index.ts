@@ -56,6 +56,7 @@ import { automationRouter } from './automation.js';
 import { explainRepo, translateTr } from './github.js';
 import { adminOnly, isLocalRequest, listKeys, restartServer, saveKeys } from './keys.js';
 import { PERSONAS, isPersona, setPersona, type PersonaId } from './persona.js';
+import { EKRAN_VARSAYILAN, mergeEkran, registerScreen, type Ekran } from './screen.js';
 import { THEMES, isTheme, voiceGender, type ThemeId } from './look.js';
 import { ELEVEN_MODEL, ELEVEN_MODEL_LABEL, elevenReady, elevenUsage, elevenVoices, isEleven } from './eleven.js';
 import { AZURE_MODEL, AZURE_VOICES, azureReady, isAzure } from './azure.js';
@@ -90,6 +91,8 @@ interface State {
   persona?: PersonaId;
   /** Renk teması */
   theme?: ThemeId;
+  /** Ana ekran düzeni (boyutlar, paneller) */
+  ekran?: Ekran;
 }
 function loadState(): State {
   try {
@@ -223,7 +226,8 @@ app.get('/api/events', (req, res) => {
 const uiMode = () => state.ui ?? 'mark1';
 const persona = () => state.persona ?? 'profesyonel';
 const theme = () => state.theme ?? 'jarvis';
-const settingsEvent = () => ({ type: 'settings', photoMode: state.photoMode, voice: currentVoice(), sfx: sfx(), hiz: getHiz(), wake: wakeCfg(), ui: uiMode(), persona: persona(), theme: theme() });
+const ekran = (): Ekran => ({ ...EKRAN_VARSAYILAN, ...state.ekran });
+const settingsEvent = () => ({ type: 'settings', photoMode: state.photoMode, voice: currentVoice(), sfx: sfx(), hiz: getHiz(), wake: wakeCfg(), ui: uiMode(), persona: persona(), theme: theme(), ekran: ekran() });
 
 app.get('/api/state', (_req, res) => {
   res.json({
@@ -240,6 +244,7 @@ app.get('/api/state', (_req, res) => {
     personas: PERSONAS.map(({ id, ad, onay }) => ({ id, ad, onay: !!onay })),
     theme: theme(),
     themes: THEMES,
+    ekran: ekran(),
     camera: { enabled: CAMERA_ENABLED, vision: VISION_MODEL },
     // El Kontrolü yüz HUD etiketi ("AD · TANINDI"); ad repoda değil .env'de
     userName: process.env.USER_NAME || '',
@@ -317,6 +322,7 @@ app.post('/api/settings', (req, res) => {
   if (req.body.hiz === 'hizli' || req.body.hiz === 'dengeli') { state.hiz = req.body.hiz; setHiz(req.body.hiz); console.log(`[beyin] hız: ${req.body.hiz}`); }
   if (req.body.ui === 'mark1' || req.body.ui === 'mark2') state.ui = req.body.ui;
   if (isTheme(req.body.theme)) state.theme = req.body.theme;
+  if (req.body.ekran && typeof req.body.ekran === 'object') state.ekran = mergeEkran(ekran(), req.body.ekran);
   if (isPersona(req.body.persona) && req.body.persona !== persona()) {
     state.persona = req.body.persona;
     setPersona(req.body.persona);
@@ -393,6 +399,11 @@ function useClonedVoice(profileId: string) {
   broadcast(settingsEvent());
 }
 registerVoiceSetter(useClonedVoice);
+// Jarvis'in ana ekranı değiştirmesi (ekran_duzenle): kaydedilir ve bütün ekranlara yayınlanır
+registerScreen({
+  get: () => ({ ekran: ekran(), theme: theme(), ui: uiMode() }),
+  set: p => { if (p.ekran) state.ekran = p.ekran; if (p.theme) state.theme = p.theme; if (p.ui) state.ui = p.ui; saveState(); broadcast(settingsEvent()); },
+});
 app.post('/api/ses-klonla', adminOnly, express.raw({ type: ['audio/*', 'video/*', 'application/octet-stream'], limit: '60mb' }), async (req, res) => {
   if (!Buffer.isBuffer(req.body) || req.body.length < 4000) return res.status(400).json({ error: 'Ses dosyası boş ya da çok kısa' });
   const ad = String(req.query.ad || '').trim().slice(0, 60) || `Jarvis sesi ${new Date().toLocaleDateString('tr-TR')}`;

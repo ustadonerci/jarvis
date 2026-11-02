@@ -1,0 +1,31 @@
+import type { Ekran } from '../lib/types';
+
+const ROWS: { k: 'genel' | 'cekirdek' | 'yazi' | 'panel'; ad: string; min: number; max: number }[] = [
+  { k: 'genel', ad: 'Genel büyüklük', min: 0.7, max: 1.5 },
+  { k: 'cekirdek', ad: 'Çekirdek (halka)', min: 0.5, max: 1.6 },
+  { k: 'yazi', ad: 'Yazı (altyazı)', min: 0.7, max: 2 },
+  { k: 'panel', ad: 'Yan panel genişliği', min: 0.7, max: 1.5 },
+];
+
+/** Ayarlar → Ekran düzeni: ana ekranın boyutları ve yan paneller. Jarvis'e sesle de söylenebilir ("yazıları büyüt"). */
+export function ScreenLayout({ ekran, onChange }: { ekran: Ekran; onChange(p: Partial<Ekran>): void }) {
+  return (
+    <>
+      <label>Ekran düzeni</label>
+      <p className="muted small">Kaydırıcılarla ayarlayın ya da Jarvis'e söyleyin: "yazıları büyüt", "çekirdeği küçült", "yan panelleri gizle".</p>
+      {ROWS.map(r => (
+        <div className="row layout-row" key={r.k}>
+          <span className="small" style={{ minWidth: 150 }}>{r.ad}</span>
+          <input type="range" min={r.min} max={r.max} step={0.05} value={ekran[r.k]} onChange={e => onChange({ [r.k]: Number(e.target.value) })} style={{ flex: 1 }} />
+          <span className="small mono" style={{ minWidth: 44, textAlign: 'right' }}>%{Math.round(ekran[r.k] * 100)}</span>
+        </div>
+      ))}
+      <div className="seg">
+        {([['hepsi', 'Paneller açık'], ['sol', 'Yalnız sol'], ['sag', 'Yalnız sağ'], ['gizli', 'Paneller gizli']] as const).map(([v, ad]) => (
+          <button key={v} className={ekran.paneller === v ? 'on' : ''} onClick={() => onChange({ paneller: v })}>{ad}</button>
+        ))}
+      </div>
+      <button onClick={() => onChange({ genel: 1, cekirdek: 1, yazi: 1, panel: 1, paneller: 'hepsi' })}>↺ Varsayılana dön</button>
+    </>
+  );
+}

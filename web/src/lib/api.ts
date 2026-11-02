@@ -53,6 +53,7 @@ export interface AppState {
   personas?: PersonaOption[];
   theme?: string;
   themes?: ThemeOption[];
+  ekran?: import('./types').Ekran;
   camera?: { enabled: boolean; vision: string };
   userName?: string;
   mock: boolean;
@@ -81,7 +82,7 @@ export async function getVoices(): Promise<{ voices: VoiceOption[]; current: Voi
 export const previewUrl = (id: string) => `/api/voices/preview?id=${encodeURIComponent(id)}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
 
 /** Ses seçimi tüm cihazlarda ortaktır: sunucuda saklanır ve SSE ile herkese yayılır. */
-export async function saveSettings(patch: { voice?: VoiceSel; sfx?: boolean; hiz?: 'hizli' | 'dengeli'; wake?: Partial<WakeConfig>; ui?: UiMode; persona?: string; theme?: string }) {
+export async function saveSettings(patch: { voice?: VoiceSel; sfx?: boolean; hiz?: 'hizli' | 'dengeli'; wake?: Partial<WakeConfig>; ui?: UiMode; persona?: string; theme?: string; ekran?: Partial<import('./types').Ekran> }) {
   const r = await fetch('/api/settings', { method: 'POST', headers: headers(), body: JSON.stringify(patch) });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'kaydedilemedi');
 }
