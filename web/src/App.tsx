@@ -150,7 +150,7 @@ export default function App() {
   const [themes, setThemes] = useState<ThemeOption[]>([]);
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
   // Ana ekran düzeni: genel büyüklük (zoom), çekirdek, yazı, yan paneller
-  const [ekran, setEkran] = useState<Ekran>({ genel: 1, cekirdek: 1, yazi: 1, panel: 1, paneller: 'hepsi' });
+  const [ekran, setEkran] = useState<Ekran>({ genel: 1, cekirdek: 1, yazi: 1, panel: 1, paneller: 'hepsi', kartlar: { hava: 1, sistem: 1, piyasa: 1, gundem: 1 } });
   useEffect(() => {
     const r = document.documentElement;
     r.style.setProperty('--ui-zoom', String(ekran.genel));
@@ -158,6 +158,11 @@ export default function App() {
     r.style.setProperty('--caption-scale', String(ekran.yazi));
     r.style.setProperty('--side-scale', String(ekran.panel));
     r.dataset.paneller = ekran.paneller;
+    // Kart yükseklikleri: hepsi normalse sayfanın kendi düzeni; biri değiştiyse sütundaki kartlar alanı oranla paylaşır
+    const k = ekran.kartlar ?? { hava: 1, sistem: 1, piyasa: 1, gundem: 1 };
+    for (const [ad, v] of Object.entries(k)) r.style.setProperty(`--k-${ad}`, String(v));
+    r.dataset.kartlar = Object.values(k).every(v => v === 1) ? '' : 'ozel';
+    r.dataset.gizliKartlar = Object.entries(k).filter(([, v]) => v === 0).map(([ad]) => ad).join(' ');
   }, [ekran]);
   // Onay kartları: SSE "onay" olayıyla yenilenir
   const [approvalKey, setApprovalKey] = useState(0);

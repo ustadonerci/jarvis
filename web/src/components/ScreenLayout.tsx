@@ -1,4 +1,6 @@
-import type { Ekran } from '../lib/types';
+import type { Ekran, Kart } from '../lib/types';
+
+const KARTLAR: [Kart, string][] = [['hava', 'Hava kartı'], ['sistem', 'Sistem kartı'], ['piyasa', 'Piyasalar kartı'], ['gundem', 'Gündem kartı']];
 
 const ROWS: { k: 'genel' | 'cekirdek' | 'yazi' | 'panel'; ad: string; min: number; max: number }[] = [
   { k: 'genel', ad: 'Genel büyüklük', min: 0.7, max: 1.5 },
@@ -25,7 +27,15 @@ export function ScreenLayout({ ekran, onChange }: { ekran: Ekran; onChange(p: Pa
           <button key={v} className={ekran.paneller === v ? 'on' : ''} onClick={() => onChange({ paneller: v })}>{ad}</button>
         ))}
       </div>
-      <button onClick={() => onChange({ genel: 1, cekirdek: 1, yazi: 1, panel: 1, paneller: 'hepsi' })}>↺ Varsayılana dön</button>
+      <p className="muted small">Kart yükseklikleri (aynı sütundaki kartlar alanı paylaşır; en solda gizli):</p>
+      {KARTLAR.map(([k, ad]) => (
+        <div className="row layout-row" key={k}>
+          <span className="small" style={{ minWidth: 150 }}>{ad}</span>
+          <input type="range" min={0} max={2.5} step={0.05} value={ekran.kartlar?.[k] ?? 1} onChange={e => onChange({ kartlar: { ...ekran.kartlar, [k]: Number(e.target.value) } })} style={{ flex: 1 }} />
+          <span className="small mono" style={{ minWidth: 44, textAlign: 'right' }}>{(ekran.kartlar?.[k] ?? 1) === 0 ? 'gizli' : `%${Math.round((ekran.kartlar?.[k] ?? 1) * 100)}`}</span>
+        </div>
+      ))}
+      <button onClick={() => onChange({ genel: 1, cekirdek: 1, yazi: 1, panel: 1, paneller: 'hepsi', kartlar: { hava: 1, sistem: 1, piyasa: 1, gundem: 1 } })}>↺ Varsayılana dön</button>
     </>
   );
 }

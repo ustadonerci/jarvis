@@ -226,7 +226,7 @@ app.get('/api/events', (req, res) => {
 const uiMode = () => state.ui ?? 'mark1';
 const persona = () => state.persona ?? 'profesyonel';
 const theme = () => state.theme ?? 'jarvis';
-const ekran = (): Ekran => ({ ...EKRAN_VARSAYILAN, ...state.ekran });
+const ekran = (): Ekran => mergeEkran(state.ekran ?? EKRAN_VARSAYILAN, {});
 const settingsEvent = () => ({ type: 'settings', photoMode: state.photoMode, voice: currentVoice(), sfx: sfx(), hiz: getHiz(), wake: wakeCfg(), ui: uiMode(), persona: persona(), theme: theme(), ekran: ekran() });
 
 app.get('/api/state', (_req, res) => {

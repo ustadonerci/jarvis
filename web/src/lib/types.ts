@@ -175,4 +175,5 @@ export const CATEGORY_LABEL: Record<string, string> = {
 export const DEVICE_LABEL: Record<Device, string> = { masaustu: 'Masaüstü', tablet: 'Tablet', telefon: 'Telefon' };
 
 /** Ana ekran düzeni (sunucuda saklanır; Jarvis ekran_duzenle ile değiştirebilir) */
-export interface Ekran { genel: number; cekirdek: number; yazi: number; panel: number; paneller: 'hepsi' | 'sol' | 'sag' | 'gizli' }
+export type Kart = 'hava' | 'sistem' | 'piyasa' | 'gundem';
+export interface Ekran { genel: number; cekirdek: number; yazi: number; panel: number; paneller: 'hepsi' | 'sol' | 'sag' | 'gizli'; kartlar: Record<Kart, number> }

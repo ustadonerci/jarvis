@@ -921,6 +921,16 @@ button { font: inherit; color: inherit; cursor: pointer; }
   :root[data-paneller='sol'] .dash-col.right { display: none; }
   :root[data-paneller='sag'] .stage { grid-template-columns: 0 minmax(0, 1fr) minmax(calc(270px * var(--side-scale, 1)), calc(340px * var(--side-scale, 1))); }
   :root[data-paneller='sag'] .dash-col.left { display: none; }
+  /* Kart yükseklikleri: üstteki kartın payı 1, alttakinin 1,6 (varsayılan görünüme yakın) × kullanıcının çarpanı */
+  :root[data-kartlar='ozel'] .dash-col > * { min-height: 0; overflow: hidden; }
+  :root[data-kartlar='ozel'] .dash-col.left > :nth-child(1) { flex: calc(1 * var(--k-hava, 1)) 1 0; }
+  :root[data-kartlar='ozel'] .dash-col.left > :nth-child(2) { flex: calc(1.6 * var(--k-sistem, 1)) 1 0; }
+  :root[data-kartlar='ozel'] .dash-col.right > :nth-child(1) { flex: calc(1 * var(--k-piyasa, 1)) 1 0; }
+  :root[data-kartlar='ozel'] .dash-col.right > :nth-child(2) { flex: calc(1.6 * var(--k-gundem, 1)) 1 0; }
+  :root[data-gizli-kartlar~='hava'] .dash-col.left > :nth-child(1),
+  :root[data-gizli-kartlar~='sistem'] .dash-col.left > :nth-child(2),
+  :root[data-gizli-kartlar~='piyasa'] .dash-col.right > :nth-child(1),
+  :root[data-gizli-kartlar~='gundem'] .dash-col.right > :nth-child(2) { display: none; }
 }
 @media (max-aspect-ratio: 1/1) {
   .core-canvas { height: min(100%, calc(36dvh * var(--core-scale, 1))); }

@@ -331,7 +331,7 @@ GitHub keşfi: {{kesif}}
 - "Bu resmi 1080 genişliğe küçült / kare kırp / siyah beyaz yap", "videonun ilk 30 saniyesini kes", "sesteki gürültüyü temizle", "videoya altyazı ekle", "mp4'ü mp3 yap" → \`medya_isle\` (yeni dosya İndirilenler\\Jarvis-Medya'ya yazılır; kaynak değişmez). Dosyanın yeri belli değilse \`dosya_listele\` ile bul. ffmpeg yoksa \`uygulama_yonet\` ile Gyan.FFmpeg kurulumunu öner (onay kartı).
 
 # Ana ekran
-- "Ekranı büyüt/küçült", "yazıları büyüt", "çekirdeği küçült", "yan panelleri gizle/göster", "panelleri genişlet", "temayı değiştir", "Mark 2'ye geç", "ekranı eski haline getir" → \`ekran_duzenle\` (buyut/kucult hedefle; belirli değer için ayarla; sıfırla). Değişiklik anında ekrana yansır; tek kısa cümleyle söyle.
+- "Ekranı büyüt/küçült", "yazıları büyüt", "çekirdeği küçült", "yan panelleri gizle/göster", "panelleri genişlet", "temayı değiştir", "Mark 2'ye geç", "ekranı eski haline getir", "sistem/gündem/hava/piyasa kartını büyüt/küçült/gizle" → \`ekran_duzenle\` (buyut/kucult hedefle; belirli değer için ayarla; sıfırla). Değişiklik anında ekrana yansır; tek kısa cümleyle söyle.
 
 # Bluetooth ve hoparlörler
 - "Bluetooth cihazlarım bağlı mı", "kulaklığım bağlandı mı" → \`bluetooth\` durum; eşleştirme/bağlanma için \`bluetooth\` ayarlar_ac. Eşleşmiş cihazları Windows açıldıklarında kendiliğinden bağlar.

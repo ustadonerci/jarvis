@@ -14,8 +14,12 @@ export interface Ekran {
   panel: number;
   /** Yan paneller: hepsi / yalnız sol / yalnız sağ / gizli */
   paneller: 'hepsi' | 'sol' | 'sag' | 'gizli';
+  /** Kartların yüksekliği (0 gizli, 1 normal, en çok 2,5): sol sütunda Hava + Sistem, sağda Piyasalar + Gündem paylaşır */
+  kartlar: Record<Kart, number>;
 }
-export const EKRAN_VARSAYILAN: Ekran = { genel: 1, cekirdek: 1, yazi: 1, panel: 1, paneller: 'hepsi' };
+export type Kart = 'hava' | 'sistem' | 'piyasa' | 'gundem';
+export const KARTLAR: Kart[] = ['hava', 'sistem', 'piyasa', 'gundem'];
+export const EKRAN_VARSAYILAN: Ekran = { genel: 1, cekirdek: 1, yazi: 1, panel: 1, paneller: 'hepsi', kartlar: { hava: 1, sistem: 1, piyasa: 1, gundem: 1 } };
 const LIM: Record<'genel' | 'cekirdek' | 'yazi' | 'panel', [number, number]> = { genel: [0.7, 1.5], cekirdek: [0.5, 1.6], yazi: [0.7, 2], panel: [0.7, 1.5] };
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -27,6 +31,11 @@ export function mergeEkran(cur: Ekran, p: any): Ekran {
     if (p?.[k] !== undefined && Number.isFinite(v)) out[k] = r2(Math.min(LIM[k][1], Math.max(LIM[k][0], v)));
   }
   if (['hepsi', 'sol', 'sag', 'gizli'].includes(p?.paneller)) out.paneller = p.paneller;
+  out.kartlar = { ...EKRAN_VARSAYILAN.kartlar, ...cur?.kartlar };
+  for (const k of KARTLAR) {
+    const v = Number(p?.kartlar?.[k] ?? p?.[k]);
+    if ((p?.kartlar?.[k] ?? p?.[k]) !== undefined && Number.isFinite(v)) out.kartlar[k] = r2(Math.min(2.5, Math.max(0, v)));
+  }
   return out;
 }
 
@@ -39,12 +48,13 @@ export const SCREEN_TOOLS = [
     type: 'function',
     function: {
       name: 'ekran_duzenle',
-      description: "Jarvis'in ANA EKRANINI değiştirir (tüm cihazlarda): 'ekranı büyüt/küçült', 'yazıları büyüt', 'çekirdeği küçült', 'yan panelleri gizle/göster', 'sadece sol paneli göster', 'panelleri genişlet', 'temayı kırmızı yap', 'Mark 2 arayüzüne geç', 'ekranı eski haline getir'. islem: durum | ayarla | buyut | kucult | sifirla. buyut/kucult: hedef (genel, cekirdek, yazi, panel) bir adım (%15). ayarla: genel 0.7–1.5, cekirdek 0.5–1.6, yazi 0.7–2, panel 0.7–1.5 (1 = normal), paneller (hepsi/sol/sag/gizli), tema, arayuz (mark1/mark2).",
+      description: "Jarvis'in ANA EKRANINI değiştirir (tüm cihazlarda): 'ekranı büyüt/küçült', 'yazıları büyüt', 'çekirdeği küçült', 'yan panelleri gizle/göster', 'sadece sol paneli göster', 'panelleri genişlet', 'temayı kırmızı yap', 'Mark 2 arayüzüne geç', 'ekranı eski haline getir', 'sistem kartını büyüt', 'gündem kartını küçült', 'hava kartını gizle'. islem: durum | ayarla | buyut | kucult | sifirla. buyut/kucult: hedef (genel, cekirdek, yazi, panel %15; kartlar hava, sistem, piyasa, gundem %25 adım). Kart yüksekliği ayarla ile kartlar: {sistem: 1.5} (0 gizler, 1 normal, en çok 2.5); aynı sütundaki kartlar alanı paylaşır. ayarla: genel 0.7–1.5, cekirdek 0.5–1.6, yazi 0.7–2, panel 0.7–1.5 (1 = normal), paneller (hepsi/sol/sag/gizli), tema, arayuz (mark1/mark2).",
       parameters: {
         type: 'object',
         properties: {
           islem: { type: 'string', enum: ['durum', 'ayarla', 'buyut', 'kucult', 'sifirla'] },
-          hedef: { type: 'string', enum: ['genel', 'cekirdek', 'yazi', 'panel'] },
+          hedef: { type: 'string', enum: ['genel', 'cekirdek', 'yazi', 'panel', 'hava', 'sistem', 'piyasa', 'gundem'] },
+          kartlar: { type: 'object', properties: { hava: { type: 'number' }, sistem: { type: 'number' }, piyasa: { type: 'number' }, gundem: { type: 'number' } } },
           genel: { type: 'number' }, cekirdek: { type: 'number' }, yazi: { type: 'number' }, panel: { type: 'number' },
           paneller: { type: 'string', enum: ['hepsi', 'sol', 'sag', 'gizli'] },
           tema: { type: 'string', description: THEMES.map(t => `${t.id} (${t.ad})`).join(', ') },
@@ -67,10 +77,17 @@ export async function runScreenTool(a: any): Promise<string> {
   let ekran = cur.ekran;
   if (a.islem === 'sifirla') ekran = { ...EKRAN_VARSAYILAN };
   else if (a.islem === 'buyut' || a.islem === 'kucult') {
-    const h = (['genel', 'cekirdek', 'yazi', 'panel'] as const).includes(a.hedef) ? a.hedef as keyof typeof LIM : 'genel';
     const step = a.islem === 'buyut' ? 1.15 : 1 / 1.15;
-    ekran = mergeEkran(ekran, { [h]: ekran[h] * step });
-    if (ekran[h] === cur.ekran[h]) return j({ ok: false, not: `${h} zaten ${a.islem === 'buyut' ? 'en büyük' : 'en küçük'} değerde (${ekran[h]})` });
+    if (KARTLAR.includes(a.hedef)) {
+      // Kart yüksekliği: %25 adım (gizliyse büyütünce normale döner)
+      const k = a.hedef as Kart, v = ekran.kartlar[k];
+      ekran = mergeEkran(ekran, { kartlar: { [k]: a.islem === 'buyut' ? (v === 0 ? 1 : v * 1.25) : v / 1.25 } });
+      if (ekran.kartlar[k] === v) return j({ ok: false, not: `${k} kartı zaten ${a.islem === 'buyut' ? 'en büyük' : 'en küçük'} boyutta` });
+    } else {
+      const h = (['genel', 'cekirdek', 'yazi', 'panel'] as const).includes(a.hedef) ? a.hedef as keyof typeof LIM : 'genel';
+      ekran = mergeEkran(ekran, { [h]: ekran[h] * step });
+      if (ekran[h] === cur.ekran[h]) return j({ ok: false, not: `${h} zaten ${a.islem === 'buyut' ? 'en büyük' : 'en küçük'} değerde (${ekran[h]})` });
+    }
   } else ekran = mergeEkran(ekran, a);
   const patch: Parameters<Hooks['set']>[0] = { ekran };
   if (a.tema !== undefined) {
