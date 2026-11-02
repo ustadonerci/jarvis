@@ -180,12 +180,13 @@ export interface AlarmView { id: string; sembol: string; kosul: 'ust' | 'alt'; f
 export interface RecentMsg { id: string; platform: 'whatsapp' | 'telegram' | 'telefon'; kisi: string; metin: string; at: string; grup: boolean; okundu: boolean; arama: boolean }
 export const getRecentMessages = (adet = 8) => fetch(`/api/mesaj/son?adet=${adet}`, { headers: headers() }).then(r => json<{ mesajlar: RecentMsg[]; okunmamis: number }>(r));
 export interface MesaiKayit { id: string; tarih: string; saat: number; tutar: number; not?: string }
-export interface MesaiData { ay: string; ay_adi: string; toplam_saat: number; toplam_tutar: number; gun: number; kayitlar: MesaiKayit[]; saatlik: number; ayar: { maas: number; carpan: number; aylikSaat: number; aySonuGonder: boolean } }
+export interface MesaiData { ay: string; ay_adi: string; toplam_saat: number; toplam_tutar: number; gun: number; kayitlar: MesaiKayit[]; saatlik: number; ayar: { maas: number; carpan: number; aylikSaat: number; aySonuGonder: boolean; saatUcreti?: number } }
 const mesaiApi = (p: string, method = 'GET', body?: object) => fetch(`/api/mesai${p}`, { method, headers: headers(), body: body ? JSON.stringify(body) : undefined }).then(r => json<MesaiData>(r));
 export const getMesai = () => mesaiApi('');
 export const addMesaiEntry = (saat: number, tarih?: string) => mesaiApi('', 'POST', { saat, tarih });
 export const deleteMesai = (id: string) => mesaiApi(`/${id}`, 'DELETE');
 export const saveMesaiAyar = (a: Partial<MesaiData['ayar']>) => mesaiApi('/ayar', 'POST', a);
+export const resetMesaiAll = () => mesaiApi('/sifirla', 'POST', {});
 export const sendMesai = () => fetch('/api/mesai/gonder', { method: 'POST', headers: headers() }).then(r => json<{ gonderildi: string[] }>(r));
 export const getPortfolio = () => fetch('/api/finans/portfoy', { headers: headers() }).then(r => json<PortfolioData>(r));
 export const addPortfolio = (sembol: string, adet: number, maliyet: number) =>

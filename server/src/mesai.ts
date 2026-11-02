@@ -12,8 +12,8 @@ import { adminOnly } from './keys.js';
 import { notifyOwner } from './messaging.js';
 
 export interface Mesai { id: string; tarih: string; saat: number; tutar: number; not?: string; at: string }
-interface Ayar { maas: number; carpan: number; aylikSaat: number; aySonuGonder: boolean }
-interface Store { ayar: Ayar; kayitlar: Mesai[]; gonderilen: string[] }
+interface Ayar { maas: number; carpan: number; aylikSaat: number; aySonuGonder: boolean; /** Sabit mesai saat ücreti (TL); verilirse maaştan hesaplanmaz */ saatUcreti?: number }
+interface Store { ayar: Ayar; kayitlar: Mesai[]; gonderilen: string[]; /** Tek seferlik geçişler */ gecis?: string[] }
 
 const FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data', 'mesai.json');
 const DEF: Store = { ayar: { maas: 78000, carpan: 1.5, aylikSaat: 225, aySonuGonder: true }, kayitlar: [], gonderilen: [] };
@@ -23,7 +23,24 @@ const save = () => { fs.mkdirSync(path.dirname(FILE), { recursive: true }); fs.w
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const tl = (n: number) => `₺${n.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}`;
 const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-export const saatlikMesai = () => r2((store.ayar.maas / store.ayar.aylikSaat) * store.ayar.carpan);
+export const saatlikMesai = () => (store.ayar.saatUcreti && store.ayar.saatUcreti > 0 ? store.ayar.saatUcreti : r2((store.ayar.maas / store.ayar.aylikSaat) * store.ayar.carpan));
+const hesapAciklama = () => store.ayar.saatUcreti ? `saat ücreti ${tl(store.ayar.saatUcreti)} (sabit)` : `${tl(store.ayar.maas)} / ${store.ayar.aylikSaat} saat × ${store.ayar.carpan}`;
+
+/** Kayıtları siler; önce data/mesai-yedek-<zaman>.json olarak yedekler */
+export function resetMesai(): { silinen: number; yedek?: string } {
+  const n = store.kayitlar.length;
+  let yedek: string | undefined;
+  if (n) {
+    yedek = path.join(path.dirname(FILE), `mesai-yedek-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+    fs.mkdirSync(path.dirname(FILE), { recursive: true });
+    fs.writeFileSync(yedek, JSON.stringify(store.kayitlar, null, 1));
+  }
+  store.kayitlar = [];
+  save(); changed();
+  logActivity('mesai', `Mesai kayıtları sıfırlandı (${n} kayıt${yedek ? ', yedeklendi' : ''})`);
+  return { silinen: n, ...(yedek ? { yedek: path.basename(yedek) } : {}) };
+}
+
 const AYLAR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 const ayAdi = (ay: string) => `${AYLAR[Number(ay.slice(5, 7)) - 1]} ${ay.slice(0, 4)}`;
 
@@ -68,13 +85,19 @@ export function monthText(ay?: string): string {
   return [
     `⏱️ ${s.ay_adi} fazla mesai özeti`,
     `Toplam: ${s.toplam_saat} saat · ${s.gun} gün · ${tl(s.toplam_tutar)}`,
-    `(Saatlik mesai ücreti ${tl(s.saatlik)} = ${tl(store.ayar.maas)} / ${store.ayar.aylikSaat} saat × ${store.ayar.carpan})`,
+    `(Saatlik mesai ücreti ${tl(s.saatlik)}: ${hesapAciklama()})`,
     '', ...(rows.length ? rows : ['Bu ay mesai kaydı yok.']),
   ].join('\n');
 }
 
 export function initMesai(b: (e: object) => void) {
   broadcast = b;
+  // Kullanıcının isteği (Kasım 2026): mesai saat ücreti sabit 260 TL, eski kayıtlar sıfırlansın (yedeklenir). Bir kez çalışır.
+  if (!store.gecis?.includes('saat260')) {
+    store.ayar.saatUcreti = 260;
+    store.gecis = [...(store.gecis ?? []), 'saat260'];
+    resetMesai();
+  }
   // Ayın son günü 21:00'den sonra özet bir kez WhatsApp + Telegram'a
   setInterval(() => {
     const d = new Date();
@@ -99,8 +122,10 @@ export function mesaiRouter(): Router {
     if (Number(b.carpan) >= 1 && Number(b.carpan) <= 3) store.ayar.carpan = Number(b.carpan);
     if (Number(b.aylikSaat) >= 100 && Number(b.aylikSaat) <= 300) store.ayar.aylikSaat = Number(b.aylikSaat);
     if (typeof b.aySonuGonder === 'boolean') store.ayar.aySonuGonder = b.aySonuGonder;
+    if (b.saatUcreti !== undefined) store.ayar.saatUcreti = Number(b.saatUcreti) > 0 ? Number(b.saatUcreti) : undefined;
     save(); changed(); res.json(monthSummary());
   });
+  r.post('/api/mesai/sifirla', (_req, res) => { resetMesai(); res.json(monthSummary()); });
   r.post('/api/mesai/gonder', async (_req, res) => res.json({ gonderildi: await notifyOwner(`🤖 ${monthText()}`).catch(() => []) }));
   return r;
 }
@@ -112,11 +137,12 @@ export const MESAI_TOOLS = [
     type: 'function',
     function: {
       name: 'mesai',
-      description: "Fazla mesai takibi. ekle: 'bugün 2 saat mesai yaptım', 'dün 3 saat mesaim var', '5 Kasım 1,5 saat mesai' (saat; tarih: bugün/dün/'5 Kasım'/'05.11'; not isteğe bağlı) → tutarı maaşa göre hesaplayıp ekler. ozet: bu ayın (ya da ay: 'YYYY-MM') toplam saati ve tutarı. sil: id ya da tarih ile kayıt siler. ayar: maas (aylık TL), carpan (varsayılan 1.5), aylik_saat (varsayılan 225). gonder: ay özetini şimdi WhatsApp ve Telegram'dan gönderir.",
+      description: "Fazla mesai takibi. ekle: 'bugün 2 saat mesai yaptım', 'dün 3 saat mesaim var', '5 Kasım 1,5 saat mesai' (saat; tarih: bugün/dün/'5 Kasım'/'05.11'; not isteğe bağlı) → tutarı maaşa göre hesaplayıp ekler. ozet: bu ayın (ya da ay: 'YYYY-MM') toplam saati ve tutarı. sil: id ya da tarih ile kayıt siler. ayar: saat_ucreti (sabit mesai saat ücreti TL; 0 verilirse maaştan hesaplanır), maas (aylık TL), carpan (varsayılan 1.5), aylik_saat (varsayılan 225). sifirla: bütün kayıtları siler (yedeklenir; yalnız kullanıcı açıkça isterse). gonder: ay özetini şimdi WhatsApp ve Telegram'dan gönderir.",
       parameters: {
         type: 'object',
         properties: {
-          islem: { type: 'string', enum: ['ekle', 'ozet', 'sil', 'ayar', 'gonder'] },
+          islem: { type: 'string', enum: ['ekle', 'ozet', 'sil', 'ayar', 'sifirla', 'gonder'] },
+          saat_ucreti: { type: 'number' },
           saat: { type: 'number' }, tarih: { type: 'string' }, not: { type: 'string' }, id: { type: 'string' }, ay: { type: 'string' },
           maas: { type: 'number' }, carpan: { type: 'number' }, aylik_saat: { type: 'number' },
         },
@@ -148,9 +174,11 @@ export async function runMesaiTool(a: any): Promise<string> {
       if (Number(a.maas) > 0) store.ayar.maas = Number(a.maas);
       if (Number(a.carpan) >= 1 && Number(a.carpan) <= 3) store.ayar.carpan = Number(a.carpan);
       if (Number(a.aylik_saat) >= 100) store.ayar.aylikSaat = Number(a.aylik_saat);
+      if (a.saat_ucreti !== undefined) store.ayar.saatUcreti = Number(a.saat_ucreti) > 0 ? Number(a.saat_ucreti) : undefined;
       save(); changed();
       return j({ ok: true, ayar: store.ayar, saatlik_mesai: saatlikMesai(), not: 'Yeni ayar bundan sonraki kayıtlarda geçerli.' });
     }
+    if (a.islem === 'sifirla') return j({ ok: true, ...resetMesai(), not: 'Kayıtlar silindi (yedeklendi). Kullanıcı yeniden girebilir.' });
     if (a.islem === 'gonder') return j({ gonderildi: await notifyOwner(`🤖 ${monthText(a.ay)}`) });
     const s = monthSummary(typeof a.ay === 'string' && /^\d{4}-\d{2}$/.test(a.ay) ? a.ay : undefined);
     return j({ ...s, kayitlar: s.kayitlar.slice(0, 31) });
