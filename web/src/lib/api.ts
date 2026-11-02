@@ -285,6 +285,7 @@ export async function cloneVoice(f: File, ad?: string): Promise<{ profil: { id: 
 }
 
 /** Dosyayı bilgisayara (İndirilenler\\Jarvis-Gelen) yükler; ilerleme 0-1 arası bildirilir */
+export const getContactCount = () => fetch('/api/rehber', { headers: headers() }).then(r => json<{ sayi: number }>(r));
 export function uploadFile(f: File, onProgress?: (p: number) => void): Promise<{ yol: string; ad: string; kb: number; rehber?: { eklenen: number; guncellenen: number; toplam: number } }> {
   return new Promise((resolve, reject) => {
     const x = new XMLHttpRequest();

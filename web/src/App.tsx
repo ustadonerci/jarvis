@@ -31,6 +31,7 @@ import { startClapListener, type ClapListener } from './lib/clap';
 import { shrinkImage } from './lib/image';
 import { findWorkingMic, micInfo, recorderSupported, startRecording, suspiciousMic, warmMic } from './lib/recorder';
 import { MicTest, SpeakerSettings } from './components/MicTest';
+import { ContactsSettings } from './components/Contacts';
 import { ExchangeSettings } from './components/Exchanges';
 import { ProviderSettings } from './components/Providers';
 import { DailySettings, ExpenseSettings } from './components/Daily';
@@ -1588,6 +1589,7 @@ export default function App() {
                   <ProviderSettings flash={flash} />
                   <ExchangeSettings flash={flash} />
                   <PortfolioSettings flash={flash} />
+                  <ContactsSettings flash={flash} />
                   <MessagingSettings flash={flash} />
                   <AndroidSettings flash={flash} />
                   <ExtensionSettings flash={flash} />

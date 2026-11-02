@@ -28,7 +28,7 @@ import { extensionsRouter, initExtensions } from './extensions.js';
 import { initMessaging, messagingHooksRouter, messagingRouter, notifySelf } from './messaging.js';
 import { registerReelsVoice } from './reels.js';
 import { initRobot } from './robot.js';
-import { importContacts, initContacts, parseContacts } from './contacts.js';
+import { contactCount, importContacts, initContacts, parseContacts } from './contacts.js';
 import { initMailClean } from './mailclean.js';
 import { checkMic, openPrivacySettings, openRecordingSettings } from './micdiag.js';
 import { defaultHiz, fastModel, getHiz, initBrain, setHiz, type Hiz } from './brain.js';
@@ -351,6 +351,7 @@ app.post('/api/settings', (req, res) => {
 // İçerik türü ne olursa olsun ham bayt olarak gelir (istemci application/octet-stream gönderir; .json dosyası JSON
 // ayrıştırıcısına takılmasın). Dosya adı sadeleştirilir, var olan dosyanın üstüne yazılmaz.
 const UPLOAD_DIR = path.join(os.homedir(), 'Downloads', 'Jarvis-Gelen');
+app.get('/api/rehber', adminOnly, (_req, res) => res.json({ sayi: contactCount() }));
 app.post('/api/dosya-yukle', adminOnly, express.raw({ type: () => true, limit: '200mb' }), (req, res) => {
   if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: 'Dosya boş' });
   const raw = path.basename(String(req.query.ad || 'dosya')).normalize('NFC');
