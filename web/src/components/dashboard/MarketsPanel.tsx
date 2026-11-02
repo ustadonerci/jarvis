@@ -37,7 +37,9 @@ export const MarketsPanel = memo(function MarketsPanel({
   portfoy = null,
   mesai = null,
   onAddMesai,
+  onAddHolding,
 }: {
+  onAddHolding?(sembol: string, adet: number, maliyet: number): void;
   portfoy?: PortfolioData | null;
   mesai?: MesaiData | null;
   onAddMesai?(saat: number): void;
@@ -73,7 +75,7 @@ export const MarketsPanel = memo(function MarketsPanel({
           <div className="panel-source">{data.source === 'TCMB' ? 'tcmb' : 'demo'} · {trDate(data.date)} bülteni</div>
         </>
       )}
-      <PortfolioBox p={portfoy} />
+      <PortfolioBox p={portfoy} onAdd={onAddHolding} />
       <MesaiBox m={mesai} onAdd={onAddMesai} />
     </DashPanel>
   );

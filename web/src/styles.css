@@ -993,3 +993,26 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .ms-add button { height: 30px; padding: 0 12px; border-radius: 8px; border: 0; background: linear-gradient(135deg, #c77dff, #3dd6c8); color: #08121c; font-weight: 700; cursor: pointer; }
 .ms-chip b { color: #7cffd8; }
 .seg.wrap { flex-wrap: wrap; }
+
+/* ---------- Fareyle / dokunarak boyutlandırma ---------- */
+.dash-resizers { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+.rz-split, .rz-edge { position: absolute; pointer-events: auto; touch-action: none; display: flex; align-items: center; justify-content: center; }
+.rz-split { height: 16px; cursor: row-resize; }
+.rz-split.rz-left { left: 24px; width: calc(310px * var(--side-scale, 1)); }
+.rz-split.rz-right { right: 24px; width: calc(340px * var(--side-scale, 1)); }
+.rz-split i { width: 46px; height: 4px; border-radius: 4px; background: var(--accent); opacity: 0.25; transition: opacity 0.2s, width 0.2s; }
+.rz-edge { width: 8px; cursor: col-resize; }
+.rz-edge i { width: 3px; height: 46px; border-radius: 3px; background: var(--accent); opacity: 0.18; transition: opacity 0.2s, height 0.2s; }
+.rz-split:hover i, .rz-split.active i { opacity: 0.9; width: 80px; box-shadow: 0 0 10px var(--accent); }
+.rz-edge:hover i, .rz-edge.active i { opacity: 0.9; height: 90px; box-shadow: 0 0 10px var(--accent); }
+@media (max-aspect-ratio: 1/1), (max-width: 1100px) { .dash-resizers { display: none; } .core-wrap { touch-action: none; } }
+.pf-plus { margin-left: 8px; background: none; border: 1px solid rgba(255, 201, 77, 0.45); color: #ffc94d; border-radius: 999px; font-size: 10px; padding: 1px 8px; cursor: pointer; letter-spacing: 0.04em; }
+.pf-add-mini { display: grid; grid-template-columns: 1.4fr 1fr 1fr auto auto; gap: 4px; margin: 6px 0; }
+.pf-add-mini input { min-width: 0; height: 28px; padding: 0 8px; border-radius: 6px; border: 1px solid rgba(255, 201, 77, 0.35); background: rgba(8, 18, 28, 0.75); color: var(--text); font-size: 12px; outline: none; }
+.pf-add-mini button { height: 28px; padding: 0 9px; border-radius: 6px; border: 0; background: #ffc94d; color: #08121c; font-weight: 700; cursor: pointer; }
+.pf-add-mini button[type='button'] { background: rgba(255, 255, 255, 0.08); color: var(--muted); }
+.pf-head .pf-title { display: flex; align-items: center; flex-wrap: wrap; row-gap: 4px; }
+.pf-title .pf-add-mini { flex-basis: 100%; letter-spacing: 0; text-transform: none; }
+.live-sheet { max-height: none; padding-top: 26px; }
+.live-sheet-grip { position: absolute; top: 0; left: 0; right: 0; height: 24px; display: flex; justify-content: center; align-items: center; cursor: row-resize; touch-action: none; }
+.live-sheet-grip i { width: 46px; height: 5px; border-radius: 5px; background: var(--muted); opacity: 0.6; }

@@ -34,7 +34,8 @@ import { MicTest, SpeakerSettings } from './components/MicTest';
 import { ContactsSettings } from './components/Contacts';
 import { MesaiSettings } from './components/MesaiSettings';
 import { LiveSheet } from './components/dashboard/LiveParts';
-import { addMesaiEntry, getMesai, getPortfolio, getRecentMessages, type MesaiData, type PortfolioData, type RecentMsg } from './lib/api';
+import { DashResizers, usePinch } from './components/dashboard/Resizers';
+import { addMesaiEntry, addPortfolio, getMesai, getPortfolio, getRecentMessages, type MesaiData, type PortfolioData, type RecentMsg } from './lib/api';
 import { ScreenLayout } from './components/ScreenLayout';
 import { ExchangeSettings } from './components/Exchanges';
 import { ProviderSettings } from './components/Providers';
@@ -200,6 +201,12 @@ export default function App() {
     if (!f) return mesajlar;
     return mesajlar.filter(m => (m.arama ? f.arama : m.platform === 'whatsapp' ? f.whatsapp : m.platform === 'telegram' ? f.telegram : true) && (f.grup || !m.grup) && (!f.sadeceOkunmamis || !m.okundu));
   }, [mesajlar, ekran.mesajlar]);
+  // Fareyle / dokunarak boyutlandırma: sürüklerken anında, bırakınca kaydedilir (diğer cihazlara da geçer)
+  const ekranLocal = useCallback((p: Partial<Ekran>) => setEkran(x => ({ ...x, ...p })), []);
+  const ekranCommit = useCallback((p: Partial<Ekran>) => { setEkran(x => ({ ...x, ...p })); saveSettings({ ekran: p }).catch(() => {}); }, []);
+  const pinch = usePinch(ekran, ekranLocal, ekranCommit);
+  const addHolding = (sembol: string, adet: number, maliyet: number) => addPortfolio(sembol, adet, maliyet)
+    .then(() => getPortfolio()).then(p => { setPortfoy(p); flash(`${sembol.toUpperCase()} portföye eklendi`); }).catch(e => flash(e.message));
   const loadMsgs = useCallback(() => { getRecentMessages(15).then(r => { setMesajlar(r.mesajlar); setOkunmamis(r.okunmamis); }).catch(() => {}); }, []);
   useEffect(() => {
     const pf = () => getPortfolio().then(p => setPortfoy(p.hata ? null : p)).catch(() => {});
@@ -1449,9 +1456,10 @@ export default function App() {
 
         <TopBar me={device} online={online} model={model} connected={connected} mock={mock} />
         <CompactStrip data={dash} portfoy={portfoy} okunmamis={okunmamis} mesai={mesai} onOpen={setSheet} />
-        <LiveSheet open={sheet} onClose={() => setSheet('')} portfoy={portfoy} mesajlar={shownMsgs} okunmamis={okunmamis} mesai={mesai} onAddMesai={addMesai} />
+        <LiveSheet open={sheet} onClose={() => setSheet('')} portfoy={portfoy} mesajlar={shownMsgs} okunmamis={okunmamis} mesai={mesai} onAddMesai={addMesai} onAddHolding={addHolding} />
 
         <main className="stage">
+          <DashResizers ekran={ekran} setLocal={ekranLocal} commit={ekranCommit} />
           {/* Sol sütun: hava + sistem */}
           <aside className="dash-col left" key={'l' + panelKey}>
             <WeatherPanel index={0} data={dash?.weather ?? null} loading={dashLoading} demo={demo} highlight={hl.includes('weather')} />
@@ -1461,7 +1469,7 @@ export default function App() {
           {/* Orta: çekirdek; konuşurken yanında büyük sahne görseli */}
           {/* Görselli düzen: cevapta en az bir görsel varsa (akış listesinden bağımsız; yeni görsel tipleri de sayılır) */}
           <div className={'focus' + (speakingReply && reply!.sahneler.some(s => s.gorsel.tip !== 'yok' && s.gorsel.tip !== 'video') ? ' has-visual' : '')}>
-            <div className="core-wrap">
+            <div className="core-wrap" {...pinch}>
               {/* Uyurken çekirdek çizilmez (pil); uyanışta halkalar sırayla çizilerek gelir */}
               {(wstate === 'awake' || wstate === 'waking') && <Core state={core} level={coreLevel} introAt={introAt} />}
               <div className="core-label">{wstate === 'waking' ? 'başlatılıyor' : core === 'idle' ? 'hazır' : core === 'listening' ? 'dinliyor' : core === 'thinking' ? 'düşünüyor' : 'konuşuyor'}</div>
@@ -1507,7 +1515,7 @@ export default function App() {
 
           {/* Sağ sütun: piyasalar + gündem; konuşurken gündem "Bugünün akışı"na dönüşür */}
           <aside className="dash-col right" key={'r' + panelKey}>
-            <MarketsPanel index={2} data={dash?.markets ?? null} loading={dashLoading} demo={demo} highlight={hl} portfoy={portfoy} mesai={mesai} onAddMesai={addMesai} />
+            <MarketsPanel index={2} data={dash?.markets ?? null} loading={dashLoading} demo={demo} highlight={hl} portfoy={portfoy} mesai={mesai} onAddMesai={addMesai} onAddHolding={addHolding} />
             <AnimatePresence mode="wait" initial={false}>
               {showAgenda ? (
                 <AgendaPanel key={'agenda-' + reply!.id} reply={reply!} items={agenda} sceneIdx={sceneIdx} />

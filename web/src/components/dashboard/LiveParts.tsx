@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react';
 import { fmt } from '../../lib/format';
 import type { MesaiData, PortfolioData, RecentMsg } from '../../lib/api';
 
@@ -13,14 +14,29 @@ const sign = (n?: number) => (n === undefined ? '' : n > 0 ? 'up' : n < 0 ? 'dow
 const tl = (n?: number, d = 0) => (n === undefined ? '—' : `₺${fmt(n, d)}`);
 
 /** Portföy özeti (Piyasalar kartının içinde ve telefondaki sayfada) */
-export function PortfolioBox({ p, limit = 3 }: { p: PortfolioData | null; limit?: number }) {
+function HoldingAdd({ onAdd }: { onAdd(sembol: string, adet: number, maliyet: number): void }) {
+  const [open, setOpen] = useState(false);
+  if (!open) return <button className="pf-plus" onClick={() => setOpen(true)} title="Portföye ekle">＋ Ekle</button>;
+  const num = (v: FormDataEntryValue | null) => Number(String(v ?? '').replace(/\./g, '').replace(',', '.'));
+  return (
+    <form className="pf-add-mini" onSubmit={e => { e.preventDefault(); const f = new FormData(e.currentTarget); const s = String(f.get('s') ?? '').trim(); if (s && num(f.get('a')) > 0) { onAdd(s, num(f.get('a')), num(f.get('m')) || 0); setOpen(false); } }}>
+      <input name="s" placeholder="THYAO, BTC…" autoFocus />
+      <input name="a" placeholder="Adet" inputMode="decimal" />
+      <input name="m" placeholder="Maliyet ₺" inputMode="decimal" />
+      <button type="submit">✓</button>
+      <button type="button" onClick={() => setOpen(false)}>✕</button>
+    </form>
+  );
+}
+
+export function PortfolioBox({ p, limit = 3, onAdd }: { p: PortfolioData | null; limit?: number; onAdd?(sembol: string, adet: number, maliyet: number): void }) {
   if (!p) return null;
-  if (p.bos || !p.varliklar?.length) return <div className="pf-box pf-empty">💼 Portföy boş · Ayarlar → Portföy'den ekleyin</div>;
+  if (p.bos || !p.varliklar?.length) return <div className="pf-box pf-empty">💼 Portföy boş {onAdd ? <HoldingAdd onAdd={onAdd} /> : "· Ayarlar → Portföy'den ekleyin"}</div>;
   const list = [...p.varliklar].sort((a, b) => (b.deger_tl ?? 0) - (a.deger_tl ?? 0)).slice(0, limit);
   return (
     <div className="pf-box">
       <div className="pf-head">
-        <span className="pf-title">💼 Portföyüm</span>
+        <span className="pf-title">💼 Portföyüm {onAdd && <HoldingAdd onAdd={onAdd} />}</span>
         <b className="pfx-total">{tl(p.toplam_deger_tl)}</b>
         <span className={'pf-pl ' + sign(p.toplam_kar_tl)}>{(p.toplam_kar_tl ?? 0) >= 0 ? '▲' : '▼'} {tl(Math.abs(p.toplam_kar_tl ?? 0))} · %{fmt(Math.abs(p.toplam_kar_yuzde ?? 0), 1)}</span>
       </div>
@@ -62,13 +78,23 @@ export function MessagesBox({ list, unread, limit = 5 }: { list: RecentMsg[] | n
 }
 
 /** Telefonda: şeritteki 💼 / 💬 düğmesine dokununca alttan açılan sayfa */
-export function LiveSheet({ open, onClose, portfoy, mesajlar, okunmamis, mesai, onAddMesai }: { open: '' | 'portfoy' | 'mesaj' | 'mesai'; onClose(): void; portfoy: PortfolioData | null; mesajlar: RecentMsg[] | null; okunmamis: number; mesai: MesaiData | null; onAddMesai(saat: number): void }) {
+const SHEET_KEY = 'jarvis.sayfaYuksekligi';
+export function LiveSheet({ open, onClose, portfoy, mesajlar, okunmamis, mesai, onAddMesai, onAddHolding }: { open: '' | 'portfoy' | 'mesaj' | 'mesai'; onClose(): void; portfoy: PortfolioData | null; mesajlar: RecentMsg[] | null; okunmamis: number; mesai: MesaiData | null; onAddMesai(saat: number): void; onAddHolding?(sembol: string, adet: number, maliyet: number): void }) {
+  // Üstteki tutamaç parmakla/fareyle sürüklenerek sayfa büyür/küçülür (aşağı çok çekilirse kapanır); yükseklik hatırlanır
+  const [h, setH] = useState(() => { try { return Number(localStorage.getItem(SHEET_KEY)) || 60; } catch { return 60; } });
+  const drag = useRef<{ y: number; h: number } | null>(null);
   if (!open) return null;
+  const vh = window.innerHeight / 100;
   return (
     <div className="live-sheet-bg" onClick={onClose}>
-      <div className="live-sheet" onClick={e => e.stopPropagation()}>
+      <div className="live-sheet" style={{ height: `${h}dvh` }} onClick={e => e.stopPropagation()}>
+        <div className="live-sheet-grip"
+          onPointerDown={e => { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); drag.current = { y: e.clientY, h }; }}
+          onPointerMove={e => { if (drag.current) setH(Math.min(92, Math.max(20, drag.current.h - (e.clientY - drag.current.y) / vh))); }}
+          onPointerUp={() => { drag.current = null; if (h <= 22) onClose(); try { localStorage.setItem(SHEET_KEY, String(Math.max(30, Math.round(h)))); } catch { /* yok */ } }}
+          onPointerCancel={() => { drag.current = null; }}><i /></div>
         <button className="live-sheet-x" onClick={onClose} aria-label="Kapat">✕</button>
-        {open === 'portfoy' ? <PortfolioBox p={portfoy} limit={12} /> : open === 'mesai' ? <MesaiBox m={mesai} onAdd={onAddMesai} limit={31} /> : <MessagesBox list={mesajlar} unread={okunmamis} limit={15} />}
+        {open === 'portfoy' ? <PortfolioBox p={portfoy} limit={12} onAdd={onAddHolding} /> : open === 'mesai' ? <MesaiBox m={mesai} onAdd={onAddMesai} limit={31} /> : <MessagesBox list={mesajlar} unread={okunmamis} limit={15} />}
       </div>
     </div>
   );
