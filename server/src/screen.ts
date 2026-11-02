@@ -16,10 +16,13 @@ export interface Ekran {
   paneller: 'hepsi' | 'sol' | 'sag' | 'gizli';
   /** Kartların yüksekliği (0 gizli, 1 normal, en çok 2,5): sol sütunda Hava + Sistem, sağda Piyasalar + Gündem paylaşır */
   kartlar: Record<Kart, number>;
+  /** Gündem kartındaki mesajlar: hangileri görünsün */
+  mesajlar: MesajFiltre;
 }
+export interface MesajFiltre { goster: boolean; whatsapp: boolean; telegram: boolean; arama: boolean; grup: boolean; sadeceOkunmamis: boolean }
 export type Kart = 'hava' | 'sistem' | 'piyasa' | 'gundem';
 export const KARTLAR: Kart[] = ['hava', 'sistem', 'piyasa', 'gundem'];
-export const EKRAN_VARSAYILAN: Ekran = { genel: 1, cekirdek: 1, yazi: 1, panel: 1, paneller: 'hepsi', kartlar: { hava: 1, sistem: 1, piyasa: 1, gundem: 1 } };
+export const EKRAN_VARSAYILAN: Ekran = { genel: 1, cekirdek: 1, yazi: 1, panel: 1, paneller: 'hepsi', kartlar: { hava: 1, sistem: 1, piyasa: 1, gundem: 1 }, mesajlar: { goster: true, whatsapp: true, telegram: true, arama: true, grup: true, sadeceOkunmamis: false } };
 const LIM: Record<'genel' | 'cekirdek' | 'yazi' | 'panel', [number, number]> = { genel: [0.7, 1.5], cekirdek: [0.5, 1.6], yazi: [0.7, 2], panel: [0.7, 1.5] };
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -36,6 +39,8 @@ export function mergeEkran(cur: Ekran, p: any): Ekran {
     const v = Number(p?.kartlar?.[k] ?? p?.[k]);
     if ((p?.kartlar?.[k] ?? p?.[k]) !== undefined && Number.isFinite(v)) out.kartlar[k] = r2(Math.min(2.5, Math.max(0, v)));
   }
+  out.mesajlar = { ...EKRAN_VARSAYILAN.mesajlar, ...cur?.mesajlar };
+  for (const k of Object.keys(EKRAN_VARSAYILAN.mesajlar) as (keyof MesajFiltre)[]) if (typeof p?.mesajlar?.[k] === 'boolean') out.mesajlar[k] = p.mesajlar[k];
   return out;
 }
 
@@ -48,12 +53,13 @@ export const SCREEN_TOOLS = [
     type: 'function',
     function: {
       name: 'ekran_duzenle',
-      description: "Jarvis'in ANA EKRANINI değiştirir (tüm cihazlarda): 'ekranı büyüt/küçült', 'yazıları büyüt', 'çekirdeği küçült', 'yan panelleri gizle/göster', 'sadece sol paneli göster', 'panelleri genişlet', 'temayı kırmızı yap', 'Mark 2 arayüzüne geç', 'ekranı eski haline getir', 'sistem kartını büyüt', 'gündem kartını küçült', 'hava kartını gizle'. islem: durum | ayarla | buyut | kucult | sifirla. buyut/kucult: hedef (genel, cekirdek, yazi, panel %15; kartlar hava, sistem, piyasa, gundem %25 adım). Kart yüksekliği ayarla ile kartlar: {sistem: 1.5} (0 gizler, 1 normal, en çok 2.5); aynı sütundaki kartlar alanı paylaşır. ayarla: genel 0.7–1.5, cekirdek 0.5–1.6, yazi 0.7–2, panel 0.7–1.5 (1 = normal), paneller (hepsi/sol/sag/gizli), tema, arayuz (mark1/mark2).",
+      description: "Jarvis'in ANA EKRANINI değiştirir (tüm cihazlarda): 'ekranı büyüt/küçült', 'yazıları büyüt', 'çekirdeği küçült', 'yan panelleri gizle/göster', 'sadece sol paneli göster', 'panelleri genişlet', 'temayı kırmızı yap', 'Mark 2 arayüzüne geç', 'ekranı eski haline getir', 'sistem kartını büyüt', 'gündem kartını küçült', 'hava kartını gizle', 'gündemde sadece WhatsApp mesajları görünsün', 'grup mesajlarını gösterme', 'mesajları gizle'. islem: durum | ayarla | buyut | kucult | sifirla. buyut/kucult: hedef (genel, cekirdek, yazi, panel %15; kartlar hava, sistem, piyasa, gundem %25 adım). Kart yüksekliği ayarla ile kartlar: {sistem: 1.5} (0 gizler, 1 normal, en çok 2.5); aynı sütundaki kartlar alanı paylaşır. ayarla: genel 0.7–1.5, cekirdek 0.5–1.6, yazi 0.7–2, panel 0.7–1.5 (1 = normal), paneller (hepsi/sol/sag/gizli), tema, arayuz (mark1/mark2).",
       parameters: {
         type: 'object',
         properties: {
           islem: { type: 'string', enum: ['durum', 'ayarla', 'buyut', 'kucult', 'sifirla'] },
           hedef: { type: 'string', enum: ['genel', 'cekirdek', 'yazi', 'panel', 'hava', 'sistem', 'piyasa', 'gundem'] },
+          mesajlar: { type: 'object', description: 'Gündem kartındaki mesajlar', properties: { goster: { type: 'boolean' }, whatsapp: { type: 'boolean' }, telegram: { type: 'boolean' }, arama: { type: 'boolean' }, grup: { type: 'boolean' }, sadeceOkunmamis: { type: 'boolean' } } },
           kartlar: { type: 'object', properties: { hava: { type: 'number' }, sistem: { type: 'number' }, piyasa: { type: 'number' }, gundem: { type: 'number' } } },
           genel: { type: 'number' }, cekirdek: { type: 'number' }, yazi: { type: 'number' }, panel: { type: 'number' },
           paneller: { type: 'string', enum: ['hepsi', 'sol', 'sag', 'gizli'] },

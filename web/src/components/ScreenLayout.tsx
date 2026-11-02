@@ -1,4 +1,7 @@
-import type { Ekran, Kart } from '../lib/types';
+import type { Ekran, Kart, MesajFiltre } from '../lib/types';
+
+const MF: MesajFiltre = { goster: true, whatsapp: true, telegram: true, arama: true, grup: true, sadeceOkunmamis: false };
+const MF_AD: [keyof MesajFiltre, string][] = [['goster', 'Mesajları göster'], ['whatsapp', '🟢 WhatsApp'], ['telegram', '🔵 Telegram'], ['arama', '📞 Aramalar'], ['grup', '👥 Gruplar'], ['sadeceOkunmamis', 'Yalnız okunmamışlar']];
 
 const KARTLAR: [Kart, string][] = [['hava', 'Hava kartı'], ['sistem', 'Sistem kartı'], ['piyasa', 'Piyasalar kartı'], ['gundem', 'Gündem kartı']];
 
@@ -35,7 +38,14 @@ export function ScreenLayout({ ekran, onChange }: { ekran: Ekran; onChange(p: Pa
           <span className="small mono" style={{ minWidth: 44, textAlign: 'right' }}>{(ekran.kartlar?.[k] ?? 1) === 0 ? 'gizli' : `%${Math.round((ekran.kartlar?.[k] ?? 1) * 100)}`}</span>
         </div>
       ))}
-      <button onClick={() => onChange({ genel: 1, cekirdek: 1, yazi: 1, panel: 1, paneller: 'hepsi', kartlar: { hava: 1, sistem: 1, piyasa: 1, gundem: 1 } })}>↺ Varsayılana dön</button>
+      <p className="muted small">Gündem kartında hangi mesajlar görünsün? (Jarvis'e de söyleyebilirsiniz: "sadece WhatsApp mesajları görünsün")</p>
+      <div className="seg wrap">
+        {MF_AD.map(([k, ad]) => {
+          const f = { ...MF, ...ekran.mesajlar };
+          return <button key={k} className={f[k] ? 'on' : ''} onClick={() => onChange({ mesajlar: { ...f, [k]: !f[k] } })}>{f[k] ? '✅' : '⬜'} {ad}</button>;
+        })}
+      </div>
+      <button onClick={() => onChange({ genel: 1, cekirdek: 1, yazi: 1, panel: 1, paneller: 'hepsi', kartlar: { hava: 1, sistem: 1, piyasa: 1, gundem: 1 }, mesajlar: MF })}>↺ Varsayılana dön</button>
     </>
   );
 }

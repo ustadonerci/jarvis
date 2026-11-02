@@ -176,4 +176,5 @@ export const DEVICE_LABEL: Record<Device, string> = { masaustu: 'Masaüstü', ta
 
 /** Ana ekran düzeni (sunucuda saklanır; Jarvis ekran_duzenle ile değiştirebilir) */
 export type Kart = 'hava' | 'sistem' | 'piyasa' | 'gundem';
-export interface Ekran { genel: number; cekirdek: number; yazi: number; panel: number; paneller: 'hepsi' | 'sol' | 'sag' | 'gizli'; kartlar: Record<Kart, number> }
+export interface Ekran { genel: number; cekirdek: number; yazi: number; panel: number; paneller: 'hepsi' | 'sol' | 'sag' | 'gizli'; kartlar: Record<Kart, number>; mesajlar?: MesajFiltre }
+export interface MesajFiltre { goster: boolean; whatsapp: boolean; telegram: boolean; arama: boolean; grup: boolean; sadeceOkunmamis: boolean }

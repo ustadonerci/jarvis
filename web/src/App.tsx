@@ -32,8 +32,9 @@ import { shrinkImage } from './lib/image';
 import { findWorkingMic, micInfo, recorderSupported, startRecording, suspiciousMic, warmMic } from './lib/recorder';
 import { MicTest, SpeakerSettings } from './components/MicTest';
 import { ContactsSettings } from './components/Contacts';
+import { MesaiSettings } from './components/MesaiSettings';
 import { LiveSheet } from './components/dashboard/LiveParts';
-import { getPortfolio, getRecentMessages, type PortfolioData, type RecentMsg } from './lib/api';
+import { addMesaiEntry, getMesai, getPortfolio, getRecentMessages, type MesaiData, type PortfolioData, type RecentMsg } from './lib/api';
 import { ScreenLayout } from './components/ScreenLayout';
 import { ExchangeSettings } from './components/Exchanges';
 import { ProviderSettings } from './components/Providers';
@@ -187,7 +188,18 @@ export default function App() {
   const [portfoy, setPortfoy] = useState<PortfolioData | null>(null);
   const [mesajlar, setMesajlar] = useState<RecentMsg[] | null>(null);
   const [okunmamis, setOkunmamis] = useState(0);
-  const [sheet, setSheet] = useState<'' | 'portfoy' | 'mesaj'>('');
+  const [sheet, setSheet] = useState<'' | 'portfoy' | 'mesaj' | 'mesai'>('');
+  const [mesai, setMesai] = useState<MesaiData | null>(null);
+  const loadMesai = useCallback(() => { getMesai().then(setMesai).catch(() => {}); }, []);
+  const addMesai = (saat: number) => addMesaiEntry(saat).then(m => { setMesai(m); flash(`Mesai eklendi: ${saat} saat`); }).catch(e => flash(e.message));
+  useEffect(() => { loadMesai(); }, [loadMesai]);
+  // Gündem kartında görünecek mesajlar (Ayarlar → Ekran düzeni ya da Jarvis: "sadece WhatsApp mesajları görünsün")
+  const shownMsgs = useMemo(() => {
+    if (!mesajlar) return null;
+    const f = ekran.mesajlar;
+    if (!f) return mesajlar;
+    return mesajlar.filter(m => (m.arama ? f.arama : m.platform === 'whatsapp' ? f.whatsapp : m.platform === 'telegram' ? f.telegram : true) && (f.grup || !m.grup) && (!f.sadeceOkunmamis || !m.okundu));
+  }, [mesajlar, ekran.mesajlar]);
   const loadMsgs = useCallback(() => { getRecentMessages(15).then(r => { setMesajlar(r.mesajlar); setOkunmamis(r.okunmamis); }).catch(() => {}); }, []);
   useEffect(() => {
     const pf = () => getPortfolio().then(p => setPortfoy(p.hata ? null : p)).catch(() => {});
@@ -634,6 +646,7 @@ export default function App() {
         case 'link': if (/^(https:\/\/|tel:\+?\d{6,16}$)/.test(e.url)) setLinks(l => [...l.slice(-2), { id: Date.now(), baslik: e.baslik, aciklama: e.aciklama, url: e.url, dugme: e.dugme }]); break;
         case 'robot': flash(`🤖 ${e.metin}`); break;
         case 'alarm': flash(`🔔 ${e.ad}: ${e.fiyat.toLocaleString('tr-TR')} · hedef ${e.kosul === 'ust' ? '≥' : '≤'} ${e.hedef.toLocaleString('tr-TR')}`); break;
+        case 'mesai': loadMesai(); break;
         case 'mesaj': loadMsgs(); flash(`${{ whatsapp: 'WhatsApp', telegram: 'Telegram', telefon: '📞 Telefon' }[e.platform]} · ${e.arama ? `${e.kisi} ${e.platform === 'telefon' ? e.metin : 'aradı'}` : `${e.kisi}: ${e.metin}`}`); break;
       }
     }, setConnected);
@@ -1435,8 +1448,8 @@ export default function App() {
         </div>
 
         <TopBar me={device} online={online} model={model} connected={connected} mock={mock} />
-        <CompactStrip data={dash} portfoy={portfoy} okunmamis={okunmamis} onOpen={setSheet} />
-        <LiveSheet open={sheet} onClose={() => setSheet('')} portfoy={portfoy} mesajlar={mesajlar} okunmamis={okunmamis} />
+        <CompactStrip data={dash} portfoy={portfoy} okunmamis={okunmamis} mesai={mesai} onOpen={setSheet} />
+        <LiveSheet open={sheet} onClose={() => setSheet('')} portfoy={portfoy} mesajlar={shownMsgs} okunmamis={okunmamis} mesai={mesai} onAddMesai={addMesai} />
 
         <main className="stage">
           {/* Sol sütun: hava + sistem */}
@@ -1494,12 +1507,12 @@ export default function App() {
 
           {/* Sağ sütun: piyasalar + gündem; konuşurken gündem "Bugünün akışı"na dönüşür */}
           <aside className="dash-col right" key={'r' + panelKey}>
-            <MarketsPanel index={2} data={dash?.markets ?? null} loading={dashLoading} demo={demo} highlight={hl} portfoy={portfoy} />
+            <MarketsPanel index={2} data={dash?.markets ?? null} loading={dashLoading} demo={demo} highlight={hl} portfoy={portfoy} mesai={mesai} onAddMesai={addMesai} />
             <AnimatePresence mode="wait" initial={false}>
               {showAgenda ? (
                 <AgendaPanel key={'agenda-' + reply!.id} reply={reply!} items={agenda} sceneIdx={sceneIdx} />
               ) : (
-                <NewsStatsPanel key="news" index={3} data={dash?.news ?? null} loading={dashLoading} demo={demo} mesajlar={mesajlar} okunmamis={okunmamis} />
+                <NewsStatsPanel key="news" index={3} data={dash?.news ?? null} loading={dashLoading} demo={demo} mesajlar={ekran.mesajlar?.goster === false ? null : shownMsgs} okunmamis={okunmamis} />
               )}
             </AnimatePresence>
           </aside>
@@ -1623,6 +1636,7 @@ export default function App() {
                   <ProviderSettings flash={flash} />
                   <ExchangeSettings flash={flash} />
                   <PortfolioSettings flash={flash} />
+                  <MesaiSettings flash={flash} />
                   <ContactsSettings flash={flash} />
                   <MessagingSettings flash={flash} />
                   <AndroidSettings flash={flash} />

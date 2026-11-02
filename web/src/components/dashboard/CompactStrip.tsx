@@ -3,7 +3,7 @@ import { fmt } from '../../lib/format';
 import type { Dashboard, MarketItem } from '../../lib/types';
 import { ARROW, direction } from './direction';
 import { WeatherIcon } from './WeatherIcon';
-import type { PortfolioData } from '../../lib/api';
+import type { MesaiData, PortfolioData } from '../../lib/api';
 
 function Fx({ item, code }: { item: MarketItem | undefined; code: string }) {
   if (!item) return <span className="st-item na">{code} —</span>;
@@ -16,7 +16,7 @@ function Fx({ item, code }: { item: MarketItem | undefined; code: string }) {
 }
 
 /** Dikey ekranlarda (telefon/tablet) tek satırlık özet: hava · USD · EUR. */
-export const CompactStrip = memo(function CompactStrip({ data, portfoy = null, okunmamis = 0, onOpen }: { data: Dashboard | null; portfoy?: PortfolioData | null; okunmamis?: number; onOpen?(ne: 'portfoy' | 'mesaj'): void }) {
+export const CompactStrip = memo(function CompactStrip({ data, portfoy = null, okunmamis = 0, mesai = null, onOpen }: { data: Dashboard | null; portfoy?: PortfolioData | null; okunmamis?: number; mesai?: MesaiData | null; onOpen?(ne: 'portfoy' | 'mesaj' | 'mesai'): void }) {
   if (!data) return <div className="strip"><span className="st-item na">yükleniyor…</span></div>;
   const w = data.weather;
   const items = data.markets?.items ?? [];
@@ -39,6 +39,8 @@ export const CompactStrip = memo(function CompactStrip({ data, portfoy = null, o
           <button className={'st-item st-btn ' + ((portfoy.toplam_kar_tl ?? 0) >= 0 ? 'up' : 'down')} onClick={() => onOpen?.('portfoy')}>💼 <b>₺{fmt(portfoy.toplam_deger_tl, 0)}</b></button>
         </>
       )}
+      <span className="st-sep" />
+      <button className="st-item st-btn ms-chip" onClick={() => onOpen?.('mesai')}>⏱️ <b>{mesai ? `₺${fmt(mesai.toplam_tutar, 0)}` : '—'}</b></button>
       <span className="st-sep" />
       <button className="st-item st-btn" onClick={() => onOpen?.('mesaj')}>💬{okunmamis > 0 && <b className="msg-badge">{okunmamis}</b>}</button>
       {data.demo && <span className="demo-tag">demo</span>}

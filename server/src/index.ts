@@ -44,6 +44,7 @@ import { expensesRouter } from './expenses.js';
 import { initTgChannels, tgChannelsRouter } from './tgchannels.js';
 import { initDisRobot } from './disrobot.js';
 import { initOwnerMsg } from './ownermsg.js';
+import { initMesai, mesaiRouter } from './mesai.js';
 import { indicatorsRouter } from './indicators.js';
 import { tgWebRouter } from './telegramweb.js';
 import { financeRouter, initFinance } from './finance.js';
@@ -182,6 +183,7 @@ initDaily({ messages: () => state.messages, broadcast });
 initTgChannels(broadcast);
 initDisRobot(broadcast);
 initOwnerMsg();
+initMesai(broadcast);
 initVoiceStudio();
 
 const app = express();
@@ -439,6 +441,7 @@ app.use(expensesRouter());
 app.use(tgChannelsRouter());
 app.use(indicatorsRouter());
 app.use(tgWebRouter());
+app.use(mesaiRouter());
 app.use(providersRouter(id => { state.beyin = id; saveState(); }));
 
 // ---------- Onay kartları ve otomasyon (webhook) ----------

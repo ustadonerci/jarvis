@@ -4,8 +4,8 @@ import { fmt, trDate } from '../../lib/format';
 import type { MarketItem, Markets } from '../../lib/types';
 import { DashPanel, NoData } from './common';
 import { ARROW, direction } from './direction';
-import { PortfolioBox } from './LiveParts';
-import type { PortfolioData } from '../../lib/api';
+import { MesaiBox, PortfolioBox } from './LiveParts';
+import type { MesaiData, PortfolioData } from '../../lib/api';
 
 function Sparkline({ points, delay }: { points: MarketItem['history']; delay: number }) {
   if (points.length < 2) return <svg className="spark" viewBox="0 0 80 26" />;
@@ -35,8 +35,12 @@ export const MarketsPanel = memo(function MarketsPanel({
   demo,
   highlight,
   portfoy = null,
+  mesai = null,
+  onAddMesai,
 }: {
   portfoy?: PortfolioData | null;
+  mesai?: MesaiData | null;
+  onAddMesai?(saat: number): void;
   index: number;
   data: Markets | null;
   loading: boolean;
@@ -70,6 +74,7 @@ export const MarketsPanel = memo(function MarketsPanel({
         </>
       )}
       <PortfolioBox p={portfoy} />
+      <MesaiBox m={mesai} onAdd={onAddMesai} />
     </DashPanel>
   );
 });

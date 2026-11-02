@@ -1,5 +1,5 @@
 import { fmt } from '../../lib/format';
-import type { PortfolioData, RecentMsg } from '../../lib/api';
+import type { MesaiData, PortfolioData, RecentMsg } from '../../lib/api';
 
 /** Göreli zaman: "şimdi", "5 dk", "2 sa", "dün" */
 export function ago(iso: string): string {
@@ -62,14 +62,47 @@ export function MessagesBox({ list, unread, limit = 5 }: { list: RecentMsg[] | n
 }
 
 /** Telefonda: şeritteki 💼 / 💬 düğmesine dokununca alttan açılan sayfa */
-export function LiveSheet({ open, onClose, portfoy, mesajlar, okunmamis }: { open: '' | 'portfoy' | 'mesaj'; onClose(): void; portfoy: PortfolioData | null; mesajlar: RecentMsg[] | null; okunmamis: number }) {
+export function LiveSheet({ open, onClose, portfoy, mesajlar, okunmamis, mesai, onAddMesai }: { open: '' | 'portfoy' | 'mesaj' | 'mesai'; onClose(): void; portfoy: PortfolioData | null; mesajlar: RecentMsg[] | null; okunmamis: number; mesai: MesaiData | null; onAddMesai(saat: number): void }) {
   if (!open) return null;
   return (
     <div className="live-sheet-bg" onClick={onClose}>
       <div className="live-sheet" onClick={e => e.stopPropagation()}>
         <button className="live-sheet-x" onClick={onClose} aria-label="Kapat">✕</button>
-        {open === 'portfoy' ? <PortfolioBox p={portfoy} limit={12} /> : <MessagesBox list={mesajlar} unread={okunmamis} limit={15} />}
+        {open === 'portfoy' ? <PortfolioBox p={portfoy} limit={12} /> : open === 'mesai' ? <MesaiBox m={mesai} onAdd={onAddMesai} limit={31} /> : <MessagesBox list={mesajlar} unread={okunmamis} limit={15} />}
       </div>
+    </div>
+  );
+}
+
+/** Fazla mesai kartı (Piyasalar kartında portföyün altında; telefonda ⏱️ düğmesiyle) */
+export function MesaiBox({ m, onAdd, limit = 2 }: { m: MesaiData | null; onAdd?(saat: number): void; limit?: number }) {
+  if (!m) return null;
+  const add = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const inp = e.currentTarget.elements.namedItem('saat') as HTMLInputElement;
+    const v = Number(inp.value.replace(',', '.'));
+    if (v > 0) { onAdd?.(v); inp.value = ''; }
+  };
+  return (
+    <div className="ms-box">
+      <div className="ms-head">
+        <span className="ms-title">⏱️ Fazla mesai · {m.ay_adi}</span>
+        <b className="ms-total">₺{fmt(m.toplam_tutar, 0)}</b>
+        <span className="ms-sub">{fmt(m.toplam_saat, 1)} saat · {m.gun} gün · saati ₺{fmt(m.saatlik, 0)}</span>
+      </div>
+      {m.kayitlar.length > 0 && (
+        <ul className="ms-list">
+          {m.kayitlar.slice(0, limit).map(k => (
+            <li key={k.id}><span className="ms-date">{k.tarih.slice(8, 10)}.{k.tarih.slice(5, 7)}</span><span className="ms-h">{fmt(k.saat, 1)} sa</span><span className="ms-amt">₺{fmt(k.tutar, 0)}</span></li>
+          ))}
+        </ul>
+      )}
+      {onAdd && (
+        <form className="ms-add" onSubmit={add}>
+          <input name="saat" inputMode="decimal" placeholder="Bugün kaç saat?" aria-label="Mesai saati" />
+          <button type="submit">+ Ekle</button>
+        </form>
+      )}
     </div>
   );
 }
