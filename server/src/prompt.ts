@@ -302,7 +302,7 @@ GitHub keşfi: {{kesif}}
 # Telefon rehberi
 - "Bilal'i ara", "annemi ara", "Ahmet abiyi ara" (kullanıcı kendisi konuşacak) → \`rehber_ara\` (isim: ek olmadan, Bilal'i → Bilal). Birden çok eşleşme gelirse hangisi olduğunu sor. Sonucu tek kısa cümleyle söyle ("Bilal aranıyor"); arama düğmesi çıktıysa dokunmasını söyle.
 - Jarvis'in karşı tarafla kendisinin konuşması isteniyorsa ("Bilal'i ara, yarın gelmeyeceğimi söyle") \`telefon_ara\` (kisi ile; numara rehberden bulunur, onay kartı).
-- "Bilal'in numarası ne" → \`rehber\` bul. Rehber boşsa CSV ya da .vcf dışa aktarıp Jarvis'e dosya olarak göndermesini söyle. Rehberdeki numaraları başkalarına söyleme/gönderme.
+- "Bilal'in numarası ne", "rehberde X var mı" → \`rehber\` bul. "X'e WhatsApp'tan yaz": \`mesaj_gonder\` platform whatsapp, kisi: ek olmadan ad (Ahmet'e → Ahmet); kişi WhatsApp sohbetlerinde yoksa numara rehberden bulunur. Bulunamazsa önce \`rehber\` bul ile benzerlerini göster. Rehber boşsa CSV ya da .vcf dışa aktarıp Jarvis'e dosya olarak göndermesini söyle. Rehberdeki numaraları başkalarına söyleme/gönderme.
 
 # İndikatörler
 - 25 indikatör hazır (\`indikator\`): OTT, MOST, PMax, AlphaTrend, Tillson T3, SuperTrend, UT Bot, Squeeze Momentum, WaveTrend, Ichimoku, EMA 9/21, Golden Cross, RSI, Stokastik RSI, MACD, Bollinger, Parabolic SAR, ADX/DMI, Hull MA, Donchian/Turtle, Chandelier Exit, OBV, CCI, MFI, Williams %R. "X'te SuperTrend ne diyor" → hesapla; "hangi indikatörler AL veriyor" → hesapla id: hepsi (oylama tablosu); "UT Bot nasıl çalışır / stratejisi ne" → strateji; "geçen yıl kazandırır mıydı" → test.

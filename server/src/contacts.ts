@@ -99,7 +99,16 @@ export function contactsFromCsv(text: string): Contact[] {
 export function contactsFromVcf(text: string): Contact[] {
   const out: Contact[] = [];
   // Katlanmış satırlar (devamı boşlukla başlar) birleştirilir; quoted-printable (eski Android) çözülür
-  const unfolded = text.replace(/\r?\n[ \t]/g, '').replace(/=\r?\n/g, '');
+  // Quoted-printable yumuşak satır sonu ("=" ile biten satır) yalnız QP alanlarında birleştirilir: fotoğrafların base64
+  // verisi de "=" ile bitebiliyor; her yerde birleştirmek fotoğraftan sonraki numarayı/adı yutuyordu.
+  const lines = text.replace(/\r?\n[ \t]/g, '').split(/\r?\n/);
+  const joined: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    let l = lines[i];
+    if (/^[^:]*QUOTED-PRINTABLE[^:]*:/i.test(l)) while (l.endsWith('=') && i + 1 < lines.length) l = l.slice(0, -1) + lines[++i];
+    joined.push(l);
+  }
+  const unfolded = joined.join('\n');
   const qp = (s: string) => { try { return decodeURIComponent(s.replace(/%/g, '%25').replace(/=([0-9A-F]{2})/gi, '%$1')); } catch { return s; } };
   for (const card of unfolded.split(/BEGIN:VCARD/i).slice(1)) {
     let ad = '';

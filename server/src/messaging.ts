@@ -592,21 +592,35 @@ export async function runMsgTool(name: string, args: any, progress: (l: string) 
     const q = norm(String(args.kisi ?? '').trim());
     if (!metin || !q) return JSON.stringify({ hata: 'kişi ya da metin boş' });
     let chat = [...msgs].reverse().find(m => m.platform === platform && norm(m.kisi).includes(q) && m.gelen)?.chat;
+    let rehberden = '';
     if (!chat && platform === 'whatsapp') {
       const named = [...waNames].find(([, n]) => norm(n).includes(q))?.[0];
       const digits = q.replace(/\D/g, '');
       chat = named ?? (digits.length >= 10 ? (wa.durum === 'bağlı' ? `${digits}@s.whatsapp.net` : digits) : undefined);
+      // Telefon rehberinden: isim → numara (WhatsApp numarayla yazılabilir)
+      if (!chat) {
+        const { findContacts, bestNumber } = await import('./contacts.js');
+        const m = findContacts(String(args.kisi ?? ''));
+        const close = m.filter(x => x.puan >= (m[0]?.puan ?? 0) - 1);
+        if (close.length > 1) return JSON.stringify({ secim_gerekli: true, secenekler: close.slice(0, 8).map(x => x.kisi.ad), not: 'Rehberde birden çok kişi uyuyor: hangisine yazılacağını sor, tam adla tekrar çağır.' });
+        if (m.length) {
+          let d = bestNumber(m[0].kisi).replace(/\D/g, '');
+          if (d.startsWith('0')) d = `90${d.slice(1)}`; else if (d.length === 10 && d.startsWith('5')) d = `90${d}`;
+          rehberden = m[0].kisi.ad;
+          chat = wa.durum === 'bağlı' ? `${d}@s.whatsapp.net` : d;
+        }
+      }
     }
     if (!chat) {
       return JSON.stringify({ hata: platform === 'telegram'
         ? `"${args.kisi}" bulunamadı. Telegram botu yalnızca ona daha önce yazmış kişilere mesaj gönderebilir.`
-        : `"${args.kisi}" bulunamadı. Telefon numarasıyla (905xx…) deneyebilirsin.` });
+        : `"${args.kisi}" ne WhatsApp sohbetlerinde ne telefon rehberinde bulundu. Rehberde nasıl kayıtlı olduğunu sor ya da numarayla (905xx…) dene.` });
     }
     try {
       progress(`${platform}: mesaj gönderiliyor`);
       if (platform === 'telegram') await tgSend(chat, metin); else await waSend(chat, metin);
       console.log(`[mesaj] ${platform} gönderildi → ${args.kisi}`);
-      return JSON.stringify({ ok: true, platform, kisi: args.kisi });
+      return JSON.stringify({ ok: true, platform, kisi: rehberden || args.kisi, ...(rehberden ? { kaynak: 'telefon rehberi' } : {}) });
     } catch (e: any) {
       return JSON.stringify({ hata: String(e?.message || e) });
     }
