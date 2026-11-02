@@ -3,6 +3,7 @@ import { fmt } from '../../lib/format';
 import type { Dashboard, MarketItem } from '../../lib/types';
 import { ARROW, direction } from './direction';
 import { WeatherIcon } from './WeatherIcon';
+import type { PortfolioData } from '../../lib/api';
 
 function Fx({ item, code }: { item: MarketItem | undefined; code: string }) {
   if (!item) return <span className="st-item na">{code} —</span>;
@@ -15,7 +16,7 @@ function Fx({ item, code }: { item: MarketItem | undefined; code: string }) {
 }
 
 /** Dikey ekranlarda (telefon/tablet) tek satırlık özet: hava · USD · EUR. */
-export const CompactStrip = memo(function CompactStrip({ data }: { data: Dashboard | null }) {
+export const CompactStrip = memo(function CompactStrip({ data, portfoy = null, okunmamis = 0, onOpen }: { data: Dashboard | null; portfoy?: PortfolioData | null; okunmamis?: number; onOpen?(ne: 'portfoy' | 'mesaj'): void }) {
   if (!data) return <div className="strip"><span className="st-item na">yükleniyor…</span></div>;
   const w = data.weather;
   const items = data.markets?.items ?? [];
@@ -32,6 +33,14 @@ export const CompactStrip = memo(function CompactStrip({ data }: { data: Dashboa
       <Fx item={items.find(i => i.code === 'USD')} code="USD" />
       <span className="st-sep" />
       <Fx item={items.find(i => i.code === 'EUR')} code="EUR" />
+      {portfoy && !portfoy.bos && portfoy.toplam_deger_tl !== undefined && (
+        <>
+          <span className="st-sep" />
+          <button className={'st-item st-btn ' + ((portfoy.toplam_kar_tl ?? 0) >= 0 ? 'up' : 'down')} onClick={() => onOpen?.('portfoy')}>💼 <b>₺{fmt(portfoy.toplam_deger_tl, 0)}</b></button>
+        </>
+      )}
+      <span className="st-sep" />
+      <button className="st-item st-btn" onClick={() => onOpen?.('mesaj')}>💬{okunmamis > 0 && <b className="msg-badge">{okunmamis}</b>}</button>
       {data.demo && <span className="demo-tag">demo</span>}
     </div>
   );

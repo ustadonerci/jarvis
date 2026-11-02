@@ -32,6 +32,8 @@ import { shrinkImage } from './lib/image';
 import { findWorkingMic, micInfo, recorderSupported, startRecording, suspiciousMic, warmMic } from './lib/recorder';
 import { MicTest, SpeakerSettings } from './components/MicTest';
 import { ContactsSettings } from './components/Contacts';
+import { LiveSheet } from './components/dashboard/LiveParts';
+import { getPortfolio, getRecentMessages, type PortfolioData, type RecentMsg } from './lib/api';
 import { ScreenLayout } from './components/ScreenLayout';
 import { ExchangeSettings } from './components/Exchanges';
 import { ProviderSettings } from './components/Providers';
@@ -181,6 +183,18 @@ export default function App() {
   preCaptionRef.current = preCaption;
   // Sabah panosu: ilk yüklemede çekilir, sonra sunucu 5 dakikada bir SSE ile yeniler.
   const [dash, setDash] = useState<Dashboard | null>(null);
+  // Ana ekran kartları: portföy (Piyasalar kartında) ve son mesajlar (Gündem kartında); telefonda şeritteki düğmelerle
+  const [portfoy, setPortfoy] = useState<PortfolioData | null>(null);
+  const [mesajlar, setMesajlar] = useState<RecentMsg[] | null>(null);
+  const [okunmamis, setOkunmamis] = useState(0);
+  const [sheet, setSheet] = useState<'' | 'portfoy' | 'mesaj'>('');
+  const loadMsgs = useCallback(() => { getRecentMessages(15).then(r => { setMesajlar(r.mesajlar); setOkunmamis(r.okunmamis); }).catch(() => {}); }, []);
+  useEffect(() => {
+    const pf = () => getPortfolio().then(p => setPortfoy(p.hata ? null : p)).catch(() => {});
+    pf(); loadMsgs();
+    const t1 = setInterval(pf, 5 * 60_000), t2 = setInterval(loadMsgs, 60_000);
+    return () => { clearInterval(t1); clearInterval(t2); };
+  }, [loadMsgs]);
   const [dashTried, setDashTried] = useState(false);
   const [hl, setHl] = useState<Highlight[]>(NO_HIGHLIGHT);
   // Jarvis içinde açılan YouTube videosu
@@ -620,7 +634,7 @@ export default function App() {
         case 'link': if (/^(https:\/\/|tel:\+?\d{6,16}$)/.test(e.url)) setLinks(l => [...l.slice(-2), { id: Date.now(), baslik: e.baslik, aciklama: e.aciklama, url: e.url, dugme: e.dugme }]); break;
         case 'robot': flash(`🤖 ${e.metin}`); break;
         case 'alarm': flash(`🔔 ${e.ad}: ${e.fiyat.toLocaleString('tr-TR')} · hedef ${e.kosul === 'ust' ? '≥' : '≤'} ${e.hedef.toLocaleString('tr-TR')}`); break;
-        case 'mesaj': flash(`${{ whatsapp: 'WhatsApp', telegram: 'Telegram', telefon: '📞 Telefon' }[e.platform]} · ${e.arama ? `${e.kisi} ${e.platform === 'telefon' ? e.metin : 'aradı'}` : `${e.kisi}: ${e.metin}`}`); break;
+        case 'mesaj': loadMsgs(); flash(`${{ whatsapp: 'WhatsApp', telegram: 'Telegram', telefon: '📞 Telefon' }[e.platform]} · ${e.arama ? `${e.kisi} ${e.platform === 'telefon' ? e.metin : 'aradı'}` : `${e.kisi}: ${e.metin}`}`); break;
       }
     }, setConnected);
   }, [device, play, playOpening, runPlayer, mock]);
@@ -1421,7 +1435,8 @@ export default function App() {
         </div>
 
         <TopBar me={device} online={online} model={model} connected={connected} mock={mock} />
-        <CompactStrip data={dash} />
+        <CompactStrip data={dash} portfoy={portfoy} okunmamis={okunmamis} onOpen={setSheet} />
+        <LiveSheet open={sheet} onClose={() => setSheet('')} portfoy={portfoy} mesajlar={mesajlar} okunmamis={okunmamis} />
 
         <main className="stage">
           {/* Sol sütun: hava + sistem */}
@@ -1479,12 +1494,12 @@ export default function App() {
 
           {/* Sağ sütun: piyasalar + gündem; konuşurken gündem "Bugünün akışı"na dönüşür */}
           <aside className="dash-col right" key={'r' + panelKey}>
-            <MarketsPanel index={2} data={dash?.markets ?? null} loading={dashLoading} demo={demo} highlight={hl} />
+            <MarketsPanel index={2} data={dash?.markets ?? null} loading={dashLoading} demo={demo} highlight={hl} portfoy={portfoy} />
             <AnimatePresence mode="wait" initial={false}>
               {showAgenda ? (
                 <AgendaPanel key={'agenda-' + reply!.id} reply={reply!} items={agenda} sceneIdx={sceneIdx} />
               ) : (
-                <NewsStatsPanel key="news" index={3} data={dash?.news ?? null} loading={dashLoading} demo={demo} />
+                <NewsStatsPanel key="news" index={3} data={dash?.news ?? null} loading={dashLoading} demo={demo} mesajlar={mesajlar} okunmamis={okunmamis} />
               )}
             </AnimatePresence>
           </aside>

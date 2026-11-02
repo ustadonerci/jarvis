@@ -2,19 +2,26 @@ import { motion } from 'framer-motion';
 import { memo } from 'react';
 import { CATEGORY_LABEL, type NewsStats } from '../../lib/types';
 import { DashPanel, NoData } from './common';
+import { MessagesBox } from './LiveParts';
+import type { RecentMsg } from '../../lib/api';
 
 export const NewsStatsPanel = memo(function NewsStatsPanel({
   index,
   data,
   loading,
   demo,
+  mesajlar = null,
+  okunmamis = 0,
 }: {
+  mesajlar?: RecentMsg[] | null;
+  okunmamis?: number;
   index: number;
   data: NewsStats | null;
   loading: boolean;
   demo: boolean;
 }) {
-  const cats = data?.by_category.slice(0, 6) ?? [];
+  // Mesajlar da gösteriliyorsa haber çubukları kısalır (kartta yer kalsın)
+  const cats = data?.by_category.slice(0, mesajlar ? 3 : 6) ?? [];
   const max = Math.max(1, ...cats.map(c => c.count));
   return (
     <DashPanel index={index} label="Gündem" demo={demo} className="ns">
@@ -44,6 +51,7 @@ export const NewsStatsPanel = memo(function NewsStatsPanel({
           </ul>
         </>
       )}
+      <MessagesBox list={mesajlar} unread={okunmamis} />
     </DashPanel>
   );
 });

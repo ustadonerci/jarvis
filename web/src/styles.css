@@ -936,3 +936,43 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .core-canvas { height: min(100%, calc(36dvh * var(--core-scale, 1))); }
   .caption p { font-size: calc(clamp(17px, 4.6vw, 22px) * var(--caption-scale, 1)); }
 }
+
+/* ---------- Ana ekran: portföy (Piyasalar) ve mesajlar (Gündem) ---------- */
+.pf-box, .msg-box { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.pf-head { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 10px; margin-bottom: 8px; }
+.pf-head .pf-title { grid-column: 1 / -1; }
+.pf-title, .msg-head span { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #ffc94d; }
+.pfx-total { font-size: 20px; color: #fff; font-variant-numeric: tabular-nums; border: 0; background: none; padding: 0; box-shadow: none; }
+.pf-pl { font-size: 12px; font-weight: 600; padding: 2px 7px; border-radius: 999px; }
+.pf-pl.up, .pf-chg.up, .st-btn.up b { color: #3ddc84; } .pf-pl.up { background: rgba(61, 220, 132, 0.14); }
+.pf-pl.down, .pf-chg.down, .st-btn.down b { color: #ff5c6c; } .pf-pl.down { background: rgba(255, 92, 108, 0.14); }
+.pf-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.pf-list li { position: relative; display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; font-size: 13px; padding: 4px 6px 5px; border-radius: 6px; overflow: hidden; background: rgba(255, 201, 77, 0.05); }
+.pf-sym { font-family: var(--mono); color: #7fd8ff; font-weight: 600; }
+.pf-val { color: var(--text); font-variant-numeric: tabular-nums; }
+.pf-chg { font-size: 11px; min-width: 64px; text-align: right; color: var(--muted); }
+.pf-bar { position: absolute; left: 0; bottom: 0; height: 2px; background: linear-gradient(90deg, #ffc94d, #ff8a3d); opacity: 0.8; }
+.pf-empty { font-size: 12px; color: var(--muted); }
+.msg-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.msg-head span { color: #7cffb2; }
+.msg-badge { background: #ff5c6c; color: #fff; font-size: 10px; padding: 1px 7px; border-radius: 999px; margin-left: 4px; }
+.msg-empty { font-size: 12px; color: var(--muted); }
+.msg-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.msg-list li { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: start; padding: 6px 8px; border-radius: 8px; background: rgba(255, 255, 255, 0.03); border-left: 3px solid var(--line); }
+.msg-list li.msg-whatsapp { border-left-color: #25d366; }
+.msg-list li.msg-telegram { border-left-color: #2aabee; }
+.msg-list li.msg-telefon { border-left-color: #ffc94d; }
+.msg-list li.unread { background: rgba(var(--accent-rgb), 0.08); }
+.msg-ic { font-size: 11px; line-height: 18px; }
+.msg-body { min-width: 0; display: flex; flex-direction: column; font-size: 12.5px; line-height: 1.3; }
+.msg-body b { color: #fff; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.msg-body span { color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.msg-at { font-family: var(--mono); font-size: 10px; color: var(--muted); white-space: nowrap; }
+.dash-panel.mk, .dash-panel.ns { overflow-y: auto; scrollbar-width: thin; }
+/* Telefon şeridi düğmeleri ve alttan açılan sayfa */
+.st-btn { background: none; border: 0; color: inherit; font: inherit; cursor: pointer; padding: 0; display: inline-flex; align-items: center; gap: 4px; }
+.live-sheet-bg { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.55); display: flex; align-items: flex-end; justify-content: center; }
+.live-sheet { position: relative; width: min(560px, 100%); max-height: 75dvh; overflow-y: auto; background: var(--bg); border: 1px solid var(--line); border-bottom: 0; border-radius: 18px 18px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5); }
+.live-sheet .pf-box, .live-sheet .msg-box { margin-top: 0; padding-top: 0; border-top: 0; }
+.live-sheet .msg-head, .live-sheet .pf-head { padding-right: 34px; }
+.live-sheet-x { position: absolute; top: 10px; right: 12px; background: none; border: 0; color: var(--muted); font-size: 18px; cursor: pointer; }

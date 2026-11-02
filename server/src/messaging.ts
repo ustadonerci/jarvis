@@ -716,6 +716,13 @@ export function messagingRouter(): Router {
   const r = express.Router();
   r.use('/api/mesaj', adminOnly);
   r.get('/api/mesaj', (_req, res) => res.json(status()));
+  // Ana ekrandaki Gündem kartı için son gelen mesajlar (kısaltılmış)
+  r.get('/api/mesaj/son', (req, res) => {
+    const n = Math.min(20, Math.max(1, Number(req.query.adet) || 8));
+    const list = msgs.filter(m => m.gelen && !m.otomatik).slice(-n).reverse()
+      .map(m => ({ id: m.id, platform: m.platform, kisi: m.kisi, metin: m.metin.slice(0, 140), at: m.at, grup: !!m.grup, okundu: !!m.okundu, arama: !!m.arama }));
+    res.json({ mesajlar: list, okunmamis: msgs.filter(m => m.gelen && !m.okundu).length });
+  });
   r.post('/api/mesaj/ayar', (req, res) => {
     const b = req.body ?? {};
     for (const k of ['telegramOto', 'whatsappOto', 'aramaMesaji'] as const) if (typeof b[k] === 'boolean') cfg[k] = b[k];

@@ -4,6 +4,8 @@ import { fmt, trDate } from '../../lib/format';
 import type { MarketItem, Markets } from '../../lib/types';
 import { DashPanel, NoData } from './common';
 import { ARROW, direction } from './direction';
+import { PortfolioBox } from './LiveParts';
+import type { PortfolioData } from '../../lib/api';
 
 function Sparkline({ points, delay }: { points: MarketItem['history']; delay: number }) {
   if (points.length < 2) return <svg className="spark" viewBox="0 0 80 26" />;
@@ -32,7 +34,9 @@ export const MarketsPanel = memo(function MarketsPanel({
   loading,
   demo,
   highlight,
+  portfoy = null,
 }: {
+  portfoy?: PortfolioData | null;
   index: number;
   data: Markets | null;
   loading: boolean;
@@ -65,6 +69,7 @@ export const MarketsPanel = memo(function MarketsPanel({
           <div className="panel-source">{data.source === 'TCMB' ? 'tcmb' : 'demo'} · {trDate(data.date)} bülteni</div>
         </>
       )}
+      <PortfolioBox p={portfoy} />
     </DashPanel>
   );
 });
