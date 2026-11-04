@@ -110,36 +110,51 @@ const directKey = (model: string) => (model.startsWith('gemini') ? clean(process
 const GEMINI_ESI: Record<string, string> = { onyx: 'Charon', echo: 'Orus', ash: 'Fenrir', ballad: 'Algenib', cedar: 'Iapetus', verse: 'Puck', fable: 'Enceladus', alloy: 'Kore', nova: 'Kore', shimmer: 'Aoede', coral: 'Leda', sage: 'Despina', marin: 'Zephyr' };
 export const ttsEnabled = (sel: VoiceSel) => sel.model !== BROWSER && (isEleven(sel.model) ? elevenReady() : isAzure(sel.model) ? azureReady() : isVoiceStudio(sel.model) ? vsUp() : (!MOCK && !!API_KEY) || !!directKey(sel.model));
 
-async function viaDirect(text: string, sel: VoiceSel): Promise<Speech> {
-  const key = directKey(sel.model);
-  if (!key) throw new Error('doğrudan ses anahtarı yok');
-  const gem = sel.model.startsWith('gemini') || !clean(process.env.OPENAI_API_KEY);
-  if (gem) {
-    const voice = sel.model.startsWith('gemini') ? sel.voice : GEMINI_ESI[sel.voice.toLowerCase()] ?? 'Charon';
-    let last = '';
-    for (const model of [...(/tts/.test(sel.model) ? [sel.model] : []), 'gemini-2.5-flash-preview-tts', 'gemini-2.5-flash-tts', 'gemini-2.5-pro-preview-tts']) {
-      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-        method: 'POST', headers: { 'x-goog-api-key': clean(process.env.GEMINI_API_KEY), 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(45_000),
-        body: JSON.stringify({ contents: [{ parts: [{ text: `${READ}. ${style()}: ${text}` }] }], generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } } }),
-      });
-      const j: any = await r.json().catch(() => ({}));
-      const data = j?.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData)?.inlineData?.data;
-      if (r.ok && data) {
-        const raw = Buffer.from(data, 'base64');
-        const buf = isWav(raw) || isMp3(raw) ? raw : pcmToWav(raw);
-        return { buf, mime: isMp3(buf) ? 'audio/mpeg' : 'audio/wav' };
-      }
-      last = `Gemini ses ${r.status}: ${String((Array.isArray(j) ? j[0] : j)?.error?.message ?? '').slice(0, 120)}`;
-      if (r.status !== 404 && r.status !== 400) break; // model yoksa sıradakini dene; anahtar/kota hatasında dur
+async function geminiTts(text: string, voice: string, preferred?: string): Promise<Speech> {
+  let last = 'Gemini anahtarı yok';
+  if (!clean(process.env.GEMINI_API_KEY)) throw new Error(last);
+  for (const model of [...(preferred ? [preferred] : []), 'gemini-2.5-flash-preview-tts', 'gemini-2.5-flash-tts', 'gemini-2.5-pro-preview-tts']) {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: 'POST', headers: { 'x-goog-api-key': clean(process.env.GEMINI_API_KEY), 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(45_000),
+      body: JSON.stringify({ contents: [{ parts: [{ text: `${READ}. ${style()}: ${text}` }] }], generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } } }),
+    });
+    const j: any = await r.json().catch(() => ({}));
+    const data = j?.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData)?.inlineData?.data;
+    if (r.ok && data) {
+      const raw = Buffer.from(data, 'base64');
+      const buf = isWav(raw) || isMp3(raw) ? raw : pcmToWav(raw);
+      return { buf, mime: isMp3(buf) ? 'audio/mpeg' : 'audio/wav' };
     }
-    throw new Error(last);
+    last = `Gemini ses ${r.status}: ${String((Array.isArray(j) ? j[0] : j)?.error?.message ?? '').slice(0, 120)}`;
+    if (r.status !== 404 && r.status !== 400) break; // model yoksa sıradakini dene; anahtar/kota hatasında dur
   }
+  throw new Error(last);
+}
+
+/** OpenAI hesabında kredi yoksa (429 insufficient_quota) ya da anahtar geçersizse bir süre doğrudan Gemini'ye */
+let openaiTtsDownUntil = 0;
+async function openaiTts(text: string, sel: VoiceSel): Promise<Speech> {
   const r = await fetch('https://api.openai.com/v1/audio/speech', {
-    method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(45_000),
+    method: 'POST', headers: { Authorization: `Bearer ${clean(process.env.OPENAI_API_KEY)}`, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(45_000),
     body: JSON.stringify({ model: 'gpt-4o-mini-tts', input: text, voice: sel.voice, speed: SERVER_SPEED, response_format: 'mp3', instructions: style() }),
   });
-  if (!r.ok) throw new Error(`OpenAI ses ${r.status}: ${(await r.text()).slice(0, 120)}`);
+  if (!r.ok) {
+    const body = (await r.text()).slice(0, 200);
+    if ([401, 402, 403, 429].includes(r.status)) openaiTtsDownUntil = Date.now() + 30 * 60_000;
+    throw new Error(`OpenAI ses ${r.status}${/insufficient_quota/.test(body) ? ' (OpenAI hesabında kredi yok)' : ''}: ${body.slice(0, 100)}`);
+  }
   return { buf: Buffer.from(await r.arrayBuffer()), mime: 'audio/mpeg' };
+}
+
+/** Seçili sesi doğrudan üretir: OpenAI sesi → OpenAI (anahtar/kredi varsa) → Gemini'de en yakın ses */
+async function viaDirect(text: string, sel: VoiceSel): Promise<Speech> {
+  if (sel.model.startsWith('gemini')) return geminiTts(text, sel.voice, /tts/.test(sel.model) ? sel.model : undefined);
+  let err = '';
+  if (clean(process.env.OPENAI_API_KEY) && Date.now() >= openaiTtsDownUntil) {
+    try { return await openaiTts(text, sel); } catch (e: any) { err = String(e?.message || e); console.warn(`[tts] ${err}; Gemini sesine geçiliyor`); }
+  }
+  try { return await geminiTts(text, GEMINI_ESI[sel.voice.toLowerCase()] ?? 'Charon'); }
+  catch (e: any) { throw new Error([err, String(e?.message || e)].filter(Boolean).join(' · ')); }
 }
 
 // ---------------------------------------------------------------- Üretim
@@ -209,7 +224,13 @@ async function generateOnce(text: string, sel: VoiceSel, ctx: ElevenCtx): Promis
     if (r === 'yok') methodFor.set(sel.model, 'chat');
     else return r;
   }
-  const s = await viaChat(text, sel);
+  let s: Awaited<ReturnType<typeof viaChat>>;
+  try { s = await viaChat(text, sel); }
+  catch (e: any) {
+    // Abacus.AI ses vermedi (anahtar/kredi): aynı ses doğrudan OpenAI'den, olmazsa Gemini'den
+    if (directKey(sel.model)) { ttsRouteDownUntil = Date.now() + 30 * 60_000; return { speech: await viaDirect(text, sel), method: 'speech' }; }
+    throw e;
+  }
   if (s.transcript != null && normalizeSpeech(s.transcript) !== normalizeSpeech(text)) return { error: `metinden sapma: "${s.transcript.slice(0, 60)}"` };
   if (s.transcript == null && !plausible(s, text)) return { error: 'süre metinle tutmuyor (uydurma şüphesi)' };
   return { speech: { buf: s.buf, mime: s.mime }, method: 'chat' };
