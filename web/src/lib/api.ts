@@ -253,7 +253,8 @@ export interface TtsCtx { prev?: string; next?: string }
 
 /** v: cevaba sabitlenmiş ses; i/n yalnızca sunucu logu için ("sahne 3/6"). */
 export function ttsUrl(text: string, voice?: VoiceSel, i?: number, n?: number, ctx: TtsCtx = {}) {
-  const q = new URLSearchParams({ text });
+  // s=2: tarayıcıda eski (yedek sesle üretilmiş) kayıtlar çalmasın
+  const q = new URLSearchParams({ text, s: '2' });
   if (ctx.prev) q.set('prev', ctx.prev);
   if (ctx.next) q.set('next', ctx.next);
   if (voice) q.set('v', `${voice.model}:${voice.voice}`);

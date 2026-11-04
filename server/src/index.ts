@@ -733,7 +733,9 @@ app.get('/api/tts', async (req, res) => {
     const speech = await synthesize(String(req.query.text || '').slice(0, 1000), sel, label, false, ctx);
     if (!speech) { res.setHeader('x-tts-hata', encodeURIComponent(ttsLastError().slice(0, 300) || 'bilinmeyen')); return res.status(503).end(); } // istemci yeniden dener, olmazsa tarayıcı sesi
     res.setHeader('Content-Type', speech.mime);
-    res.setHeader('Cache-Control', 'public, max-age=86400');
+    // Yedek ses (asıl ses çalışmadı) tarayıcıda saklanmaz
+    res.setHeader('Cache-Control', speech.yedek ? 'no-store' : 'public, max-age=86400');
+    if (speech.yedek) res.setHeader('x-tts-yedek', '1');
     res.end(speech.buf);
   } catch (e) {
     console.error('TTS hatası:', e);

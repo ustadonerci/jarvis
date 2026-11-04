@@ -33,7 +33,8 @@ export interface VoiceSel {
   speed: number;
 }
 export const BROWSER = 'browser';
-export interface Speech { buf: Buffer; mime: string }
+/** yedek: seçilen ses yerine benzeri (ör. onyx yerine Gemini Charon ya da Piper) çaldı — önbelleğe yazılmaz */
+export interface Speech { buf: Buffer; mime: string; yedek?: boolean }
 
 const READ = 'Read the following Turkish text aloud exactly as written';
 // İngilizce: Türkçe talimatta gpt-audio metne önsöz ekliyor (ölçüldü). Anlamı: "sakin, kendinden emin, sıcak;
@@ -50,6 +51,16 @@ export function clampRate(r: number) { return Number.isFinite(r) ? Math.min(1.3,
 
 const DATA = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
 const DISK_DIR = path.join(DATA, 'tts');
+// Bir kerelik: eski önbellekte kredi yokken yedek sesle (Gemini/Piper) üretilmiş kayıtlar "onyx" adıyla duruyordu.
+// Silinmez, data/tts-eski'ye taşınır; cümleler asıl sesle yeniden üretilir.
+try {
+  const mark = path.join(DATA, 'tts-onbellek-v2');
+  if (!fs.existsSync(mark)) {
+    if (fs.existsSync(DISK_DIR)) fs.renameSync(DISK_DIR, path.join(DATA, `tts-eski-${Date.now()}`));
+    fs.mkdirSync(DATA, { recursive: true });
+    fs.writeFileSync(mark, new Date().toISOString());
+  }
+} catch (e) { console.warn('[tts] eski önbellek taşınamadı:', String(e).slice(0, 120)); }
 export const VOICES_FILE = path.join(DATA, 'voices.json');
 
 export const PREVIEW_TEXT = 'Günaydın efendim, ben Jarvis. Bugün size nasıl yardımcı olabilirim?';
@@ -174,13 +185,20 @@ function directEngines(text: string, sel: VoiceSel): Engine[] {
   const gemini: Engine[] = gk ? [{ ad: `Gemini (${geminiVoice(sel.voice)})`, run: () => geminiTts(text, geminiVoice(sel.voice), gem && /tts/.test(sel.model) ? sel.model : undefined) }] : [];
   // En sonda internetsiz Türkçe ses (kuruluysa): anahtar/kredi/internet olmadan da ses kesilmez
   const yerel: Engine[] = piperReady() ? [{ ad: 'İnternetsiz ses (Piper)', run: async () => ({ buf: await piperSpeak(text, sel.speed), mime: 'audio/wav' }) }] : [];
-  return gem ? [...gemini, ...openai, ...yerel] : [...openai, ...gemini, ...yerel];
+  // Ses adı hangi sağlayıcınınsa önce o: "onyx" gerçek OpenAI onyx'i ile, "Charon" Gemini ile
+  const l = sel.voice.toLowerCase();
+  const geminiFirst = GEMINI_NAMES.some(n => n.toLowerCase() === l) ? true : OPENAI_NAMES.includes(l) ? false : gem;
+  return geminiFirst ? [...gemini, ...openai, ...yerel] : [...openai, ...gemini, ...yerel];
 }
 
 async function viaDirect(text: string, sel: VoiceSel): Promise<Speech> {
   const errs: string[] = [];
-  for (const e of directEngines(text, sel)) {
-    try { return await e.run(); } catch (err: any) { errs.push(`${e.ad}: ${String(err?.message || err).slice(0, 100)}`); console.warn(`[tts] ${e.ad} olmadı, sıradaki: ${String(err?.message || err).slice(0, 120)}`); }
+  const l = sel.voice.toLowerCase();
+  const engines = directEngines(text, sel);
+  for (const [i, e] of engines.entries()) {
+    // Asıl ses: listedeki ilk motor ve ses adı o sağlayıcınınsa (OpenAI adı OpenAI'de, Gemini adı Gemini'de)
+    const asil = i === 0 && (e.ad.startsWith('OpenAI') ? OPENAI_NAMES.includes(l) : e.ad.startsWith('Gemini') ? GEMINI_NAMES.some(n => n.toLowerCase() === l) : false);
+    try { const sp = await e.run(); return asil ? sp : { ...sp, yedek: true }; } catch (err: any) { errs.push(`${e.ad}: ${String(err?.message || err).slice(0, 100)}`); console.warn(`[tts] ${e.ad} olmadı, sıradaki: ${String(err?.message || err).slice(0, 120)}`); }
   }
   throw new Error(errs.join(' · ') || 'kullanılabilir ses motoru yok');
 }
@@ -245,7 +263,7 @@ async function generateOnce(text: string, sel: VoiceSel, ctx: ElevenCtx): Promis
     } catch (e: any) {
       if (!directKey(sel.model, sel.voice)) throw e;
       console.warn(`[tts] ${ozel} olmadı (${String(e?.message || e).slice(0, 100)}); OpenAI/Gemini sesine geçiliyor`);
-      return { speech: await viaDirect(text, { ...sel, voice: 'onyx' }), method: 'speech' };
+      return { speech: { ...(await viaDirect(text, { ...sel, voice: 'onyx' })), yedek: true }, method: 'speech' };
     }
   }
   // Abacus.AI anahtarı yok/bozuk: aynı ses doğrudan OpenAI/Gemini'den
@@ -318,9 +336,12 @@ export function synthesize(text: string, sel: VoiceSel, label = '', persist = fa
         const ms = Date.now() - t0;
         if ('speech' in r) {
           console.log(`[tts] ${label || 'istek'} · ${sel.model} · ${sel.voice} · ${r.method} · ${ms} ms · ${r.speech.buf.length} byte · ${text.length} karakter${attempt > 1 ? ' · 2. deneme' : ''}`);
-          if (memory.size > 300) memory.delete(memory.keys().next().value!);
-          memory.set(key, r.speech);
-          if (persist) writeDisk(key, r.speech);
+          // Yedek sesle üretilen kayıt saklanmaz: asıl ses (ör. onyx) çalışınca o cümle yeniden asıl sesle üretilir
+          if (!r.speech.yedek) {
+            if (memory.size > 300) memory.delete(memory.keys().next().value!);
+            memory.set(key, r.speech);
+            if (persist) writeDisk(key, r.speech);
+          }
           return r.speech;
         }
         console.warn(`[tts] ${label || 'istek'} · ${sel.model} · ${sel.voice} · BAŞARISIZ (deneme ${attempt}/2) · ${ms} ms · ${r.error}`);
