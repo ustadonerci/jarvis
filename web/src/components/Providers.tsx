@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getKeys, getProviders, saveKeys, setBrain, testProvider, type KeyView, type ProvidersData } from '../lib/api';
+import { getKeys, getProviders, saveKeys, setBrain, testAllProviders, testProvider, type KeyView, type ProvidersData } from '../lib/api';
 
 const LOGO: Record<string, string> = { perplexity: '🔎', cohere: '🟣', together: '🤝', fireworks: '🎆', cerebras: '🧠', sambanova: '🔶', deepinfra: '🌊', huggingface: '🤗', nvidia: '🟩', qwen: '🐉', moonshot: '🌙', zhipu: '🔷', minimax: '🔺', ai21: '🔵', novita: '✨', hyperbolic: '🌀', stability: '🖼️', replicate: '🔁', fal: '⚡', runway: '🎬', luma: '🎥', heygen: '🧑‍💼', assemblyai: '🎙️', elevenlabs: '🔊', deepgram: '👂', openai: '🟢', anthropic: '🟠', gemini: '🔷', xai: '✖️', deepseek: '🐋', mistral: '🌬️', groq: '⚡', openrouter: '🔀' };
 
@@ -57,7 +57,8 @@ export function ProviderSettings({ flash }: { flash(t: string): void }) {
   return (
     <>
       <label>Yapay zeka sağlayıcıları (beyin)</label>
-      <p className="muted small">Kendi API anahtarınızı girip bir sağlayıcıyı "beyin" yapın: Jarvis'in sohbeti (ekran, Telegram, WhatsApp) o yapay zekayla çalışır. Hata verirse o cevap RouteLLM ile tamamlanır. Anahtarları sohbete yazmayın.</p>
+      <p className="muted small">Kendi API anahtarınızı girip bir sağlayıcıyı "beyin" yapın: Jarvis'in sohbeti (ekran, Telegram, WhatsApp) o yapay zekayla çalışır. Hata verirse aynı soru anahtarı kayıtlı diğer yapay zekalara sırayla sorulur (beyin değişmez). Anahtarları sohbete yazmayın.</p>
+      <AllTest />
       <div className="seg">
         <button className={data.beyin === 'routellm' ? 'on' : ''} onClick={() => brain('routellm')}>RouteLLM (varsayılan)</button>
         {data.saglayicilar.filter(p => p.hazir && p.tur === 'sohbet').map(p => (
@@ -123,6 +124,23 @@ export function ProviderSettings({ flash }: { flash(t: string): void }) {
           <button className="on" onClick={() => save()}>💾 Kaydet</button>
           <button onClick={() => setDraft({})}>Vazgeç</button>
         </div>
+      )}
+    </>
+  );
+}
+
+/** Kayıtlı bütün sohbet anahtarlarını tek düğmeyle dener */
+function AllTest() {
+  const [busy, setBusy] = useState(false);
+  const [r, setR] = useState<{ ad: string; calisiyor: boolean; neden?: string }[] | null>(null);
+  return (
+    <>
+      <button className="save" disabled={busy} onClick={() => { setBusy(true); testAllProviders().then(x => setR(x.sonuc)).catch(e => setR([{ ad: 'Test', calisiyor: false, neden: e.message }])).finally(() => setBusy(false)); }}>{busy ? '⏳ Anahtarlar deneniyor…' : '🧪 Kayıtlı bütün anahtarları test et'}</button>
+      {r && (
+        <ul className="memory">
+          {r.length === 0 && <li><span>Kayıtlı sohbet anahtarı yok</span></li>}
+          {r.map(x => <li key={x.ad}><span>{x.calisiyor ? '✅' : '❌'} {x.ad}{x.neden ? <small> · {x.neden}</small> : null}</span></li>)}
+        </ul>
       )}
     </>
   );

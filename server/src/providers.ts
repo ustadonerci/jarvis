@@ -269,6 +269,28 @@ export async function brainStream(body: any, onContent?: (d: string, full: strin
   throw new Error(`Yapay zekâ sağlayıcılarının hiçbiri cevap vermedi (${errs.length} denendi). ${errs.join(' · ')}. Ayarlar → Yapay zeka sağlayıcıları'nda anahtarları "Bağlantıyı test et" ile kontrol edin ya da ücretsiz bir anahtar ekleyin (Gemini, Groq, NVIDIA).`);
 }
 
+/**
+ * Kayıtlı bütün sohbet anahtarlarını dener (model listesi ya da tek kelimelik istek). Çalışmayanlar 30 dk atlanır;
+ * sonuç Jarvis'e ve Ayarlar'a döner. Açılışta bir kez kendiliğinden çalışır.
+ */
+export async function testAllProviders(): Promise<{ ad: string; calisiyor: boolean; neden?: string }[]> {
+  const list = PROVIDERS.filter(p => p.tur === 'sohbet' && providerReady(p));
+  const out = await Promise.all(list.map(async p => {
+    try {
+      await testProvider(p);
+      cooldown.delete(p.id);
+      return { ad: p.ad, calisiyor: true };
+    } catch (e: any) {
+      const msg = String(e?.message || e);
+      cooldown.set(p.id, { until: Date.now() + 30 * 60_000, why: msg.slice(0, 140) });
+      return { ad: p.ad, calisiyor: false, neden: msg.slice(0, 120) };
+    }
+  }));
+  console.log(`[beyin] anahtar testi: ${out.filter(x => x.calisiyor).length}/${out.length} çalışıyor${out.some(x => !x.calisiyor) ? ` · çalışmayan: ${out.filter(x => !x.calisiyor).map(x => x.ad).join(', ')}` : ''}`);
+  return out;
+}
+setTimeout(() => { testAllProviders().catch(() => {}); }, 15_000).unref();
+
 /** Sağlayıcıların son durumu (Ayarlar ve Jarvis için): hangisi dinlenmede, neden */
 export const brainHealth = () => [...cooldown.entries()].filter(([, v]) => v.until > Date.now()).map(([id, v]) => ({ id, ad: findProvider(id)?.ad ?? id, neden: v.why, dk: Math.ceil((v.until - Date.now()) / 60_000) }));
 
@@ -324,14 +346,18 @@ export const BRAIN_TOOLS = [
     type: 'function',
     function: {
       name: 'beyin',
-      description: "Jarvis'in sohbetini yürüten yapay zekayı (beyin) gösterir ya da değiştirir. islem: durum (hangi beyin, anahtarı girilmiş sağlayıcılar), sec (saglayici: nvidia, openai, anthropic, gemini, groq, deepseek… ya da routellm). 'Beyni NVIDIA yap', 'hangi yapay zekayı kullanıyorsun', 'Claude'a geç' isteklerinde.",
-      parameters: { type: 'object', properties: { islem: { type: 'string', enum: ['durum', 'sec'] }, saglayici: { type: 'string' } }, required: ['islem'] },
+      description: "Jarvis'in sohbetini yürüten yapay zekayı (beyin) gösterir ya da değiştirir. islem: durum (hangi beyin, anahtarı girilmiş sağlayıcılar), test ('anahtarlarımı test et', 'hangi yapay zekalar çalışıyor': kayıtlı bütün anahtarları dener), sec (saglayici: nvidia, openai, anthropic, gemini, groq, deepseek… ya da routellm). 'Beyni NVIDIA yap', 'hangi yapay zekayı kullanıyorsun', 'Claude'a geç' isteklerinde.",
+      parameters: { type: 'object', properties: { islem: { type: 'string', enum: ['durum', 'sec', 'test'] }, saglayici: { type: 'string' } }, required: ['islem'] },
     },
   },
 ] as const;
 export const isBrainTool = (n: string) => n === 'beyin';
-export function runBrainTool(a: any): string {
+export async function runBrainTool(a: any): Promise<string> {
   const j = (v: unknown) => JSON.stringify(v);
+  if (a.islem === 'test') {
+    const r = await testAllProviders();
+    return j({ sonuc: r, not: 'Çalışanları ve çalışmayanları nedeniyle kısaca söyle. Çalışmayanlar 30 dk atlanır; anahtarı yenilemesi için Ayarlar → Yapay zeka sağlayıcıları\'ndaki "anahtar al" linkini öner. Hiçbiri çalışmıyorsa ücretsiz Gemini anahtarı öner.' });
+  }
   const ready = PROVIDERS.filter(p => p.tur === 'sohbet' && providerReady(p)).map(p => ({ id: p.id, ad: p.ad, model: providerModel(p) }));
   if (a.islem === 'sec') {
     const q = String(a.saglayici ?? '').toLowerCase().trim();
@@ -364,6 +390,7 @@ export function providersRouter(persist: (id: string) => void): Router {
     console.log(`[beyin] sağlayıcı: ${p ? `${p.ad} · ${providerModel(p)}` : 'RouteLLM'}`);
     res.json(providerStatus());
   });
+  r.post('/api/saglayicilar/test-hepsi', async (_req, res) => res.json({ sonuc: await testAllProviders() }));
   r.post('/api/saglayicilar/:id/test', async (req, res) => {
     const p = findProvider(req.params.id);
     if (!p) return res.status(404).json({ error: 'Sağlayıcı bulunamadı' });
