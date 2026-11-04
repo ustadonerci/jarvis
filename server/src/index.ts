@@ -590,6 +590,11 @@ app.post('/api/clear', (_req, res) => {
 
 // ---------- Sohbet: sahneler hazır oldukça akar ----------
 let busy = false;
+/** İş en geç ms içinde bitmezse hata (iş arka planda sürse de sonucu yok sayılır) */
+function withDeadline<T>(p: Promise<T>, ms: number, why: () => string): Promise<T> {
+  let t: NodeJS.Timeout;
+  return Promise.race([p, new Promise<T>((_, rej) => { t = setTimeout(() => rej(new Error(why())), ms); })]).finally(() => clearTimeout(t));
+}
 app.post('/api/chat', async (req, res) => {
   const text = String(req.body.text || '').trim().slice(0, 2000);
   const image = typeof req.body.image === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(req.body.image) ? req.body.image : undefined;
@@ -619,16 +624,20 @@ app.post('/api/chat', async (req, res) => {
 
   let total = 0;
   let firstTts = false;
+  // Takılan bir cevap Jarvis'i "meşgul"de bırakıp sonraki bütün soruları reddettirmesin: 150 sn sınırı
+  let cancelled = false;
+  let lastStep = 'düşünüyor';
   try {
-    const reply = await runJarvis({
+    const reply = await withDeadline(runJarvis({
       text,
       image,
       device,
       prevDevice,
       history,
       photoMode: state.photoMode,
-      progress: line => broadcast({ type: 'progress', line, origin: client }),
+      progress: line => { lastStep = line; if (!cancelled) broadcast({ type: 'progress', line, origin: client }); },
       onScene: (index, sahne) => {
+        if (cancelled) return;
         total = index + 1;
         broadcast({ type: 'scene', replyId, index, sahne, voice, origin: client });
         // Sesi sahne gelir gelmez üret (aynı anda en fazla 3; istemcinin isteği bu işi paylaşır).
@@ -639,9 +648,9 @@ app.post('/api/chat', async (req, res) => {
           }
         }).catch(() => {});
       },
-      onSceneUpdate: (index, foto) => broadcast({ type: 'scene_update', replyId, index, foto, origin: client }),
-      onScenesDone: count => broadcast({ type: 'scene_end', replyId, count, origin: client }),
-    });
+      onSceneUpdate: (index, foto) => { if (!cancelled) broadcast({ type: 'scene_update', replyId, index, foto, origin: client }); },
+      onScenesDone: count => { if (!cancelled) broadcast({ type: 'scene_end', replyId, count, origin: client }); },
+    }), 150_000, () => { cancelled = true; return `Cevap 2,5 dakikada tamamlanamadı (son adım: ${lastStep}). Yapay zekâ ya da bir araç takıldı; tekrar sorabilirsiniz.`; });
     const full = { ...reply, id: replyId, voice };
     console.log(`[beyin] ${full.router} → ${full.model} · ${full.sahneler.length} sahne · ${Date.now() - t0} ms`);
     const msg: StoredMessage = { role: 'assistant', text: full.sahneler.map(s => s.ses).join(' '), device, at: full.created_at, reply: full };
@@ -673,12 +682,14 @@ async function askRemote(text: string, kanal: Kanal): Promise<string> {
     const history = state.messages.slice();
     state.messages.push(userMsg);
     broadcast({ type: 'user', message: userMsg, origin });
-    const reply = await runJarvis({
+    let cancelled = false;
+    let lastStep = 'düşünüyor';
+    const reply = await withDeadline(runJarvis({
       text, device: 'telefon', prevDevice: state.lastDevice ?? null, history, photoMode: state.photoMode,
-      progress: line => broadcast({ type: 'progress', line, origin }),
-      onScene: (index, sahne) => broadcast({ type: 'scene', replyId, index, sahne, voice, origin }),
-      onScenesDone: count => broadcast({ type: 'scene_end', replyId, count, origin }),
-    });
+      progress: line => { lastStep = line; if (!cancelled) broadcast({ type: 'progress', line, origin }); },
+      onScene: (index, sahne) => { if (!cancelled) broadcast({ type: 'scene', replyId, index, sahne, voice, origin }); },
+      onScenesDone: count => { if (!cancelled) broadcast({ type: 'scene_end', replyId, count, origin }); },
+    }), 150_000, () => { cancelled = true; return `Cevap 2,5 dakikada tamamlanamadı (son adım: ${lastStep}).`; });
     const full = { ...reply, id: replyId, voice };
     const msg: StoredMessage = { role: 'assistant', text: full.sahneler.map(s => s.ses).join(' '), device: 'telefon', at: full.created_at, reply: full };
     state.messages.push(msg);
