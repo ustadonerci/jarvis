@@ -101,24 +101,38 @@ export function envVoice(): { sel: VoiceSel; warning?: string } {
 
 // Abacus.AI (RouteLLM) çalışmazsa AYNI ses doğrudan sağlayıcıdan üretilir: OpenAI sesleri OPENAI_API_KEY ile,
 // Gemini sesleri GEMINI_API_KEY ile (kullanıcının seçtiği ses değişmez).
-const directKey = (model: string) => ((model.startsWith('gemini') ? process.env.GEMINI_API_KEY : process.env.OPENAI_API_KEY) || '').replace(/^["']|["']$/g, '').replace(/\s+/g, '');
+/** Abacus.AI ses ucu anahtar hatası verdiyse bir süre doğrudan sağlayıcıya gidilir */
+let ttsRouteDownUntil = 0;
+const clean = (k?: string) => (k || '').replace(/^["']|["']$/g, '').replace(/\s+/g, '');
+/** OpenAI sesi için OpenAI anahtarı yoksa Gemini anahtarıyla en yakın Gemini sesi kullanılır (sessiz kalmasın) */
+const directKey = (model: string) => (model.startsWith('gemini') ? clean(process.env.GEMINI_API_KEY) : clean(process.env.OPENAI_API_KEY) || clean(process.env.GEMINI_API_KEY));
+// OpenAI sesleri → benzer Gemini sesleri (erkek/kadın ve ton)
+const GEMINI_ESI: Record<string, string> = { onyx: 'Charon', echo: 'Orus', ash: 'Fenrir', ballad: 'Algenib', cedar: 'Iapetus', verse: 'Puck', fable: 'Enceladus', alloy: 'Kore', nova: 'Kore', shimmer: 'Aoede', coral: 'Leda', sage: 'Despina', marin: 'Zephyr' };
 export const ttsEnabled = (sel: VoiceSel) => sel.model !== BROWSER && (isEleven(sel.model) ? elevenReady() : isAzure(sel.model) ? azureReady() : isVoiceStudio(sel.model) ? vsUp() : (!MOCK && !!API_KEY) || !!directKey(sel.model));
 
 async function viaDirect(text: string, sel: VoiceSel): Promise<Speech> {
   const key = directKey(sel.model);
   if (!key) throw new Error('doğrudan ses anahtarı yok');
-  if (sel.model.startsWith('gemini')) {
-    const model = /tts/.test(sel.model) ? sel.model : 'gemini-2.5-flash-preview-tts';
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-      method: 'POST', headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(45_000),
-      body: JSON.stringify({ contents: [{ parts: [{ text: `${READ}. ${style()}: ${text}` }] }], generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: sel.voice } } } } }),
-    });
-    const j: any = await r.json().catch(() => ({}));
-    const data = j?.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData)?.inlineData?.data;
-    if (!r.ok || !data) throw new Error(`Gemini ses ${r.status}: ${String(j?.error?.message ?? '').slice(0, 120)}`);
-    const raw = Buffer.from(data, 'base64');
-    const buf = isWav(raw) || isMp3(raw) ? raw : pcmToWav(raw);
-    return { buf, mime: isMp3(buf) ? 'audio/mpeg' : 'audio/wav' };
+  const gem = sel.model.startsWith('gemini') || !clean(process.env.OPENAI_API_KEY);
+  if (gem) {
+    const voice = sel.model.startsWith('gemini') ? sel.voice : GEMINI_ESI[sel.voice.toLowerCase()] ?? 'Charon';
+    let last = '';
+    for (const model of [...(/tts/.test(sel.model) ? [sel.model] : []), 'gemini-2.5-flash-preview-tts', 'gemini-2.5-flash-tts', 'gemini-2.5-pro-preview-tts']) {
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: 'POST', headers: { 'x-goog-api-key': clean(process.env.GEMINI_API_KEY), 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(45_000),
+        body: JSON.stringify({ contents: [{ parts: [{ text: `${READ}. ${style()}: ${text}` }] }], generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } } }),
+      });
+      const j: any = await r.json().catch(() => ({}));
+      const data = j?.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData)?.inlineData?.data;
+      if (r.ok && data) {
+        const raw = Buffer.from(data, 'base64');
+        const buf = isWav(raw) || isMp3(raw) ? raw : pcmToWav(raw);
+        return { buf, mime: isMp3(buf) ? 'audio/mpeg' : 'audio/wav' };
+      }
+      last = `Gemini ses ${r.status}: ${String((Array.isArray(j) ? j[0] : j)?.error?.message ?? '').slice(0, 120)}`;
+      if (r.status !== 404 && r.status !== 400) break; // model yoksa sıradakini dene; anahtar/kota hatasında dur
+    }
+    throw new Error(last);
   }
   const r = await fetch('https://api.openai.com/v1/audio/speech', {
     method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(45_000),
@@ -187,10 +201,10 @@ async function generateOnce(text: string, sel: VoiceSel, ctx: ElevenCtx): Promis
     return { speech: { buf, mime: 'audio/mpeg' }, method: 'elevenlabs' };
   }
   // Abacus.AI anahtarı yok/bozuk: aynı ses doğrudan OpenAI/Gemini'den
-  if (directKey(sel.model) && (!API_KEY || MOCK || routeLlmDown())) return { speech: await viaDirect(text, sel), method: 'speech' };
+  if (directKey(sel.model) && (!API_KEY || MOCK || routeLlmDown() || Date.now() < ttsRouteDownUntil)) return { speech: await viaDirect(text, sel), method: 'speech' };
   if (methodFor.get(sel.model) !== 'chat') {
     const r = await viaSpeech(text, sel).catch(e => ({ error: String(e.message) }));
-    if (!(r !== 'yok' && !('error' in r)) && r !== 'yok' && directKey(sel.model) && /HTTP (401|402|403|429)/.test(r.error)) return { speech: await viaDirect(text, sel), method: 'speech' };
+    if (!(r !== 'yok' && !('error' in r)) && r !== 'yok' && directKey(sel.model) && /HTTP (401|402|403|429)/.test(r.error)) { ttsRouteDownUntil = Date.now() + 30 * 60_000; return { speech: await viaDirect(text, sel), method: 'speech' }; }
     if (r !== 'yok' && !('error' in r)) { methodFor.set(sel.model, 'speech'); return { speech: r, method: 'speech' }; }
     if (r === 'yok') methodFor.set(sel.model, 'chat');
     else return r;
