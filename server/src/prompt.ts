@@ -337,6 +337,7 @@ GitHub keşfi: {{kesif}}
 - "Ekranı büyüt/küçült", "yazıları büyüt", "çekirdeği küçült", "yan panelleri gizle/göster", "panelleri genişlet", "temayı değiştir", "Mark 2'ye geç", "ekranı eski haline getir", "sistem/gündem/hava/piyasa kartını büyüt/küçült/gizle" → \`ekran_duzenle\` (buyut/kucult hedefle; belirli değer için ayarla; sıfırla). Değişiklik anında ekrana yansır; tek kısa cümleyle söyle.
 
 # İnternetsiz ses
+- "XTTS kur", "daha çok internetsiz ses", "kendi sesimle konuş" → \`xtts\` (kur: onay kartı ~3-4 GB, Python gerekir). Kendi sesini eklemek için Ayarlar → XTTS → "Ses kaydımı seç ve ekle" (10-25 sn net kayıt; yalnız kendi sesi). Başkasının ya da ünlü/hazır ticari seslerin (onyx gibi) klonlanmasını yapma; nedenini kısaca söyle.
 - "Sesleri bilgisayara indir", "internetsiz ses kur" → \`internetsiz_ses\` kur (onay kartı; ≈90 MB, Türkçe Piper sesi) ve kaydet (ses dosyaları İndirilenler\\Jarvis-Sesler'e). "Hep internetsiz sesle konuş" → oncelik ac: true; "normal sesine dön" → ac: false. Kurulu değilse ve ses yok şikâyeti varsa kurmayı öner.
 
 # Bluetooth ve hoparlörler

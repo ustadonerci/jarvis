@@ -10,6 +10,7 @@ import { elevenReady, elevenSpeak, isEleven, type ElevenCtx } from './eleven.js'
 import { azureReady, azureSpeak, isAzure } from './azure.js';
 import { isVoiceStudio, vsSpeak, vsUp } from './voicestudio.js';
 import { piperFirst, piperReady, piperSpeak } from './piper.js';
+import { isXtts, xttsInstalled, xttsSpeak } from './xtts.js';
 import { SCRIPTED_LINES } from './scripted.js';
 
 /**
@@ -123,7 +124,7 @@ export const openaiVoice = (v: string) => {
   if (OPENAI_NAMES.includes(l)) return l;
   return Object.entries(GEMINI_ESI).find(([, g]) => g.toLowerCase() === l)?.[0] ?? 'onyx';
 };
-export const ttsEnabled = (sel: VoiceSel) => sel.model !== BROWSER && ((isEleven(sel.model) ? elevenReady() : isAzure(sel.model) ? azureReady() : isVoiceStudio(sel.model) ? vsUp() : !MOCK && !!API_KEY) || directKey(sel.model, sel.voice));
+export const ttsEnabled = (sel: VoiceSel) => sel.model !== BROWSER && ((isEleven(sel.model) ? elevenReady() : isAzure(sel.model) ? azureReady() : isVoiceStudio(sel.model) ? vsUp() : isXtts(sel.model) ? xttsInstalled() : !MOCK && !!API_KEY) || directKey(sel.model, sel.voice));
 
 async function geminiTts(text: string, voice: string, preferred?: string): Promise<Speech> {
   let last = 'Gemini anahtarı yok';
@@ -230,11 +231,12 @@ async function generateOnce(text: string, sel: VoiceSel, ctx: ElevenCtx): Promis
   // Kullanıcı "önce internetsiz ses" dediyse: doğrudan Piper
   if (piperFirst()) return { speech: { buf: await piperSpeak(text, sel.speed), mime: 'audio/wav' }, method: 'speech' };
   // VoiceStudio / Azure / ElevenLabs çalışmazsa (kapalı, anahtar/kredi yok) ses OpenAI ya da Gemini'den gelir
-  const ozel = isVoiceStudio(sel.model) ? 'voicestudio' : isAzure(sel.model) ? 'azure' : isEleven(sel.model) ? 'elevenlabs' : null;
+  const ozel = isVoiceStudio(sel.model) ? 'voicestudio' : isAzure(sel.model) ? 'azure' : isEleven(sel.model) ? 'elevenlabs' : isXtts(sel.model) ? 'xtts' : null;
   if (ozel) {
-    const ready = ozel === 'voicestudio' ? vsUp() : ozel === 'azure' ? azureReady() : elevenReady();
+    const ready = ozel === 'voicestudio' ? vsUp() : ozel === 'azure' ? azureReady() : ozel === 'xtts' ? xttsInstalled() : elevenReady();
     try {
       if (!ready) throw new Error(`${ozel} hazır değil`);
+      if (ozel === 'xtts') return { speech: { buf: await xttsSpeak(text, sel.voice, sel.speed), mime: 'audio/wav' }, method: 'speech' };
       const buf = ozel === 'voicestudio' ? await vsSpeak(text, sel.voice, sel.speed) : ozel === 'azure' ? await azureSpeak(text, sel.voice, sel.speed) : await elevenSpeak(text, sel.voice, sel.model, sel.speed, ctx);
       return { speech: { buf, mime: 'audio/mpeg' }, method: ozel };
     } catch (e: any) {

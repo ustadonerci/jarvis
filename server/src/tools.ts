@@ -41,6 +41,7 @@ import { isOwnerMsgTool, runOwnerMsgTool } from './ownermsg.js';
 import { isScreenTool, runScreenTool } from './screen.js';
 import { isMesaiTool, runMesaiTool } from './mesai.js';
 import { isPiperTool, runPiperTool } from './piper.js';
+import { isXttsTool, runXttsTool } from './xtts.js';
 import { isBrainTool, runBrainTool } from './providers.js';
 import { isMicDiagTool, runMicDiagTool } from './micdiag.js';
 import { isExchangeTool, runExchangeTool } from './exchanges.js';
@@ -347,6 +348,7 @@ async function runToolOnce(name: string, rawArgs: string, progress: ToolProgress
   if (isScreenTool(name)) return runScreenTool(args);
   if (isMesaiTool(name)) return runMesaiTool(args);
   if (isPiperTool(name)) return runPiperTool(args);
+  if (isXttsTool(name)) return runXttsTool(args);
   if (isBrainTool(name)) return runBrainTool(args);
   if (isMicDiagTool(name)) return runMicDiagTool(args, progress, name);
   if (isExchangeTool(name)) return runExchangeTool(args, progress);

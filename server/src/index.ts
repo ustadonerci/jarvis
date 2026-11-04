@@ -46,6 +46,7 @@ import { initDisRobot } from './disrobot.js';
 import { initOwnerMsg } from './ownermsg.js';
 import { initMesai, mesaiRouter } from './mesai.js';
 import { piperRouter } from './piper.js';
+import { XTTS_MODEL, initXtts, isXtts, xttsRouter, xttsVoices } from './xtts.js';
 import { indicatorsRouter } from './indicators.js';
 import { tgWebRouter } from './telegramweb.js';
 import { financeRouter, initFinance } from './finance.js';
@@ -123,6 +124,7 @@ function validVoice(v: VoiceSel | undefined): v is VoiceSel {
   if (isEleven(v.model)) return elevenReady() && /^[A-Za-z0-9]{8,40}$/.test(v.voice);
   if (isAzure(v.model)) return azureReady() && AZURE_VOICES.some(a => a.voice === v.voice);
   if (isVoiceStudio(v.model)) return /^[\w-]{4,40}$/.test(v.voice);
+  if (isXtts(v.model)) return /^[\p{L}\p{N} .:_'-]{2,60}$/u.test(v.voice);
   if (isRoutedModel(v.model)) return false;
   const catalog = usableVoices();
   return !catalog.length || catalog.some(c => c.model === v.model && c.voice === v.voice);
@@ -315,11 +317,16 @@ app.get('/api/voices', async (_req, res) => {
   const azureList = azureReady() ? AZURE_VOICES.map(a => ({ id: `${AZURE_MODEL}:${a.voice}`, model: AZURE_MODEL, voice: a.voice, label: a.label, provider: 'Azure', wpm: null, f0: null, gender: a.gender })) : [];
   // VoiceStudio'daki ses profilleri (uygulama açıksa)
   const vsList = (await vsProfiles().catch(() => [])).map(p => ({ id: `${VS_MODEL}:${p.id}`, model: VS_MODEL, voice: p.id, label: `${p.name} · VoiceStudio${p.kind === 'clone' ? ' (klon)' : ''}`, provider: 'VoiceStudio', wpm: null, f0: null, gender: voiceGender(p.name, null) }));
-  res.json({ voices: [...vsList, ...elevenList, ...azureList, ...list], current: currentVoice(), tested: loadCatalog().length, eleven: usage });
+  // XTTS (internetsiz): kullanıcının kendi sesleri ve hazır yapay sesler
+  const xs = await xttsVoices();
+  const xttsList = [...xs.kendi.map(k => ({ id: `${XTTS_MODEL}:kendi:${k}`, model: XTTS_MODEL, voice: `kendi:${k}`, label: `${k} · XTTS (kendi sesiniz)`, provider: 'XTTS', wpm: null, f0: null, gender: null })),
+    ...xs.hazir.map(h => ({ id: `${XTTS_MODEL}:${h}`, model: XTTS_MODEL, voice: h, label: `${h} · XTTS (internetsiz)`, provider: 'XTTS', wpm: null, f0: null, gender: voiceGender(h, null) }))];
+  res.json({ voices: [...xttsList, ...vsList, ...elevenList, ...azureList, ...list], current: currentVoice(), tested: loadCatalog().length, eleven: usage });
 });
 
 app.get('/api/voices/preview', async (req, res) => {
-  const [model, voice] = String(req.query.id || '').split(':');
+  const [model, ...rest] = String(req.query.id || '').split(':');
+  const voice = rest.join(':');
   const sel = { model, voice, speed: DEFAULT_RATE };
   if (!model || !voice || model === BROWSER || !validVoice(sel)) return res.status(400).json({ error: 'geçersiz ses' });
   const s = await preview(sel).catch(() => null);
@@ -454,6 +461,14 @@ app.use(indicatorsRouter());
 app.use(tgWebRouter());
 app.use(mesaiRouter());
 app.use(piperRouter());
+// XTTS: kullanıcı kendi sesini ekleyince Jarvis'in sesi o olur
+app.use(xttsRouter(voice => {
+  state.voice = { model: XTTS_MODEL, voice, speed: currentVoice().speed };
+  saveState();
+  console.log(`[tts] seslendiren: xtts:${voice} (kendi ses)`);
+  broadcast(settingsEvent());
+}));
+initXtts();
 app.use(providersRouter(id => { state.beyin = id; saveState(); }));
 
 // ---------- Onay kartları ve otomasyon (webhook) ----------
@@ -708,7 +723,8 @@ setRemoteAsk(askRemote);
 // Sahne sesi. v = cevaba sabitlenmiş ses (model:voice); i/n yalnızca log için.
 app.get('/api/tts', async (req, res) => {
   try {
-    const [model, voice] = String(req.query.v || '').split(':');
+    const [model, ...rest] = String(req.query.v || '').split(':');
+    const voice = rest.join(':'); // ses adı ':' içerebilir (xtts:kendi:Ad)
     const sel: VoiceSel = model && voice ? { model, voice, speed: currentVoice().speed } : currentVoice();
     if (!validVoice(sel) || !ttsEnabled(sel)) { res.setHeader('x-tts-hata', encodeURIComponent(!validVoice(sel) ? 'seçili ses listede yok' : 'ses için çalışan anahtar yok (Abacus.AI, OpenAI ya da Gemini)')); return res.status(204).end(); }
     const label = req.query.i ? `sahne ${req.query.i}/${req.query.n ?? '?'}` : 'istek';
