@@ -419,6 +419,21 @@ export async function runJarvis(opts: RunOptions): Promise<JarvisReply> {
   const tools = toolsFor(groups, isBrief);
   console.log(`[beyin] ${tools.length} araç · gruplar: ${[...groups].join(', ') || 'temel'}`);
   let force: string | null = isBrief ? 'get_news' : opts.image ? null : forcedTool(text);
+  // Düz "aydınlat beni": haber, hava ve piyasa verileri yapay zekâya sormadan AYNI ANDA çekilir ve araç sonucu olarak
+  // eklenir. Önceden 3 tur sürüyordu (get_news → hava+piyasa → cevap); şimdi tek tur. Kategori isteği varsa eski yol.
+  if (isBrief && !opts.image && /^\W*(jarvis\W*)?ayd[ıi]nlat\s*beni\W*(jarvis)?\W*$/i.test(text.trim())) {
+    log('haber, hava ve piyasa verileri birlikte alınıyor');
+    const calls = ['get_news', 'get_weather', 'get_markets'].map((name, i) => ({ id: `brifing_${i}`, type: 'function' as const, function: { name, arguments: '{}' } }));
+    const ts = Date.now();
+    const outs = await Promise.all(calls.map(c => Promise.race([
+      runTool(c.function.name, '{}', log),
+      new Promise<string>(r => setTimeout(() => r(JSON.stringify({ hata: 'zaman aşımı: veri 20 sn içinde gelmedi' })), 20_000)),
+    ]).catch(e => JSON.stringify({ hata: String(e?.message || e).slice(0, 160) }))));
+    console.log(`[zaman] brifing verileri (haber+hava+piyasa) · ${Date.now() - ts} ms`);
+    messages.push({ role: 'assistant', content: null, tool_calls: calls });
+    calls.forEach((c, i) => { toolText += '\n' + outs[i]; messages.push({ role: 'tool', tool_call_id: c.id, content: outs[i] }); });
+    force = null;
+  }
   if (force && force !== 'get_news') console.log(`[beyin] zorunlu araç: ${force}`);
   let retriedJson = false;
 

@@ -59,8 +59,22 @@ function similar(a: string, b: string): boolean {
   return hit / Math.min(A.size, B.length) >= 0.6;
 }
 
+let prevCache: { items: NewsItem[] } | null = null;
+let refreshing: Promise<{ items: NewsItem[]; scanned: number; sources: SourceStatus[] }> | null = null;
+/**
+ * Önbellek 10 dk taze sayılır. Eskiyse ama 90 dk'dan yeniyse beklemeden eski liste döner, yenisi arkada çekilir
+ * ("aydınlat beni" kaynakların taranmasını beklemesin). Arkada her 9 dk'da bir kendiliğinden tazelenir.
+ */
 async function fetchAll(): Promise<{ items: NewsItem[]; scanned: number; sources: SourceStatus[] }> {
   if (cache && Date.now() - cache.at < CACHE_MS) return cache;
+  refreshing ??= fetchFresh().finally(() => { refreshing = null; });
+  if (cache && Date.now() - cache.at < 90 * 60_000) { refreshing.catch(() => {}); return cache; }
+  return refreshing;
+}
+setTimeout(() => { fetchAll().catch(() => {}); }, 20_000).unref();
+setInterval(() => { if (!cache || Date.now() - cache.at > 8 * 60_000) { refreshing ??= fetchFresh().finally(() => { refreshing = null; }); refreshing.catch(() => {}); } }, 9 * 60_000).unref();
+
+async function fetchFresh(): Promise<{ items: NewsItem[]; scanned: number; sources: SourceStatus[] }> {
   const results = await Promise.allSettled(FEEDS.map(f => parser.parseURL(f.url).then(feed => ({ f, feed }))));
   const items: NewsItem[] = [];
   for (const r of results) {
@@ -91,6 +105,7 @@ async function fetchAll(): Promise<{ items: NewsItem[]; scanned: number; sources
   }));
   // Hiçbir kaynak cevap vermediyse (internet yok) boş sonucu önbelleğe alma; bir sonraki istekte tekrar dene.
   if (scanned === 0) return { items, scanned, sources };
+  prevCache = cache; // tazeleme sırasında süren bir cevabın haber_id'leri bulunabilsin
   cache = { at: Date.now(), items, scanned, sources };
   return cache;
 }
@@ -141,7 +156,7 @@ export async function getNews(args: GetNewsArgs = {}) {
 }
 
 export function findNewsById(id: string): NewsItem | undefined {
-  return cache?.items.find(i => i.id === id);
+  return cache?.items.find(i => i.id === id) ?? prevCache?.items.find(i => i.id === id);
 }
 
 // Test ve demo için
