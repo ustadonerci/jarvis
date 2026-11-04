@@ -8,7 +8,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import express, { type Router } from 'express';
 import { adminOnly } from './keys.js';
-import { RouteLLMError, registerFallbacks, routeLlmDown, routellmStream, type ChatMessage, type ContentPart, type StreamResult } from './routellm.js';
+import { spawn } from 'node:child_process';
+import { RouteLLMError, onRouteDown, registerFallbacks, routeLlmDown, routellmStream, type ChatMessage, type ContentPart, type StreamResult } from './routellm.js';
 
 /** tur: 'sohbet' = beyin olabilir (OpenAI uyumlu ya da Claude); 'medya' = yalnız anahtar kaydı (görsel/video/ses) */
 export interface Provider { id: string; ad: string; keyEnv: string; modelEnv: string; varsayilanModel: string; base?: string; anahtarUrl: string; anahtarSayfasi: string; not?: string; tur: 'sohbet' | 'medya' }
@@ -77,6 +78,29 @@ export function readyFallbacks(): { id: string; ad: string; base: string; key: s
   return out;
 }
 registerFallbacks(readyFallbacks);
+
+/**
+ * RouteLLM anahtarı/kredisi bozulunca: beyin RouteLLM ise anahtarı girilmiş ilk sağlayıcıya kalıcı olarak geçilir
+ * (kullanıcı Ayarlar'dan geri alabilir). Hiç anahtar yoksa ücretsiz Gemini anahtar sayfası bilgisayarın tarayıcısında
+ * bir kez açılır; anahtarı kullanıcı kendi Google hesabıyla alıp Ayarlar'a yapıştırır.
+ */
+let keyPageOpened = false;
+onRouteDown(why => {
+  if (brain === 'routellm') {
+    const f = readyFallbacks()[0];
+    if (f) {
+      brain = f.id;
+      persistBrain(f.id);
+      console.log(`[beyin] ${why}: beyin kalıcı olarak ${f.ad} yapıldı`);
+      return;
+    }
+  }
+  if (!readyFallbacks().length && !keyPageOpened && process.platform === 'win32') {
+    keyPageOpened = true;
+    spawn('explorer.exe', ['https://aistudio.google.com/app/apikey'], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
+    console.log('[beyin] yedek anahtar yok: Gemini anahtar sayfası tarayıcıda açıldı');
+  }
+});
 
 // ---------------------------------------------------------------- Beyin seçimi
 

@@ -21,6 +21,9 @@ export class RouteLLMError extends Error {
 export interface Fallback { id: string; ad: string; base: string; key: string; model: string; gorsel: boolean; headers?: Record<string, string> }
 let fallbacks: () => Fallback[] = () => [];
 export const registerFallbacks = (fn: () => Fallback[]) => { fallbacks = fn; };
+let onDown: (why: string) => void = () => {};
+/** RouteLLM bozulunca (anahtar/kredi) çağrılır: providers.ts beyni çalışan sağlayıcıya geçirir */
+export const onRouteDown = (fn: (why: string) => void) => { onDown = fn; };
 /** RouteLLM bozuk sayıldığı süre: bu sürede doğrudan yedeğe gidilir (her istekte boşuna denenmesin) */
 let routeDownUntil = 0;
 let routeDownWhy = '';
@@ -30,6 +33,7 @@ function markDown(e: RouteLLMError) {
   routeDownUntil = Date.now() + 10 * 60_000;
   routeDownWhy = e.status === 429 ? 'Abacus.AI kotası/kredisi bitti' : 'Abacus.AI (RouteLLM) anahtarı geçersiz ya da süresi dolmuş';
   console.warn(`[beyin] ${routeDownWhy} (${e.status}); 10 dk yedek sağlayıcı kullanılacak`);
+  try { onDown(routeDownWhy); } catch { /* yok say */ }
 }
 const hasImage = (body: any) => JSON.stringify(body?.messages ?? '').includes('"image_url"');
 /** İsteğe uygun yedekler (görsel varsa görsel anlayanlar) */
