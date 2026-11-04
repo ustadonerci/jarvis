@@ -48,7 +48,7 @@ async function viaFallback<T>(path: string, body: any, cause: Error): Promise<T>
     try {
       const { model: _m, ...rest } = body ?? {};
       const res = await fetch(`${f.base}/chat/completions`, {
-        method: 'POST', headers: { Authorization: `Bearer ${f.key}`, 'Content-Type': 'application/json', ...f.headers },
+        method: 'POST', headers: { ...(f.key ? { Authorization: `Bearer ${f.key}` } : {}), 'Content-Type': 'application/json', ...f.headers },
         body: JSON.stringify({ ...rest, model: f.model }), signal: AbortSignal.timeout(120_000),
       });
       const text = await res.text();
@@ -107,7 +107,8 @@ export async function routellmStream(
   try {
     res = await fetch((opts?.base ?? BASE_URL) + '/chat/completions', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${opts?.key ?? API_KEY}`, 'Content-Type': 'application/json', ...opts?.extraHeaders },
+      // key boşsa (ör. Gemini: anahtar x-goog-api-key başlığında) Authorization gönderilmez
+      headers: { ...((opts?.key ?? API_KEY) ? { Authorization: `Bearer ${opts?.key ?? API_KEY}` } : {}), 'Content-Type': 'application/json', ...opts?.extraHeaders },
       body: JSON.stringify({ ...body, stream: true }),
       signal: ac.signal,
     });

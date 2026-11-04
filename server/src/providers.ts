@@ -73,7 +73,8 @@ export function readyFallbacks(): { id: string; ad: string; base: string; key: s
     seen.add(id);
     const p = findProvider(id);
     if (!p || !p.base || !providerReady(p)) continue;
-    out.push({ id: p.id, ad: p.ad, base: p.base, key: env(p.keyEnv), model: providerModel(p), gorsel: GORSEL.has(p.id), ...(p.id === 'openrouter' ? { headers: { 'X-Title': 'Jarvis' } } : {}) });
+    const a = authFor(p);
+    out.push({ id: p.id, ad: p.ad, base: p.base, key: a.key, model: providerModel(p), gorsel: GORSEL.has(p.id), headers: a.headers });
   }
   return out;
 }
@@ -107,8 +108,19 @@ export function activeProvider(): Provider | null {
 
 // ---------------------------------------------------------------- OpenAI uyumlu akış
 
+/**
+ * Kimlik başlıkları: Google Gemini anahtarı x-goog-api-key başlığıyla gider (Google'ın önerdiği yol; yeni biçimli
+ * anahtarlar "Bearer" ile gönderilince 401 verebiliyor). Diğerleri Authorization: Bearer.
+ */
+export function authFor(p: Provider): { key: string; headers: Record<string, string> } {
+  const k = env(p.keyEnv).replace(/^["']|["']$/g, '').replace(/\s+/g, '');
+  if (p.id === 'gemini') return { key: '', headers: { 'x-goog-api-key': k } };
+  return { key: k, headers: p.id === 'openrouter' ? { 'X-Title': 'Jarvis' } : {} };
+}
+
 async function openaiStream(p: Provider, body: any, onContent?: (d: string, full: string) => void): Promise<StreamResult> {
-  return routellmStream({ ...body, model: providerModel(p) }, onContent, { base: p.base!, key: env(p.keyEnv), extraHeaders: p.id === 'openrouter' ? { 'X-Title': 'Jarvis' } : {} });
+  const a = authFor(p);
+  return routellmStream({ ...body, model: providerModel(p) }, onContent, { base: p.base!, key: a.key, extraHeaders: a.headers });
 }
 
 // ---------------------------------------------------------------- Anthropic (resmî SDK)
@@ -309,7 +321,8 @@ export async function testProvider(p: Provider): Promise<{ modeller: string[] }>
     return { modeller: ids };
   }
   if (p.tur === 'medya') return { modeller: [] };
-  const auth = { Authorization: `Bearer ${env(p.keyEnv)}` };
+  const fa = authFor(p);
+  const auth: Record<string, string> = { ...(fa.key ? { Authorization: `Bearer ${fa.key}` } : {}), ...fa.headers };
   const r = await fetch(`${p.base}/models`, { headers: auth, signal: AbortSignal.timeout(20_000) });
   const j: any = await r.json().catch(() => ({}));
   if (r.status === 404 || r.status === 405) {
@@ -319,7 +332,16 @@ export async function testProvider(p: Provider): Promise<{ modeller: string[] }>
     if (!c.ok) throw new Error(`${p.ad} ${c.status}: ${String(cj?.error?.message ?? cj?.message ?? '').slice(0, 160)}`);
     return { modeller: [providerModel(p)] };
   }
-  if (!r.ok) throw new Error(`${p.ad} ${r.status}: ${String(j?.error?.message ?? j?.message ?? '').slice(0, 160)}`);
+  if (!r.ok) {
+    const jj = Array.isArray(j) ? j[0] : j;
+    const msg = String(jj?.error?.message ?? jj?.message ?? '').slice(0, 160);
+    const ipucu = p.id === 'gemini'
+      ? (r.status === 400 && /api key not valid/i.test(msg) ? ' — anahtar hatalı kopyalanmış olabilir: aistudio.google.com/app/apikey sayfasından "Copy" ile yeniden kopyalayıp yapıştırın'
+        : r.status === 403 ? ' — anahtar kısıtlı ya da Generative Language API kapalı: AI Studio\'dan yeni anahtar oluşturun (Google Cloud kısıtlaması olmadan)'
+        : r.status === 401 ? ' — anahtar tanınmadı: başında/sonunda boşluk ya da tırnak olmadan yapıştırın, kaydettikten sonra Jarvis yeniden başlasın' : '')
+      : '';
+    throw new Error(`${p.ad} ${r.status}: ${msg}${ipucu}`);
+  }
   const list: any[] = Array.isArray(j?.data) ? j.data : Array.isArray(j?.models) ? j.models : [];
   return { modeller: list.map(m => String(m.id ?? m.name ?? '').replace(/^models\//, '')).filter(Boolean).slice(0, 80) };
 }
