@@ -31,7 +31,6 @@ import { startClapListener, type ClapListener } from './lib/clap';
 import { shrinkImage } from './lib/image';
 import { findWorkingMic, micInfo, recorderSupported, startRecording, suspiciousMic, warmMic } from './lib/recorder';
 import { MicTest, SpeakerSettings } from './components/MicTest';
-import { VoiceCare } from './components/VoiceCare';
 import { ContactsSettings } from './components/Contacts';
 import { MesaiSettings } from './components/MesaiSettings';
 import { LiveSheet } from './components/dashboard/LiveParts';
@@ -1641,7 +1640,6 @@ export default function App() {
                   )}
                   <MicTest flash={flash} />
                   <SpeakerSettings flash={flash} />
-                  <VoiceCare flash={flash} />
                   <KeySettings flash={flash} />
                   <ProviderSettings flash={flash} />
                   <ExchangeSettings flash={flash} />

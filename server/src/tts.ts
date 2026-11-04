@@ -9,8 +9,6 @@ import { isMp3, isWav, normalizeSpeech, pcmToWav, wavSeconds } from './audio.js'
 import { elevenReady, elevenSpeak, isEleven, type ElevenCtx } from './eleven.js';
 import { azureReady, azureSpeak, isAzure } from './azure.js';
 import { isVoiceStudio, vsSpeak, vsUp } from './voicestudio.js';
-import { cloneFor } from './voiceclone.js';
-import { ELEVEN_KEY, ELEVEN_MODEL } from './eleven.js';
 import { SCRIPTED_LINES } from './scripted.js';
 
 /**
@@ -107,7 +105,7 @@ export function envVoice(): { sel: VoiceSel; warning?: string } {
 let ttsRouteDownUntil = 0;
 const clean = (k?: string) => (k || '').replace(/^["']|["']$/g, '').replace(/\s+/g, '');
 /** OpenAI sesi için OpenAI anahtarı yoksa Gemini anahtarıyla en yakın Gemini sesi kullanılır (sessiz kalmasın) */
-const directKey = (model: string, voice = '') => !!(clean(process.env.OPENAI_API_KEY) || clean(process.env.GEMINI_API_KEY) || (cloneFor(voice)?.voicestudio && vsUp()) || (cloneFor(voice)?.elevenlabs && ELEVEN_KEY)) && !!model;
+const directKey = (model: string, _voice = '') => !!(clean(process.env.OPENAI_API_KEY) || clean(process.env.GEMINI_API_KEY)) && !!model;
 // OpenAI sesleri → benzer Gemini sesleri (erkek/kadın ve ton)
 const GEMINI_ESI: Record<string, string> = { onyx: 'Charon', echo: 'Orus', ash: 'Fenrir', ballad: 'Algenib', cedar: 'Iapetus', verse: 'Puck', fable: 'Enceladus', alloy: 'Kore', nova: 'Kore', shimmer: 'Aoede', coral: 'Leda', sage: 'Despina', marin: 'Zephyr' };
 // Google'ın hazır ses adları (Gemini TTS yalnız bunları kabul eder; "onyx" gibi OpenAI adları reddedilir)
@@ -160,20 +158,13 @@ async function openaiTts(text: string, sel: VoiceSel): Promise<Speech> {
 }
 
 type Engine = { ad: string; run: () => Promise<Speech> };
-/** Seçili ses için doğrudan motorlar, sırayla: aynı ailenin sağlayıcısı → bu sesin klonları (VoiceStudio, ElevenLabs) → diğer aile */
-export function directEngines(text: string, sel: VoiceSel): Engine[] {
+/** Seçili ses için doğrudan motorlar, sırayla: aynı ailenin sağlayıcısı → diğer aile (ses adı her sağlayıcının kabul ettiği karşılığa çevrilir) */
+function directEngines(text: string, sel: VoiceSel): Engine[] {
   const gem = sel.model.startsWith('gemini');
   const oa = clean(process.env.OPENAI_API_KEY), gk = clean(process.env.GEMINI_API_KEY);
-  const c = cloneFor(sel.voice);
   const openai: Engine[] = oa && Date.now() >= openaiTtsDownUntil ? [{ ad: `OpenAI (${openaiVoice(sel.voice)})`, run: () => openaiTts(text, sel) }] : [];
   const gemini: Engine[] = gk ? [{ ad: `Gemini (${geminiVoice(sel.voice)})`, run: () => geminiTts(text, geminiVoice(sel.voice), gem && /tts/.test(sel.model) ? sel.model : undefined) }] : [];
-  const klon: Engine[] = [
-    ...(c?.voicestudio && vsUp() ? [{ ad: `VoiceStudio klonu (${sel.voice})`, run: async () => ({ buf: await vsSpeak(text, c.voicestudio!, sel.speed), mime: 'audio/mpeg' }) }] : []),
-    ...(c?.elevenlabs && ELEVEN_KEY ? [{ ad: `ElevenLabs klonu (${sel.voice})`, run: async () => ({ buf: await elevenSpeak(text, c.elevenlabs!, ELEVEN_MODEL, sel.speed), mime: 'audio/mpeg' }) }] : []),
-  ];
-  // Seçili ad gerçek bir Gemini sesiyse önce Gemini; "onyx" gibi başka bir adsa önce o sesin klonu (asıl sese en yakın)
-  const gercekGemini = GEMINI_NAMES.some(n => n.toLowerCase() === sel.voice.toLowerCase());
-  return gem ? (gercekGemini ? [...gemini, ...klon, ...openai] : [...klon, ...gemini, ...openai]) : [...openai, ...klon, ...gemini];
+  return gem ? [...gemini, ...openai] : [...openai, ...gemini];
 }
 
 async function viaDirect(text: string, sel: VoiceSel): Promise<Speech> {
@@ -338,20 +329,3 @@ export async function warmOpening(sel: VoiceSel) {
 /** Ayarlar'daki ▶ dinle: sabit örnek cümle, diskte saklanır (ikinci dinleme kredisiz ve anında). */
 export const preview = (sel: VoiceSel) => synthesize(PREVIEW_TEXT, sel, `önizleme ${voiceId(sel)}`, true);
 
-
-/** Ses testi: seçili ses her motorla ayrı ayrı denenir (Ayarlar → Ses testi, Jarvis: "sesi test et") */
-export async function testVoices(sel: VoiceSel): Promise<{ motor: string; calisiyor: boolean; ms: number; neden?: string }[]> {
-  const text = 'Merhaba efendim, ses testi.';
-  const engines: Engine[] = [];
-  if (!MOCK && API_KEY && !isEleven(sel.model) && !isAzure(sel.model) && !isVoiceStudio(sel.model)) engines.push({ ad: `Abacus.AI (${sel.model} · ${sel.voice})`, run: async () => { const r = await viaSpeech(text, sel); if (r === 'yok') { const c = await viaChat(text, sel); return { buf: c.buf, mime: c.mime }; } return r; } });
-  if (isEleven(sel.model)) engines.push({ ad: `ElevenLabs (${sel.voice})`, run: async () => ({ buf: await elevenSpeak(text, sel.voice, sel.model, sel.speed), mime: 'audio/mpeg' }) });
-  if (isVoiceStudio(sel.model)) engines.push({ ad: `VoiceStudio (${sel.voice})`, run: async () => ({ buf: await vsSpeak(text, sel.voice, sel.speed), mime: 'audio/mpeg' }) });
-  engines.push(...directEngines(text, sel));
-  const out = [];
-  for (const e of engines) {
-    const t0 = Date.now();
-    try { const s = await e.run(); out.push({ motor: e.ad, calisiyor: s.buf.length > 1000, ms: Date.now() - t0 }); }
-    catch (err: any) { out.push({ motor: e.ad, calisiyor: false, ms: Date.now() - t0, neden: String(err?.message || err).slice(0, 140) }); }
-  }
-  return out;
-}
