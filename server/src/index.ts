@@ -14,7 +14,7 @@ import { IMG_DIR } from './imagegen.js';
 import { MOCK, CHAT_MODEL } from './routellm.js';
 import { transcribe, STT_MODEL } from './stt.js';
 import {
-  BROWSER, DEFAULT_RATE, clampRate, envVoice, isRoutedModel, loadCatalog, preview, synthesize, ttsEnabled, usableVoices, voiceId, warmOpening,
+  BROWSER, DEFAULT_RATE, clampRate, envVoice, isRoutedModel, loadCatalog, preview, synthesize, ttsEnabled, ttsLastError, usableVoices, voiceId, warmOpening,
   type VoiceSel,
 } from './tts.js';
 import { knownImageUrls, type PhotoMode } from './photos.js';
@@ -697,12 +697,12 @@ app.get('/api/tts', async (req, res) => {
   try {
     const [model, voice] = String(req.query.v || '').split(':');
     const sel: VoiceSel = model && voice ? { model, voice, speed: currentVoice().speed } : currentVoice();
-    if (!validVoice(sel) || !ttsEnabled(sel)) return res.status(204).end();
+    if (!validVoice(sel) || !ttsEnabled(sel)) { res.setHeader('x-tts-hata', encodeURIComponent(!validVoice(sel) ? 'seçili ses listede yok' : 'ses için çalışan anahtar yok (Abacus.AI, OpenAI ya da Gemini)')); return res.status(204).end(); }
     const label = req.query.i ? `sahne ${req.query.i}/${req.query.n ?? '?'}` : 'istek';
     // ElevenLabs: önceki/sonraki cümle bağlamı (tonlama cümleden cümleye kopmasın)
     const ctx = { prev: req.query.prev ? String(req.query.prev).slice(0, 500) : undefined, next: req.query.next ? String(req.query.next).slice(0, 500) : undefined };
     const speech = await synthesize(String(req.query.text || '').slice(0, 1000), sel, label, false, ctx);
-    if (!speech) return res.status(503).end(); // istemci bir kez yeniden dener, olmazsa cevabın kalanı tarayıcı sesine geçer
+    if (!speech) { res.setHeader('x-tts-hata', encodeURIComponent(ttsLastError().slice(0, 300) || 'bilinmeyen')); return res.status(503).end(); } // istemci yeniden dener, olmazsa tarayıcı sesi
     res.setHeader('Content-Type', speech.mime);
     res.setHeader('Cache-Control', 'public, max-age=86400');
     res.end(speech.buf);

@@ -101,6 +101,9 @@ export function envVoice(): { sel: VoiceSel; warning?: string } {
 
 // Abacus.AI (RouteLLM) çalışmazsa AYNI ses doğrudan sağlayıcıdan üretilir: OpenAI sesleri OPENAI_API_KEY ile,
 // Gemini sesleri GEMINI_API_KEY ile (kullanıcının seçtiği ses değişmez).
+/** Son ses hatası (istemciye x-tts-hata başlığıyla gider: kullanıcı nedenini görsün) */
+let lastTtsError = '';
+export const ttsLastError = () => lastTtsError;
 /** Abacus.AI ses ucu anahtar hatası verdiyse bir süre doğrudan sağlayıcıya gidilir */
 let ttsRouteDownUntil = 0;
 const clean = (k?: string) => (k || '').replace(/^["']|["']$/g, '').replace(/\s+/g, '');
@@ -119,7 +122,7 @@ export const openaiVoice = (v: string) => {
   if (OPENAI_NAMES.includes(l)) return l;
   return Object.entries(GEMINI_ESI).find(([, g]) => g.toLowerCase() === l)?.[0] ?? 'onyx';
 };
-export const ttsEnabled = (sel: VoiceSel) => sel.model !== BROWSER && (isEleven(sel.model) ? elevenReady() : isAzure(sel.model) ? azureReady() : isVoiceStudio(sel.model) ? vsUp() : (!MOCK && !!API_KEY) || !!directKey(sel.model, sel.voice));
+export const ttsEnabled = (sel: VoiceSel) => sel.model !== BROWSER && ((isEleven(sel.model) ? elevenReady() : isAzure(sel.model) ? azureReady() : isVoiceStudio(sel.model) ? vsUp() : !MOCK && !!API_KEY) || directKey(sel.model, sel.voice));
 
 async function geminiTts(text: string, voice: string, preferred?: string): Promise<Speech> {
   let last = 'Gemini anahtarı yok';
@@ -221,17 +224,19 @@ function plausible(s: Speech, text: string) {
 }
 
 async function generateOnce(text: string, sel: VoiceSel, ctx: ElevenCtx): Promise<{ speech: Speech; method: 'speech' | 'chat' | 'elevenlabs' | 'azure' | 'voicestudio' } | { error: string }> {
-  if (isVoiceStudio(sel.model)) {
-    const buf = await vsSpeak(text, sel.voice, sel.speed);
-    return { speech: { buf, mime: 'audio/mpeg' }, method: 'voicestudio' };
-  }
-  if (isAzure(sel.model)) {
-    const buf = await azureSpeak(text, sel.voice, sel.speed);
-    return { speech: { buf, mime: 'audio/mpeg' }, method: 'azure' };
-  }
-  if (isEleven(sel.model)) {
-    const buf = await elevenSpeak(text, sel.voice, sel.model, sel.speed, ctx);
-    return { speech: { buf, mime: 'audio/mpeg' }, method: 'elevenlabs' };
+  // VoiceStudio / Azure / ElevenLabs çalışmazsa (kapalı, anahtar/kredi yok) ses OpenAI ya da Gemini'den gelir
+  const ozel = isVoiceStudio(sel.model) ? 'voicestudio' : isAzure(sel.model) ? 'azure' : isEleven(sel.model) ? 'elevenlabs' : null;
+  if (ozel) {
+    const ready = ozel === 'voicestudio' ? vsUp() : ozel === 'azure' ? azureReady() : elevenReady();
+    try {
+      if (!ready) throw new Error(`${ozel} hazır değil`);
+      const buf = ozel === 'voicestudio' ? await vsSpeak(text, sel.voice, sel.speed) : ozel === 'azure' ? await azureSpeak(text, sel.voice, sel.speed) : await elevenSpeak(text, sel.voice, sel.model, sel.speed, ctx);
+      return { speech: { buf, mime: 'audio/mpeg' }, method: ozel };
+    } catch (e: any) {
+      if (!directKey(sel.model, sel.voice)) throw e;
+      console.warn(`[tts] ${ozel} olmadı (${String(e?.message || e).slice(0, 100)}); OpenAI/Gemini sesine geçiliyor`);
+      return { speech: await viaDirect(text, { ...sel, voice: 'onyx' }), method: 'speech' };
+    }
   }
   // Abacus.AI anahtarı yok/bozuk: aynı ses doğrudan OpenAI/Gemini'den
   if (directKey(sel.model, sel.voice) && (!API_KEY || MOCK || routeLlmDown() || Date.now() < ttsRouteDownUntil)) return { speech: await viaDirect(text, sel), method: 'speech' };
@@ -309,6 +314,7 @@ export function synthesize(text: string, sel: VoiceSel, label = '', persist = fa
           return r.speech;
         }
         console.warn(`[tts] ${label || 'istek'} · ${sel.model} · ${sel.voice} · BAŞARISIZ (deneme ${attempt}/2) · ${ms} ms · ${r.error}`);
+        lastTtsError = r.error;
       }
       return null;
     }).finally(() => inflight.delete(key));

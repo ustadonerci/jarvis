@@ -693,7 +693,7 @@ export default function App() {
       console.info(`[zaman] ilk ses çalmaya başladı · ${Math.round(ms)} ms`);
       metric('ilk ses çalmaya başladı', ms);
     };
-    voice.onFallback = reason => flash(`Ses alınamadı (${reason}). Başka sese geçilmedi.`);
+    voice.onFallback = reason => flash(`Jarvis'in sesi alınamadı: ${reason}. Bu cevap bilgisayarın kendi sesiyle okunuyor.`);
   }, []);
 
   // ---- Gönderme ----

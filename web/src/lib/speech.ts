@@ -38,6 +38,10 @@ class VoiceEngine {
   onPlay: (() => void) | null = null;
   /** Cevap tarayıcı sesine geçince */
   onFallback: ((reason: string) => void) | null = null;
+  /** Son sunucu sesi hatası (x-tts-hata) */
+  lastError = '';
+  /** Sunucu bu ses için hiç ses üretemiyor (204): beklemeden tarayıcı sesine geçilir */
+  private noServerVoice = false;
 
   // ---- Çoklu hoparlör: Jarvis'in sesi seçili tüm çıkışlardan (Bluetooth hoparlör, kulaklık, bilgisayar) aynı anda ----
   /** Ses grafiğinin akış kopyası: ek çıkışlar bunu çalar */
@@ -290,7 +294,14 @@ class VoiceEngine {
       this.prefetch.set(
         k,
         fetch(ttsUrl(text, v, i, n, ctx))
-          .then(r => (r.status === 200 ? r.blob() : null))
+          .then(r => {
+            if (r.status === 200) return r.blob();
+            // Sunucunun söylediği neden (anahtar yok, kredi bitti…): kullanıcıya gösterilir
+            const why = r.headers.get('x-tts-hata');
+            this.lastError = why ? decodeURIComponent(why) : `sunucu ${r.status}`;
+            if (r.status === 204) this.noServerVoice = true;
+            return null;
+          })
           .then(b => (b ? URL.createObjectURL(b) : null))
           .catch(() => null),
       );
@@ -328,9 +339,11 @@ class VoiceEngine {
     const gen = this.gen;
     this.playRate = v?.model.startsWith('eleven_') ? 1 : this.rate;
     if (this.serverTts && !this.replyBrowser) {
-      // Seçili ses ASLA başka sese düşmez (Halil'in kuralı). Sunucu kısa süre cevap veremezse (ör. yeniden başlarken)
-      // artan aralıklarla tekrar denenir; yine olmazsa bu cümle sessiz geçer (altyazı ekranda kalır).
+      // Sunucu kısa süre cevap veremezse (ör. yeniden başlarken) artan aralıklarla tekrar denenir; yine olmazsa
+      // sessiz kalmak yerine bu cevabın kalanı bilgisayarın kendi Türkçe sesiyle okunur (kullanıcının isteği: ses kesilmesin).
+      this.noServerVoice = false;
       for (const wait of [0, 600, 1500, 3000]) {
+        if (this.noServerVoice) break;
         if (wait) await new Promise(r => setTimeout(r, wait));
         if (this.gen !== gen) return; // bu arada durduruldu / yeni cevap başladı
         if (wait) this.prefetch.delete(this.key(text, v));
@@ -341,9 +354,10 @@ class VoiceEngine {
         this.cancelCurrent = null;
         if (ok || this.gen !== gen) return;
       }
-      this.onFallback?.('seçili ses alınamadı; bu cümle sessiz geçti');
-      // Altyazı okunabilsin diye cümle süresi kadar bekle
-      return new Promise(r => setTimeout(r, Math.min(8000, Math.max(1500, text.length * 60))));
+      this.onFallback?.(this.lastError || 'seçili ses alınamadı');
+      if (this.gen !== gen) return;
+      this.replyBrowser = true; // bu cevabın kalanı aynı (tarayıcı) sesle: cümleler arasında ses karışmasın
+      return this.speakBrowser(text);
     }
     return this.speakBrowser(text);
   }
