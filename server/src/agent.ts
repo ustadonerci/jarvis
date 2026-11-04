@@ -419,26 +419,34 @@ export async function runJarvis(opts: RunOptions): Promise<JarvisReply> {
   const tools = toolsFor(groups, isBrief);
   console.log(`[beyin] ${tools.length} araç · gruplar: ${[...groups].join(', ') || 'temel'}`);
   let force: string | null = isBrief ? 'get_news' : opts.image ? null : forcedTool(text);
+  let briefReady = false;
   // Düz "aydınlat beni": haber, hava ve piyasa verileri yapay zekâya sormadan AYNI ANDA çekilir ve araç sonucu olarak
   // eklenir. Önceden 3 tur sürüyordu (get_news → hava+piyasa → cevap); şimdi tek tur. Kategori isteği varsa eski yol.
   if (isBrief && !opts.image && /^\W*(jarvis\W*)?ayd[ıi]nlat\s*beni\W*(jarvis)?\W*$/i.test(text.trim())) {
     log('haber, hava ve piyasa verileri birlikte alınıyor');
-    const calls = ['get_news', 'get_weather', 'get_markets'].map((name, i) => ({ id: `brifing_${i}`, type: 'function' as const, function: { name, arguments: '{}' } }));
+    // Haber listesi kısa tutulur (18 haber): yapay zekâya giden metin yarıya iner, cevap daha çabuk yazılır
+    const calls = ['get_news', 'get_weather', 'get_markets'].map((name, i) => ({ id: `brifing_${i}`, type: 'function' as const, function: { name, arguments: name === 'get_news' ? '{"limit":18}' : '{}' } }));
     const ts = Date.now();
     const outs = await Promise.all(calls.map(c => Promise.race([
-      runTool(c.function.name, '{}', log),
+      runTool(c.function.name, c.function.arguments, log),
       new Promise<string>(r => setTimeout(() => r(JSON.stringify({ hata: 'zaman aşımı: veri 20 sn içinde gelmedi' })), 20_000)),
     ]).catch(e => JSON.stringify({ hata: String(e?.message || e).slice(0, 160) }))));
     console.log(`[zaman] brifing verileri (haber+hava+piyasa) · ${Date.now() - ts} ms`);
-    messages.push({ role: 'assistant', content: null, tool_calls: calls });
-    calls.forEach((c, i) => { toolText += '\n' + outs[i]; messages.push({ role: 'tool', tool_call_id: c.id, content: outs[i] }); });
+    // Veriler kullanıcı mesajının sonuna eklenir (araç mesajı değil): araç listesi gönderilmeden her sağlayıcı kabul eder
+    calls.forEach((_c, i) => { toolText += '\n' + outs[i]; });
+    const last = messages[messages.length - 1];
+    last.content = `${typeof last.content === 'string' ? last.content : text}\n\n[Sistem notu: Araçlar sistem tarafından zaten çağrıldı; get_news/get_weather/get_markets'i yeniden çağırma. Yalnız bu verileri kullan.]\n${calls.map((c, i) => `${c.function.name} sonucu:\n${outs[i]}`).join('\n\n')}`;
     force = null;
+    briefReady = true;
   }
   if (force && force !== 'get_news') console.log(`[beyin] zorunlu araç: ${force}`);
   let retriedJson = false;
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
-    const body: any = { model, messages, tools, tool_choice: force ? { type: 'function', function: { name: force } } : 'auto' };
+    // Brifing verileri hazırsa ilk turda araç listesi gönderilmez (~7 bin token az): model yalnız cevabı yazar
+    const body: any = briefReady && round === 0
+      ? { model, messages }
+      : { model, messages, tools, tool_choice: force ? { type: 'function', function: { name: force } } : 'auto' };
     log(round === 0 ? 'düşünüyor' : 'cevabı hazırlıyor');
 
     const parser = new SceneStream();

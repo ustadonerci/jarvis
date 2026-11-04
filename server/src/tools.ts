@@ -362,7 +362,8 @@ async function runToolOnce(name: string, rawArgs: string, progress: ToolProgress
     // Modele giden çıktıyı sade tut: fotoğraf URL'si göndermiyoruz.
     return JSON.stringify({
       ...res,
-      items: res.items.map(({ image_url, url, ...rest }) => ({ ...rest, has_photo: !!image_url })),
+      // Özet 220 karakter: modele giden metin kısalır, cevap hızlanır
+      items: res.items.map(({ image_url, url, summary, ...rest }) => ({ ...rest, summary: summary.slice(0, 220), has_photo: !!image_url })),
     });
   }
   if (name === 'get_markets') {

@@ -282,6 +282,11 @@ async function anthropicStream(p: Provider, body: any, onContent?: (d: string, f
 /** Hata veren sağlayıcı bir süre atlanır (her mesajda aynı bozuk anahtar denenmesin) */
 const cooldown = new Map<string, { until: number; why: string }>();
 const retriedAt = new Map<string, number>();
+/** Sağlayıcı hızı (son cevapların ortalama süresi, ms): en hızlı çalışan öne alınır */
+const speed = new Map<string, number>();
+const noteSpeed = (id: string, ms: number) => speed.set(id, speed.has(id) ? Math.round(speed.get(id)! * 0.6 + ms * 0.4) : ms);
+/** Sıralama puanı: seçili beyin yarı puanla öncelikli; çok yavaşsa (2 katından hızlı biri varsa) hızlı olan öne geçer */
+const score = (id: string) => (speed.get(id) ?? 9000) * (id === brain ? 0.5 : 1);
 const resting = (id: string) => (cooldown.get(id)?.until ?? 0) > Date.now();
 function rest(id: string, e: any) {
   const st = Number(e?.status ?? /\b(\d{3})\b/.exec(String(e?.message))?.[1] ?? 0);
@@ -313,7 +318,7 @@ export async function brainStream(body: any, onContent?: (d: string, full: strin
   // her turda hepsini baştan denemek "düşünüyor"da uzun beklemeye yol açıyordu.
   const now = Date.now();
   const retry = order.filter(o => resting(o.id) && (retriedAt.get(o.id) ?? 0) < now - 3 * 60_000);
-  const list = [...order.filter(o => !resting(o.id)), ...retry];
+  const list = [...order.filter(o => !resting(o.id)).sort((a, b) => score(a.id) - score(b.id)), ...retry];
   if (!list.length && order.length) list.push(...order); // hepsi dinlenmede ve yakın zamanda denendiyse yine de dene
   const t0 = Date.now();
   if (!list.length) throw new Error('Hiçbir yapay zekâ anahtarı girilmemiş. Ayarlar → Yapay zeka sağlayıcıları\'ndan ücretsiz bir anahtar ekleyin (Google Gemini, Groq ya da NVIDIA).');
@@ -325,7 +330,9 @@ export async function brainStream(body: any, onContent?: (d: string, full: strin
     let started = false;
     const relay = (d: string, full: string) => { started = true; onContent?.(d, full); };
     try {
+      const ts = Date.now();
       const r = await o.run(relay);
+      noteSpeed(o.id, Date.now() - ts);
       if (cooldown.has(o.id)) cooldown.delete(o.id);
       if (o.id !== brain && errs.length) console.log(`[beyin] bu tur ${o.ad} cevap verdi`);
       return r;
