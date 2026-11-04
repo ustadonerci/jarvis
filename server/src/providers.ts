@@ -222,20 +222,58 @@ async function anthropicStream(p: Provider, body: any, onContent?: (d: string, f
 }
 
 /** Ana sohbet akışı: seçili sağlayıcı, yoksa (ya da hata verirse) RouteLLM */
-export async function brainStream(body: any, onContent?: (d: string, full: string) => void): Promise<StreamResult> {
-  const p = activeProvider();
-  if (!p) return routellmStream(body, onContent);
-  let started = false;
-  const relay = (d: string, full: string) => { started = true; onContent?.(d, full); };
-  try {
-    return p.id === 'anthropic' ? await anthropicStream(p, body, relay) : await openaiStream(p, body, relay);
-  } catch (e: any) {
-    // Cevap yarıda kesildiyse baştan RouteLLM'e geçilemez (sahneler zaten okunmaya başladı)
-    if (started) throw e;
-    console.warn(`[beyin] ${p.ad} hata verdi, bu tur RouteLLM'e dönülüyor: ${String(e?.message || e).slice(0, 200)}`);
-    return routellmStream(body, onContent);
-  }
+/** Hata veren sağlayıcı bir süre atlanır (her mesajda aynı bozuk anahtar denenmesin) */
+const cooldown = new Map<string, { until: number; why: string }>();
+const resting = (id: string) => (cooldown.get(id)?.until ?? 0) > Date.now();
+function rest(id: string, e: any) {
+  const st = Number(e?.status ?? /\b(\d{3})\b/.exec(String(e?.message))?.[1] ?? 0);
+  // Anahtar/kredi sorunu uzun, geçici hata (ağ, 5xx) kısa süre
+  const ms = st === 401 || st === 402 || st === 403 ? 30 * 60_000 : st === 429 ? 10 * 60_000 : 2 * 60_000;
+  cooldown.set(id, { until: Date.now() + ms, why: String(e?.message || e).slice(0, 140) });
 }
+
+/**
+ * Beyin sırası: seçili beyin → anahtarı girilmiş diğer sağlayıcılar (ücretsiz katmanı olanlar önce) → RouteLLM.
+ * Biri hata verirse (anahtar geçersiz, kredi bitti, kota, ağ) bu tur sıradakiyle devam edilir; hatalı olan bir süre atlanır.
+ * Cevap akmaya başladıktan sonra kesilirse geçiş yapılmaz (sahneler okunmaya başladı).
+ */
+export async function brainStream(body: any, onContent?: (d: string, full: string) => void): Promise<StreamResult> {
+  const order: { id: string; ad: string; run: (relay: (d: string, f: string) => void) => Promise<StreamResult> }[] = [];
+  const seen = new Set<string>();
+  for (const id of [brain, ...YEDEK_SIRA, 'anthropic', ...PROVIDERS.map(p => p.id)]) {
+    if (seen.has(id) || id === 'routellm') continue;
+    seen.add(id);
+    const p = findProvider(id);
+    if (!p || !providerReady(p) || (p.id !== 'anthropic' && !p.base)) continue;
+    order.push({ id: p.id, ad: p.ad, run: relay => (p.id === 'anthropic' ? anthropicStream(p, body, relay) : openaiStream(p, body, relay)) });
+  }
+  // RouteLLM: beyin oysa başta, değilse sonda; anahtarı yoksa hiç
+  const route = { id: 'routellm', ad: 'RouteLLM (Abacus.AI)', run: (relay: (d: string, f: string) => void) => routellmStream(body, relay, { base: process.env.ROUTELLM_BASE_URL || 'https://routellm.abacus.ai/v1', key: process.env.ABACUS_API_KEY || '' }) };
+  if (process.env.ABACUS_API_KEY) { if (brain === 'routellm') order.unshift(route); else order.push(route); }
+  const live = order.filter(o => !resting(o.id));
+  const list = live.length ? live : order; // hepsi dinlenmedeyse yine de dene
+  if (!list.length) throw new Error('Hiçbir yapay zekâ anahtarı girilmemiş. Ayarlar → Yapay zeka sağlayıcıları\'ndan ücretsiz bir anahtar ekleyin (Google Gemini, Groq ya da NVIDIA).');
+  const errs: string[] = [];
+  for (const o of list) {
+    let started = false;
+    const relay = (d: string, full: string) => { started = true; onContent?.(d, full); };
+    try {
+      const r = await o.run(relay);
+      if (cooldown.has(o.id)) cooldown.delete(o.id);
+      if (o.id !== brain && errs.length) console.log(`[beyin] bu tur ${o.ad} cevap verdi`);
+      return r;
+    } catch (e: any) {
+      if (started) throw e;
+      rest(o.id, e);
+      errs.push(`${o.ad}: ${String(e?.message || e).slice(0, 90)}`);
+      console.warn(`[beyin] ${o.ad} hata verdi, sıradakine geçiliyor: ${String(e?.message || e).slice(0, 160)}`);
+    }
+  }
+  throw new Error(`Yapay zekâ sağlayıcılarının hiçbiri cevap vermedi (${errs.length} denendi). ${errs.join(' · ')}. Ayarlar → Yapay zeka sağlayıcıları'nda anahtarları "Bağlantıyı test et" ile kontrol edin ya da ücretsiz bir anahtar ekleyin (Gemini, Groq, NVIDIA).`);
+}
+
+/** Sağlayıcıların son durumu (Ayarlar ve Jarvis için): hangisi dinlenmede, neden */
+export const brainHealth = () => [...cooldown.entries()].filter(([, v]) => v.until > Date.now()).map(([id, v]) => ({ id, ad: findProvider(id)?.ad ?? id, neden: v.why, dk: Math.ceil((v.until - Date.now()) / 60_000) }));
 
 /** Bağlantı testi: anahtar çalışıyor mu, hangi modeller var */
 export async function testProvider(p: Provider): Promise<{ modeller: string[] }> {
@@ -307,10 +345,10 @@ export function runBrainTool(a: any): string {
     setBrainProvider(id);
     persistBrain(id);
     console.log(`[beyin] sohbetle seçildi: ${id}`);
-    return j({ ok: true, beyin: p ? `${p.ad} · ${providerModel(p)}` : 'RouteLLM', not: 'Bir sonraki cevaptan itibaren geçerli. Hata verirse o cevap RouteLLM ile tamamlanır.' });
+    return j({ ok: true, beyin: p ? `${p.ad} · ${providerModel(p)}` : 'RouteLLM', not: 'Bir sonraki cevaptan itibaren geçerli. Hata verirse o cevap anahtarı girilmiş sıradaki yapay zekayla tamamlanır.' });
   }
   const p = activeProvider();
-  return j({ beyin: p ? `${p.ad} · ${providerModel(p)}` : 'RouteLLM', secili: brain, anahtari_girilmis: ready });
+  return j({ beyin: p ? `${p.ad} · ${providerModel(p)}` : 'RouteLLM', secili: brain, anahtari_girilmis: ready, sira: 'Seçili beyin hata verirse anahtarı girilmiş diğerleri sırayla kullanılır (Gemini, Groq, NVIDIA, …, en son RouteLLM).', dinlenen: brainHealth() });
 }
 
 /** Ayarlar → Yapay zeka sağlayıcıları. persist: beyin seçimi state'e yazılsın */

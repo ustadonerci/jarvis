@@ -7,7 +7,7 @@ export const MOCK = process.env.MOCK === '1' || !API_KEY;
 
 export class RouteLLMError extends Error {
   constructor(public status: number, public body: string) {
-    super((status === 401 || status === 403) && /invalid api key|unauthori[sz]ed|permission/i.test(body)
+    super((status === 401 || status === 403) && /invalid|unauthori[sz]ed|permission|password|forbidden/i.test(body)
       ? `Abacus.AI (RouteLLM) anahtarı geçersiz ya da süresi dolmuş (${status}). Ayarlar → Yapay zeka sağlayıcıları'ndan ücretsiz bir anahtar ekleyin (Google Gemini, Groq ya da NVIDIA); Jarvis kendiliğinden ona geçer. Ya da abacus.ai'den yeni anahtar alıp ABACUS_API_KEY alanına girin.`
       : status === 402 || status === 429 ? `Abacus.AI kredisi/kotası bitti (${status}). Ayarlar → Yapay zeka sağlayıcıları'ndan ücretsiz bir anahtar ekleyin (Gemini, Groq, NVIDIA); Jarvis kendiliğinden ona geçer.`
       : `RouteLLM ${status}: ${body.slice(0, 300)}`);
