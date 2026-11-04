@@ -281,6 +281,7 @@ async function anthropicStream(p: Provider, body: any, onContent?: (d: string, f
 /** Ana sohbet akışı: seçili sağlayıcı, yoksa (ya da hata verirse) RouteLLM */
 /** Hata veren sağlayıcı bir süre atlanır (her mesajda aynı bozuk anahtar denenmesin) */
 const cooldown = new Map<string, { until: number; why: string }>();
+const retriedAt = new Map<string, number>();
 const resting = (id: string) => (cooldown.get(id)?.until ?? 0) > Date.now();
 function rest(id: string, e: any) {
   const st = Number(e?.status ?? /\b(\d{3})\b/.exec(String(e?.message))?.[1] ?? 0);
@@ -308,10 +309,19 @@ export async function brainStream(body: any, onContent?: (d: string, full: strin
   const route = { id: 'routellm', ad: 'RouteLLM (Abacus.AI)', run: (relay: (d: string, f: string) => void) => routellmStream(body, relay, { base: process.env.ROUTELLM_BASE_URL || 'https://routellm.abacus.ai/v1', key: process.env.ABACUS_API_KEY || '' }).catch(e => { throw e instanceof RouteLLMError ? new RouteLLMError(e.status, e.body) : e; }) };
   if (process.env.ABACUS_API_KEY) { if (brain === 'routellm') order.unshift(route); else order.push(route); }
   // Önce dinlenmede olmayanlar, sonra dinlenmedekiler (kredi yüklenmiş / anahtar düzelmiş olabilir): hiçbiri atlanmaz
-  const list = [...order.filter(o => !resting(o.id)), ...order.filter(o => resting(o.id))];
+  // Dinlenmedeki bir sağlayıcı en çok 3 dakikada bir yeniden denenir (kredi yüklenmiş / anahtar düzelmiş olabilir);
+  // her turda hepsini baştan denemek "düşünüyor"da uzun beklemeye yol açıyordu.
+  const now = Date.now();
+  const retry = order.filter(o => resting(o.id) && (retriedAt.get(o.id) ?? 0) < now - 3 * 60_000);
+  const list = [...order.filter(o => !resting(o.id)), ...retry];
+  if (!list.length && order.length) list.push(...order); // hepsi dinlenmede ve yakın zamanda denendiyse yine de dene
+  const t0 = Date.now();
   if (!list.length) throw new Error('Hiçbir yapay zekâ anahtarı girilmemiş. Ayarlar → Yapay zeka sağlayıcıları\'ndan ücretsiz bir anahtar ekleyin (Google Gemini, Groq ya da NVIDIA).');
   const errs: string[] = [];
   for (const o of list) {
+    // Toplam süre sınırı: cevap 90 sn içinde hiçbir sağlayıcıdan gelmediyse daha fazla bekletilmez
+    if (errs.length && Date.now() - t0 > 90_000) { errs.push(`süre doldu (${list.length - errs.length} sağlayıcı denenmedi)`); break; }
+    if (resting(o.id)) retriedAt.set(o.id, Date.now());
     let started = false;
     const relay = (d: string, full: string) => { started = true; onContent?.(d, full); };
     try {
