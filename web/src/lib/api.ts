@@ -336,6 +336,8 @@ export const xttsStatus = () => fetch('/api/xtts', { headers: headers() }).then(
 export const xttsInstall = () => fetch('/api/xtts/kur', { method: 'POST', headers: headers(), body: '{}' }).then(r => json<any>(r));
 export const xttsAddOwnVoice = (f: File, ad: string) => fetch(`/api/xtts/kendi-ses?benim=1&ad=${encodeURIComponent(ad)}&dosya=${encodeURIComponent(f.name)}`, { method: 'POST', headers: { 'Content-Type': f.type || 'application/octet-stream', ...(token ? { 'x-jarvis-token': token } : {}) }, body: f }).then(r => json<{ ok: true; voice: string }>(r));
 export interface OfflineVoiceState { kurulu: boolean; oncelik: boolean }
+/** Ses ayarlarını ilk kurulumdakine döndürür (kurulu sesler silinmez) */
+export const resetVoice = () => fetch('/api/ses/ilk-ayar', { method: 'POST', headers: headers() }).then(r => json<{ ok: boolean; ses: string }>(r));
 export const offlineVoice = (ne: '' | 'kur' | 'oncelik' | 'kaydet', body: object = {}) => fetch(`/api/internetsiz-ses${ne ? `/${ne}` : ''}`, ne ? { method: 'POST', headers: headers(), body: JSON.stringify(body) } : { headers: headers() }).then(r => json<any>(r));
 export const testAllProviders = () => fetch('/api/saglayicilar/test-hepsi', { method: 'POST', headers: headers() }).then(r => json<{ sonuc: { ad: string; calisiyor: boolean; neden?: string }[] }>(r));
 export const testProvider = (id: string) => fetch(`/api/saglayicilar/${id}/test`, { method: 'POST', headers: headers() }).then(r => json<{ ok: boolean; modeller: string[] }>(r));

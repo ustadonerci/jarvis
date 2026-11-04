@@ -36,6 +36,10 @@ const saveCfg = () => { fs.mkdirSync(DATA, { recursive: true }); fs.writeFileSyn
 export const piperReady = () => fs.existsSync(EXE) && fs.existsSync(MODEL) && fs.existsSync(`${MODEL}.json`);
 /** Kullanıcı "önce internetsiz ses" dediyse */
 export const piperFirst = () => cfg.oncelik && piperReady();
+export const setPiperFirst = (on: boolean) => { cfg.oncelik = on; saveCfg(); };
+/** "Sesi ilk ayara döndür": index.ts kaydeder (seçili sesi .env varsayılanına alır) */
+let voiceReset: () => string = () => 'kullanılamıyor';
+export const onVoiceReset = (fn: () => string) => { voiceReset = fn; };
 
 async function download(url: string, sha: string): Promise<Buffer> {
   const r = await fetch(url, { signal: AbortSignal.timeout(15 * 60_000) });
@@ -128,8 +132,8 @@ export const PIPER_TOOLS = [
     type: 'function',
     function: {
       name: 'internetsiz_ses',
-      description: "İnternetsiz Türkçe ses (Piper) ve Jarvis'in ses dosyaları. durum; kur (bilgisayara indirip kurar, onay kartı; 'sesleri bilgisayara indir', 'internetsiz ses kur'); oncelik (ac: true → Jarvis her zaman internetsiz sesle konuşur, false → yalnız diğerleri çalışmazsa); kaydet (Jarvis'in örnek kayıtlarını ve söylediği cümlelerin ses dosyalarını İndirilenler\\Jarvis-Sesler'e kopyalar).",
-      parameters: { type: 'object', properties: { islem: { type: 'string', enum: ['durum', 'kur', 'oncelik', 'kaydet'] }, ac: { type: 'boolean' } }, required: ['islem'] },
+      description: "İnternetsiz Türkçe ses (Piper) ve Jarvis'in ses dosyaları. durum; kur (bilgisayara indirip kurar, onay kartı; 'sesleri bilgisayara indir', 'internetsiz ses kur'); oncelik (ac: true → Jarvis her zaman internetsiz sesle konuşur, false → yalnız diğerleri çalışmazsa); kaydet (Jarvis'in örnek kayıtlarını ve söylediği cümlelerin ses dosyalarını İndirilenler\\Jarvis-Sesler'e kopyalar); ilk_ayar ('ses ayarlarını ilk haline getir', 'eski sesine dön'): seçili ses ilk kurulumdaki varsayılana döner, internetsiz-önce kapanır; kurulu sesler (Piper, XTTS, kendi ses kaydı) silinmez.",
+      parameters: { type: 'object', properties: { islem: { type: 'string', enum: ['durum', 'kur', 'oncelik', 'kaydet', 'ilk_ayar'] }, ac: { type: 'boolean' } }, required: ['islem'] },
     },
   },
 ] as const;
@@ -139,6 +143,7 @@ export async function runPiperTool(a: any): Promise<string> {
   try {
     if (a.islem === 'kur') return piperReady() ? j({ kurulu: true, not: 'Zaten kurulu.' }) : kurOneri();
     if (a.islem === 'oncelik') { cfg.oncelik = a.ac === true; saveCfg(); return j({ ok: true, oncelik: cfg.oncelik, kurulu: piperReady() }); }
+    if (a.islem === 'ilk_ayar') return j({ ok: true, ses: voiceReset(), not: 'Kurulu sesler silinmedi; Ayarlar → Ses listesinden yine seçilebilir.' });
     if (a.islem === 'kaydet') return j({ ok: true, ...exportVoices(), not: 'Klasörün yerini ve kaç dosya kopyalandığını söyle.' });
     return j({ kurulu: piperReady(), oncelik: cfg.oncelik });
   } catch (e: any) {

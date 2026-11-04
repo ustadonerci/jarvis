@@ -16,6 +16,7 @@ import { transcribe, STT_MODEL } from './stt.js';
 import {
   BROWSER, DEFAULT_RATE, clampRate, envVoice, isRoutedModel, loadCatalog, preview, synthesize, ttsEnabled, ttsLastError, usableVoices, voiceId, warmOpening,
   type VoiceSel,
+  resetOpenAiTts,
 } from './tts.js';
 import { knownImageUrls, type PhotoMode } from './photos.js';
 import { DEFAULT_WAKE, greetingPeriod, health, mergeWake, type WakeConfig } from './wake.js';
@@ -45,7 +46,7 @@ import { initTgChannels, tgChannelsRouter } from './tgchannels.js';
 import { initDisRobot } from './disrobot.js';
 import { initOwnerMsg } from './ownermsg.js';
 import { initMesai, mesaiRouter } from './mesai.js';
-import { piperRouter } from './piper.js';
+import { onVoiceReset, piperRouter, setPiperFirst } from './piper.js';
 import { XTTS_MODEL, initXtts, isXtts, xttsRouter, xttsVoices } from './xtts.js';
 import { indicatorsRouter } from './indicators.js';
 import { tgWebRouter } from './telegramweb.js';
@@ -134,6 +135,21 @@ if (state.voice && !validVoice(state.voice)) {
   delete state.voice;
 }
 const currentVoice = (): VoiceSel => state.voice ?? env.sel;
+/**
+ * Ses ayarlarını ilk kurulumdakine döndürür: seçili ses .env varsayılanı (TTS_MODEL/TTS_VOICE) olur, "önce internetsiz
+ * ses" kapanır, sağlayıcı beklemeleri kalkar. Kurulu motorlar ve kayıtlar (Piper, XTTS, kendi ses) silinmez.
+ */
+function resetVoiceToDefault(): string {
+  delete state.voice;
+  setPiperFirst(false);
+  resetOpenAiTts();
+  saveState();
+  const sel = currentVoice();
+  console.log(`[tts] ses ilk ayara döndü: ${voiceId(sel)}`);
+  try { broadcast(settingsEvent()); warmOpening(sel).catch(() => {}); warmGreetings(sel); } catch { /* açılış sırasında */ }
+  return voiceId(sel);
+}
+onVoiceReset(resetVoiceToDefault);
 const sfx = () => state.sfx ?? true;
 const wakeCfg = (): WakeConfig => mergeWake(DEFAULT_WAKE, state.wake ?? {});
 
@@ -186,6 +202,11 @@ if (!state.gecis?.includes('nvidia-beyin') && process.env.NVIDIA_API_KEY?.trim()
   state.gecis = [...(state.gecis ?? []), 'nvidia-beyin'];
   saveState();
   console.log('[beyin] NVIDIA beyin yapıldı (kullanıcının isteği)');
+}
+// Kullanıcının isteği (Kasım 2026): "kurduklarını bozmadan ilk kurulan ses ayarlarına getir" — bir kez
+if (!state.gecis?.includes('ses-ilk-ayar')) {
+  state.gecis = [...(state.gecis ?? []), 'ses-ilk-ayar'];
+  resetVoiceToDefault();
 }
 setBrainProvider(initialBrain(state.beyin));
 initBrain();
@@ -403,6 +424,8 @@ app.post('/api/dosya-yukle', adminOnly, express.raw({ type: () => true, limit: '
 app.get('/api/mikrofon-kontrol', adminOnly, async (_req, res) => {
   try { res.json(await checkMic()); } catch (e: any) { res.status(500).json({ error: String(e?.message || e) }); }
 });
+app.post('/api/ses/ilk-ayar', adminOnly, (_req, res) => res.json({ ok: true, ses: resetVoiceToDefault() }));
+
 app.post('/api/mikrofon-ayar-ac', adminOnly, (req, res) => {
   if (!isLocalRequest(req)) return res.status(403).json({ error: 'Windows ayarları yalnızca bilgisayarın kendisinden açılabilir.' });
   res.json({ ok: req.body?.ne === 'gizlilik' ? openPrivacySettings() : openRecordingSettings() });
