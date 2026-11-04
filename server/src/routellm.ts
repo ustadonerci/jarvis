@@ -37,6 +37,8 @@ export const onRouteDown = (fn: (why: string) => void) => { onDown = fn; };
 /** RouteLLM bozuk sayıldığı süre: bu sürede doğrudan yedeğe gidilir (her istekte boşuna denenmesin) */
 let routeDownUntil = 0;
 let routeDownWhy = '';
+/** Yeni anahtar/kredi: test başarılı olunca bekleme kalkar */
+export const resetRouteDown = () => { routeDownUntil = 0; routeDownWhy = ''; };
 const isKeyProblem = (status: number) => status === 401 || status === 402 || status === 403 || status === 429;
 export const routeLlmDown = () => (!API_KEY || Date.now() < routeDownUntil ? routeDownWhy || 'Abacus.AI anahtarı yok' : '');
 function markDown(e: RouteLLMError) {

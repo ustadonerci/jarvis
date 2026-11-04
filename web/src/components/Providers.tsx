@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getKeys, getProviders, saveKeys, setBrain, testAllProviders, testProvider, type KeyView, type ProvidersData } from '../lib/api';
 
-const LOGO: Record<string, string> = { perplexity: '🔎', cohere: '🟣', together: '🤝', fireworks: '🎆', cerebras: '🧠', sambanova: '🔶', deepinfra: '🌊', huggingface: '🤗', nvidia: '🟩', qwen: '🐉', moonshot: '🌙', zhipu: '🔷', minimax: '🔺', ai21: '🔵', novita: '✨', hyperbolic: '🌀', stability: '🖼️', replicate: '🔁', fal: '⚡', runway: '🎬', luma: '🎥', heygen: '🧑‍💼', assemblyai: '🎙️', elevenlabs: '🔊', deepgram: '👂', openai: '🟢', anthropic: '🟠', gemini: '🔷', xai: '✖️', deepseek: '🐋', mistral: '🌬️', groq: '⚡', openrouter: '🔀' };
+const LOGO: Record<string, string> = { routellm: '🧭', perplexity: '🔎', cohere: '🟣', together: '🤝', fireworks: '🎆', cerebras: '🧠', sambanova: '🔶', deepinfra: '🌊', huggingface: '🤗', nvidia: '🟩', qwen: '🐉', moonshot: '🌙', zhipu: '🔷', minimax: '🔺', ai21: '🔵', novita: '✨', hyperbolic: '🌀', stability: '🖼️', replicate: '🔁', fal: '⚡', runway: '🎬', luma: '🎥', heygen: '🧑‍💼', assemblyai: '🎙️', elevenlabs: '🔊', deepgram: '👂', openai: '🟢', anthropic: '🟠', gemini: '🔷', xai: '✖️', deepseek: '🐋', mistral: '🌬️', groq: '⚡', openrouter: '🔀' };
 
 /**
  * Ayarlar → Yapay zeka sağlayıcıları: her sağlayıcı açılır bir kart (API anahtarı + model). "Beyin yap" seçilen
@@ -61,7 +61,7 @@ export function ProviderSettings({ flash }: { flash(t: string): void }) {
       <AllTest />
       <div className="seg">
         <button className={data.beyin === 'routellm' ? 'on' : ''} onClick={() => brain('routellm')}>RouteLLM (varsayılan)</button>
-        {data.saglayicilar.filter(p => p.hazir && p.tur === 'sohbet').map(p => (
+        {data.saglayicilar.filter(p => p.hazir && p.tur === 'sohbet' && p.id !== 'routellm').map(p => (
           <button key={p.id} className={data.beyin === p.id ? 'on' : ''} onClick={() => brain(p.id)}>{LOGO[p.id] ?? '🤖'} {p.ad}</button>
         ))}
       </div>

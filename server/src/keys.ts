@@ -13,7 +13,7 @@ export interface KeyField { name: string; label: string; hint: string; secret: b
 
 /** Arayüzde her zaman görünen alanlar */
 export const KEY_FIELDS: KeyField[] = [
-  { name: 'ABACUS_API_KEY', label: 'Abacus RouteLLM (beyin)', hint: 'apps.abacus.ai → LLM APIs. Boşsa Jarvis demo modunda çalışır.', secret: true },
+  { name: 'ABACUS_API_KEY', label: 'Abacus RouteLLM (beyin)', hint: 'apps.abacus.ai → LLM APIs. Boşsa Jarvis demo modunda çalışır.', secret: true, saglayici: 'routellm' },
   { name: 'CHAT_MODEL', label: 'Sohbet modeli', hint: 'Varsayılan: route-llm (her soruyu uygun modele yönlendirir).', secret: false },
   { name: 'USER_NAME', label: 'Size nasıl hitap etsin', hint: 'Ör. Ramazan', secret: false },
   { name: 'TELEGRAM_BOT_TOKEN', label: 'Telegram bot anahtarı', hint: "Telegram'da @BotFather → /newbot → verilen anahtar. Mesajlarınızı bu bota yazdırın ya da botu gruplara ekleyin.", secret: true },

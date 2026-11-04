@@ -14,7 +14,7 @@ import { resetOpenAiTts } from './tts.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { RouteLLMError, onRouteDown, registerFallbacks, routeLlmDown, routellmStream, type ChatMessage, type ContentPart, type StreamResult } from './routellm.js';
+import { RouteLLMError, onRouteDown, resetRouteDown, registerFallbacks, routeLlmDown, routellmStream, type ChatMessage, type ContentPart, type StreamResult } from './routellm.js';
 
 /** tur: 'sohbet' = beyin olabilir (OpenAI uyumlu ya da Claude); 'medya' = yalnız anahtar kaydı (görsel/video/ses) */
 export interface Provider { id: string; ad: string; keyEnv: string; modelEnv: string; varsayilanModel: string; base?: string; anahtarUrl: string; anahtarSayfasi: string; not?: string; tur: 'sohbet' | 'medya' }
@@ -22,6 +22,8 @@ export interface Provider { id: string; ad: string; keyEnv: string; modelEnv: st
 const host = (u: string) => u.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
 
 export const PROVIDERS: Provider[] = [
+  // Abacus.AI RouteLLM: sohbet routellm.ts'teki kendi yoluyla yürür; bu kayıt anahtar kartı, test ve "beyin yap" içindir
+  { id: 'routellm', ad: 'Abacus.AI (RouteLLM)', keyEnv: 'ABACUS_API_KEY', modelEnv: 'CHAT_MODEL', varsayilanModel: 'route-llm', base: 'https://routellm.abacus.ai/v1', anahtarUrl: 'https://apps.abacus.ai/chatllm/', anahtarSayfasi: host('https://apps.abacus.ai/chatllm/'), tur: 'sohbet', not: 'Abacus.AI ChatLLM aboneliğiyle: apps.abacus.ai → sol menü RouteLLM API → API anahtarı oluştur. route-llm her soruyu uygun modele (GPT, Claude, Gemini…) yönlendirir; ses de buradan üretilebilir.' },
   { id: 'openai', ad: 'OpenAI (ChatGPT)', keyEnv: 'OPENAI_API_KEY', modelEnv: 'OPENAI_CHAT_MODEL', varsayilanModel: 'gpt-4.1', base: 'https://api.openai.com/v1', anahtarUrl: 'https://platform.openai.com/api-keys', anahtarSayfasi: host('https://platform.openai.com/api-keys'), tur: 'sohbet', not: 'Ses tanımada (Whisper) da kullanılır.' },
   { id: 'anthropic', ad: 'Anthropic (Claude)', keyEnv: 'ANTHROPIC_API_KEY', modelEnv: 'ANTHROPIC_MODEL', varsayilanModel: 'claude-opus-5-5', anahtarUrl: 'https://console.anthropic.com/settings/keys', anahtarSayfasi: host('https://console.anthropic.com/settings/keys'), tur: 'sohbet', not: 'Daha hızlı/ucuz: claude-sonnet-5-5, claude-haiku-5-5' },
   { id: 'nvidia', ad: 'NVIDIA (NIM · Llama, Nemotron, DeepSeek, Qwen)', keyEnv: 'NVIDIA_API_KEY', modelEnv: 'NVIDIA_MODEL', varsayilanModel: 'meta/llama-3.3-70b-instruct', base: 'https://integrate.api.nvidia.com/v1', anahtarUrl: 'https://build.nvidia.com', anahtarSayfasi: host('https://build.nvidia.com'), tur: 'sohbet', not: 'build.nvidia.com\'da ücretsiz deneme kredisi; anahtar "nvapi-" ile başlar. Model: meta/llama-3.3-70b-instruct (araç kullanır); diğerleri için Bağlantıyı test et.' },
@@ -91,7 +93,7 @@ export function markBadModel(p: Provider) {
   badModels.set(p.id, s);
 }
 export async function healModel(p: Provider): Promise<string | null> {
-  if (p.id === 'anthropic') return null;
+  if (p.id === 'anthropic' || p.id === 'routellm') return null;
   const { modeller } = await testProvider(p).catch(() => ({ modeller: [] as string[] }));
   // Bu hesapta çalışmadığı görülen modeller (listede olsa da 404 veren) bir daha seçilmez
   const bad = new Set([...(badModels.get(p.id) ?? []), providerModel(p)]);
@@ -116,7 +118,7 @@ export function readyFallbacks(): { id: string; ad: string; base: string; key: s
   const seen = new Set<string>();
   const out = [];
   for (const id of ids) {
-    if (seen.has(id)) continue;
+    if (seen.has(id) || id === 'routellm') continue;
     seen.add(id);
     const p = findProvider(id);
     if (!p || !p.base || !providerReady(p)) continue;
@@ -360,6 +362,7 @@ export async function testAllProviders(): Promise<{ ad: string; calisiyor: boole
       await testProvider(p);
       cooldown.delete(p.id);
       if (p.id === 'openai') resetOpenAiTts();
+      if (p.id === 'routellm') resetRouteDown();
       return { ad: p.ad, calisiyor: true };
     } catch (e: any) {
       const msg = String(e?.message || e);
