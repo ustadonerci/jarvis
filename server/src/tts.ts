@@ -101,7 +101,7 @@ export function envVoice(): { sel: VoiceSel; warning?: string } {
 
 // Abacus.AI (RouteLLM) çalışmazsa AYNI ses doğrudan sağlayıcıdan üretilir: OpenAI sesleri OPENAI_API_KEY ile,
 // Gemini sesleri GEMINI_API_KEY ile (kullanıcının seçtiği ses değişmez).
-const directKey = (model: string) => ((model.startsWith('gemini') ? process.env.GEMINI_API_KEY : process.env.OPENAI_API_KEY) || '').trim();
+const directKey = (model: string) => ((model.startsWith('gemini') ? process.env.GEMINI_API_KEY : process.env.OPENAI_API_KEY) || '').replace(/^["']|["']$/g, '').replace(/\s+/g, '');
 export const ttsEnabled = (sel: VoiceSel) => sel.model !== BROWSER && (isEleven(sel.model) ? elevenReady() : isAzure(sel.model) ? azureReady() : isVoiceStudio(sel.model) ? vsUp() : (!MOCK && !!API_KEY) || !!directKey(sel.model));
 
 async function viaDirect(text: string, sel: VoiceSel): Promise<Speech> {

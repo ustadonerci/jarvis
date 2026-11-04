@@ -53,7 +53,7 @@ export const KEY_FIELDS: KeyField[] = [
   { name: 'OPENAI_CHAT_MODEL', label: 'Model', hint: 'Boş: gpt-4.1', secret: false, saglayici: 'openai' },
   { name: 'ANTHROPIC_API_KEY', label: 'API anahtarı', hint: 'Anahtar: https://console.anthropic.com/settings/keys · Daha hızlı/ucuz: claude-sonnet-5-5, claude-haiku-5-5', secret: true, saglayici: 'anthropic' },
   { name: 'ANTHROPIC_MODEL', label: 'Model', hint: 'Boş: claude-opus-5-5', secret: false, saglayici: 'anthropic' },
-  { name: 'GEMINI_API_KEY', label: 'API anahtarı', hint: 'Anahtar: https://aistudio.google.com/app/apikey · Ücretsiz kullanım kotası var.', secret: true, saglayici: 'gemini' },
+  { name: 'GEMINI_API_KEY', label: 'API anahtarı', hint: 'Anahtar: https://aistudio.google.com/app/apikey · Ücretsiz kullanım kotası var. Yeni anahtarlar AQ. ile, eskiler AIza ile başlar; ikisi de olur.', secret: true, saglayici: 'gemini' },
   { name: 'GEMINI_MODEL', label: 'Model', hint: 'Boş: gemini-2.5-flash', secret: false, saglayici: 'gemini' },
   { name: 'XAI_API_KEY', label: 'API anahtarı', hint: 'Anahtar: https://console.x.ai', secret: true, saglayici: 'xai' },
   { name: 'XAI_MODEL', label: 'Model', hint: 'Boş: grok-4', secret: false, saglayici: 'xai' },
