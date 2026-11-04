@@ -149,6 +149,8 @@ async function geminiTts(text: string, voice: string, preferred?: string): Promi
 
 /** OpenAI hesabında kredi yoksa (429 insufficient_quota) ya da anahtar geçersizse bir süre doğrudan Gemini'ye */
 let openaiTtsDownUntil = 0;
+/** Kredi yüklenince / anahtar testi başarılı olunca bekleme hemen kalkar */
+export const resetOpenAiTts = () => { openaiTtsDownUntil = 0; };
 async function openaiTts(text: string, sel: VoiceSel): Promise<Speech> {
   const r = await fetch('https://api.openai.com/v1/audio/speech', {
     method: 'POST', headers: { Authorization: `Bearer ${clean(process.env.OPENAI_API_KEY)}`, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(45_000),
@@ -156,7 +158,8 @@ async function openaiTts(text: string, sel: VoiceSel): Promise<Speech> {
   });
   if (!r.ok) {
     const body = (await r.text()).slice(0, 200);
-    if ([401, 402, 403, 429].includes(r.status)) openaiTtsDownUntil = Date.now() + 30 * 60_000;
+    if ([401, 402, 403].includes(r.status) || /insufficient_quota/.test(body)) openaiTtsDownUntil = Date.now() + 30 * 60_000;
+    else if (r.status === 429) openaiTtsDownUntil = Date.now() + 60_000;
     throw new Error(`OpenAI ses ${r.status}${/insufficient_quota/.test(body) ? ' (OpenAI hesabında kredi yok)' : ''}: ${body.slice(0, 100)}`);
   }
   return { buf: Buffer.from(await r.arrayBuffer()), mime: 'audio/mpeg' };

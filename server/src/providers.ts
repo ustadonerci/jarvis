@@ -10,6 +10,7 @@ import express, { type Router } from 'express';
 import { adminOnly } from './keys.js';
 import { spawn } from 'node:child_process';
 import { geminiStream } from './gemini.js';
+import { resetOpenAiTts } from './tts.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -340,6 +341,7 @@ export async function testAllProviders(): Promise<{ ad: string; calisiyor: boole
     try {
       await testProvider(p);
       cooldown.delete(p.id);
+      if (p.id === 'openai') resetOpenAiTts();
       return { ad: p.ad, calisiyor: true };
     } catch (e: any) {
       const msg = String(e?.message || e);
