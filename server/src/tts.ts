@@ -9,6 +9,7 @@ import { isMp3, isWav, normalizeSpeech, pcmToWav, wavSeconds } from './audio.js'
 import { elevenReady, elevenSpeak, isEleven, type ElevenCtx } from './eleven.js';
 import { azureReady, azureSpeak, isAzure } from './azure.js';
 import { isVoiceStudio, vsSpeak, vsUp } from './voicestudio.js';
+import { piperFirst, piperReady, piperSpeak } from './piper.js';
 import { SCRIPTED_LINES } from './scripted.js';
 
 /**
@@ -108,7 +109,7 @@ export const ttsLastError = () => lastTtsError;
 let ttsRouteDownUntil = 0;
 const clean = (k?: string) => (k || '').replace(/^["']|["']$/g, '').replace(/\s+/g, '');
 /** OpenAI sesi için OpenAI anahtarı yoksa Gemini anahtarıyla en yakın Gemini sesi kullanılır (sessiz kalmasın) */
-const directKey = (model: string, _voice = '') => !!(clean(process.env.OPENAI_API_KEY) || clean(process.env.GEMINI_API_KEY)) && !!model;
+const directKey = (model: string, _voice = '') => !!(clean(process.env.OPENAI_API_KEY) || clean(process.env.GEMINI_API_KEY) || piperReady()) && !!model;
 // OpenAI sesleri → benzer Gemini sesleri (erkek/kadın ve ton)
 const GEMINI_ESI: Record<string, string> = { onyx: 'Charon', echo: 'Orus', ash: 'Fenrir', ballad: 'Algenib', cedar: 'Iapetus', verse: 'Puck', fable: 'Enceladus', alloy: 'Kore', nova: 'Kore', shimmer: 'Aoede', coral: 'Leda', sage: 'Despina', marin: 'Zephyr' };
 // Google'ın hazır ses adları (Gemini TTS yalnız bunları kabul eder; "onyx" gibi OpenAI adları reddedilir)
@@ -167,7 +168,9 @@ function directEngines(text: string, sel: VoiceSel): Engine[] {
   const oa = clean(process.env.OPENAI_API_KEY), gk = clean(process.env.GEMINI_API_KEY);
   const openai: Engine[] = oa && Date.now() >= openaiTtsDownUntil ? [{ ad: `OpenAI (${openaiVoice(sel.voice)})`, run: () => openaiTts(text, sel) }] : [];
   const gemini: Engine[] = gk ? [{ ad: `Gemini (${geminiVoice(sel.voice)})`, run: () => geminiTts(text, geminiVoice(sel.voice), gem && /tts/.test(sel.model) ? sel.model : undefined) }] : [];
-  return gem ? [...gemini, ...openai] : [...openai, ...gemini];
+  // En sonda internetsiz Türkçe ses (kuruluysa): anahtar/kredi/internet olmadan da ses kesilmez
+  const yerel: Engine[] = piperReady() ? [{ ad: 'İnternetsiz ses (Piper)', run: async () => ({ buf: await piperSpeak(text, sel.speed), mime: 'audio/wav' }) }] : [];
+  return gem ? [...gemini, ...openai, ...yerel] : [...openai, ...gemini, ...yerel];
 }
 
 async function viaDirect(text: string, sel: VoiceSel): Promise<Speech> {
@@ -224,6 +227,8 @@ function plausible(s: Speech, text: string) {
 }
 
 async function generateOnce(text: string, sel: VoiceSel, ctx: ElevenCtx): Promise<{ speech: Speech; method: 'speech' | 'chat' | 'elevenlabs' | 'azure' | 'voicestudio' } | { error: string }> {
+  // Kullanıcı "önce internetsiz ses" dediyse: doğrudan Piper
+  if (piperFirst()) return { speech: { buf: await piperSpeak(text, sel.speed), mime: 'audio/wav' }, method: 'speech' };
   // VoiceStudio / Azure / ElevenLabs çalışmazsa (kapalı, anahtar/kredi yok) ses OpenAI ya da Gemini'den gelir
   const ozel = isVoiceStudio(sel.model) ? 'voicestudio' : isAzure(sel.model) ? 'azure' : isEleven(sel.model) ? 'elevenlabs' : null;
   if (ozel) {
