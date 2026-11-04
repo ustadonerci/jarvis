@@ -52,7 +52,7 @@ import { indicatorsRouter } from './indicators.js';
 import { tgWebRouter } from './telegramweb.js';
 import { financeRouter, initFinance } from './finance.js';
 import { exchangesRouter } from './exchanges.js';
-import { getBrainProvider, initialBrain, providersRouter, setBrainProvider } from './providers.js';
+import { getBrainProvider, initialBrain, preferModel, providersRouter, setBrainProvider } from './providers.js';
 import { setRemoteAsk, type Kanal } from './remote.js';
 import { clearErrors, errorList, initErrors, logError } from './errors.js';
 import { approvalsRouter, initApprovals } from './approvals.js';
@@ -207,6 +207,15 @@ if (!state.gecis?.includes('nvidia-beyin') && process.env.NVIDIA_API_KEY?.trim()
 if (!state.gecis?.includes('ses-ilk-ayar')) {
   state.gecis = [...(state.gecis ?? []), 'ses-ilk-ayar'];
   resetVoiceToDefault();
+}
+// Kullanıcının isteği (Kasım 2026, "sen yap"): OpenAI'ye kredi yüklendi; hız için beyin OpenAI, model gpt-4.1-mini (bir kez).
+// Çalışmazsa diğer anahtarlar yine sırayla devreye girer; Ayarlar'dan ya da sesle değiştirilebilir.
+if (!state.gecis?.includes('openai-hizli') && process.env.OPENAI_API_KEY?.trim()) {
+  state.beyin = 'openai';
+  state.gecis = [...(state.gecis ?? []), 'openai-hizli'];
+  preferModel('openai', 'gpt-4.1-mini');
+  saveState();
+  console.log('[beyin] OpenAI (gpt-4.1-mini) beyin yapıldı (kullanıcının isteği)');
 }
 setBrainProvider(initialBrain(state.beyin));
 initBrain();

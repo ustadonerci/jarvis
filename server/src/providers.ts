@@ -77,7 +77,8 @@ const MODEL_TERCIH: Record<string, string[]> = {
   // Varsayılan olarak "düşünce" metni yazan modeller (Nemotron v1.5, Qwen3) sonda: cevap JSON'unu bozabilir
   nvidia: ['meta/llama-4-maverick', 'meta/llama-3.1-405b-instruct', 'mistralai/mistral-large', 'meta/llama-3.1-70b-instruct', 'deepseek-ai/deepseek-v3', 'meta/llama-4-scout', 'nvidia/llama-3.3-nemotron-super-49b', 'qwen/qwen3', 'instruct'],
   groq: ['openai/gpt-oss-120b', 'llama-4-maverick', 'moonshotai/kimi-k2', 'qwen/qwen3-32b', 'llama-4-scout', 'llama-3.3-70b', 'gpt-oss-20b'],
-  openai: ['gpt-5.5', 'gpt-5.1', 'gpt-5', 'gpt-4.1', 'gpt-4o'],
+  // Hızlı ve araç kullanan modeller önce (gpt-5 serisi uzun düşünür, cevap gecikir)
+  openai: ['gpt-4.1-mini', 'gpt-4.1', 'gpt-4o-mini', 'gpt-4o', 'gpt-5-mini', 'gpt-5'],
   openrouter: ['openai/gpt-5', 'anthropic/claude-sonnet', 'google/gemini-2.5-flash', 'openai/gpt-4.1'],
   deepseek: ['deepseek-chat', 'deepseek-v3'],
   mistral: ['mistral-large-latest', 'mistral-medium', 'mistral-small'],
@@ -91,6 +92,15 @@ export function markBadModel(p: Provider) {
   const s = badModels.get(p.id) ?? new Set<string>();
   s.add(providerModel(p));
   badModels.set(p.id, s);
+}
+/** Kullanıcının isteğiyle model seçimi (.env'e dokunmadan, data/model-secimi.json'a) */
+export function preferModel(id: string, model: string) {
+  const p = findProvider(id);
+  if (!p) return;
+  overrides[p.id] = { model, yerine: wanted(p) };
+  fs.mkdirSync(path.dirname(MODEL_FILE), { recursive: true });
+  fs.writeFileSync(MODEL_FILE, JSON.stringify(overrides, null, 1));
+  console.log(`[beyin] ${p.ad}: model ${model} yapıldı`);
 }
 export async function healModel(p: Provider): Promise<string | null> {
   if (p.id === 'anthropic' || p.id === 'routellm') return null;
