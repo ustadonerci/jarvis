@@ -83,13 +83,22 @@ const MODEL_TERCIH: Record<string, string[]> = {
   cerebras: ['gpt-oss-120b', 'qwen-3', 'llama-4', 'llama-3.3-70b', 'llama3.1-8b'],
 };
 const UYGUNSUZ = /embed|whisper|tts|audio|image|vision-only|guard|rerank|moderation|dall-e|realtime|transcribe|search|instruct-v0\.1/i;
+const badModels = new Map<string, Set<string>>();
+/** Seçili model bu hesapta çalışmadı: işaretlenir, healModel başka birini seçer */
+export function markBadModel(p: Provider) {
+  const s = badModels.get(p.id) ?? new Set<string>();
+  s.add(providerModel(p));
+  badModels.set(p.id, s);
+}
 export async function healModel(p: Provider): Promise<string | null> {
   if (p.id === 'anthropic') return null;
   const { modeller } = await testProvider(p).catch(() => ({ modeller: [] as string[] }));
-  const list = modeller.filter(m => !UYGUNSUZ.test(m));
+  // Bu hesapta çalışmadığı görülen modeller (listede olsa da 404 veren) bir daha seçilmez
+  const bad = new Set([...(badModels.get(p.id) ?? []), providerModel(p)]);
+  const list = modeller.filter(m => !UYGUNSUZ.test(m) && !bad.has(m));
   if (!list.length) return null;
   const pick = (MODEL_TERCIH[p.id] ?? ['instruct', 'chat']).map(t => list.find(m => m.toLowerCase().includes(t.toLowerCase()))).find(Boolean) ?? list[0];
-  if (!pick || pick === providerModel(p)) return null;
+  if (!pick) return null;
   overrides[p.id] = { model: pick, yerine: wanted(p) };
   fs.mkdirSync(path.dirname(MODEL_FILE), { recursive: true });
   fs.writeFileSync(MODEL_FILE, JSON.stringify(overrides, null, 1));
@@ -296,8 +305,8 @@ export async function brainStream(body: any, onContent?: (d: string, full: strin
   // RouteLLM: beyin oysa başta, değilse sonda; anahtarı yoksa hiç
   const route = { id: 'routellm', ad: 'RouteLLM (Abacus.AI)', run: (relay: (d: string, f: string) => void) => routellmStream(body, relay, { base: process.env.ROUTELLM_BASE_URL || 'https://routellm.abacus.ai/v1', key: process.env.ABACUS_API_KEY || '' }).catch(e => { throw e instanceof RouteLLMError ? new RouteLLMError(e.status, e.body) : e; }) };
   if (process.env.ABACUS_API_KEY) { if (brain === 'routellm') order.unshift(route); else order.push(route); }
-  const live = order.filter(o => !resting(o.id));
-  const list = live.length ? live : order; // hepsi dinlenmedeyse yine de dene
+  // Önce dinlenmede olmayanlar, sonra dinlenmedekiler (kredi yüklenmiş / anahtar düzelmiş olabilir): hiçbiri atlanmaz
+  const list = [...order.filter(o => !resting(o.id)), ...order.filter(o => resting(o.id))];
   if (!list.length) throw new Error('Hiçbir yapay zekâ anahtarı girilmemiş. Ayarlar → Yapay zeka sağlayıcıları\'ndan ücretsiz bir anahtar ekleyin (Google Gemini, Groq ya da NVIDIA).');
   const errs: string[] = [];
   for (const o of list) {
@@ -318,12 +327,21 @@ export async function brainStream(body: any, onContent?: (d: string, full: strin
       // Model bulunamadı / kaldırıldı / adı yanlış: sağlayıcının listesinden çalışan model seçilip bir kez daha denenir
       const prov = findProvider(o.id);
       if (prov && (e?.status === 404 || e?.status === 410 || (e?.status === 400 && /model/i.test(String(e?.body ?? e?.message)))) && /model|not exist|not found|gone|decommission|deprecated/i.test(String(e?.body ?? e?.message))) {
-        const m = await healModel(prov).catch(() => null);
-        if (m) {
-          try { const r = await o.run(relay); cooldown.delete(o.id); return r; } catch (e2: any) { if (started) throw e2; e = e2; }
+        // Listede görünen ama bu hesapta açılmayan modeller olabiliyor (NVIDIA 404): en çok 3 model denenir
+        for (let k = 0; k < 3; k++) {
+          markBadModel(prov);
+          const m = await healModel(prov).catch(() => null);
+          if (!m) break;
+          try { const r = await o.run(relay); cooldown.delete(o.id); return r; } catch (e2: any) {
+            if (started) throw e2;
+            e = e2;
+            if (!(e?.status === 404 || e?.status === 410 || (e?.status === 400 && /model/i.test(String(e?.body ?? e?.message))))) break;
+          }
         }
       }
-      if (e?.status !== 400) rest(o.id, e);
+      // 413: istek bu sağlayıcının ücretsiz sınırına göre çok büyük (Groq dakikalık sınır); bir saat atlanır
+      if (e?.status === 413) cooldown.set(o.id, { until: Date.now() + 60 * 60_000, why: 'istek bu sağlayıcının ücretsiz sınırı için çok büyük (413)' });
+      if (e?.status !== 400 && e?.status !== 413) rest(o.id, e);
       errs.push(`${o.ad}: ${String(e?.message || e).slice(0, 90)}`);
       console.warn(`[beyin] ${o.ad} hata verdi, sıradakine geçiliyor: ${String(e?.message || e).slice(0, 160)}`);
     }
