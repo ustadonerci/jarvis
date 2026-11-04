@@ -9,6 +9,10 @@ import Anthropic from '@anthropic-ai/sdk';
 import express, { type Router } from 'express';
 import { adminOnly } from './keys.js';
 import { spawn } from 'node:child_process';
+import { geminiStream } from './gemini.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { RouteLLMError, onRouteDown, registerFallbacks, routeLlmDown, routellmStream, type ChatMessage, type ContentPart, type StreamResult } from './routellm.js';
 
 /** tur: 'sohbet' = beyin olabilir (OpenAI uyumlu ya da Claude); 'medya' = yalnız anahtar kaydı (görsel/video/ses) */
@@ -57,7 +61,40 @@ const env = (k: string) => (process.env[k] || '').trim();
 export const findProvider = (id: string) => PROVIDERS.find(p => p.id === id && p.tur === 'sohbet');
 export const anyProvider = (id: string) => PROVIDERS.find(p => p.id === id);
 export const providerReady = (p: Provider) => !!env(p.keyEnv);
-export const providerModel = (p: Provider) => (p.modelEnv && env(p.modelEnv)) || p.varsayilanModel;
+// ---------------------------------------------------------------- Model kendi kendini onarma
+// Sağlayıcı bir modeli kaldırınca (NVIDIA 410 "Gone", Groq "does not exist") ya da model adı yanlış yazılınca
+// ("gbt5.5") o sağlayıcının model listesinden çalışan bir model seçilir ve hatırlanır. Kullanıcı Ayarlar'da model adını
+// değiştirirse (yerine geçtiği ad değişir) bu seçim kendiliğinden bırakılır.
+const MODEL_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data', 'model-secimi.json');
+let overrides: Record<string, { model: string; yerine: string }> = (() => { try { return JSON.parse(fs.readFileSync(MODEL_FILE, 'utf8')); } catch { return {}; } })();
+const wanted = (p: Provider) => (p.modelEnv && env(p.modelEnv)) || p.varsayilanModel;
+export const providerModel = (p: Provider) => { const o = overrides[p.id]; const w = wanted(p); return o && o.yerine === w ? o.model : w; };
+/** Tercih sırası (listede bulunan ilki seçilir; araç çağırabilen sohbet modelleri) */
+const MODEL_TERCIH: Record<string, string[]> = {
+  // Varsayılan olarak "düşünce" metni yazan modeller (Nemotron v1.5, Qwen3) sonda: cevap JSON'unu bozabilir
+  nvidia: ['meta/llama-4-maverick', 'meta/llama-3.1-405b-instruct', 'mistralai/mistral-large', 'meta/llama-3.1-70b-instruct', 'deepseek-ai/deepseek-v3', 'meta/llama-4-scout', 'nvidia/llama-3.3-nemotron-super-49b', 'qwen/qwen3', 'instruct'],
+  groq: ['openai/gpt-oss-120b', 'llama-4-maverick', 'moonshotai/kimi-k2', 'qwen/qwen3-32b', 'llama-4-scout', 'llama-3.3-70b', 'gpt-oss-20b'],
+  openai: ['gpt-5.5', 'gpt-5.1', 'gpt-5', 'gpt-4.1', 'gpt-4o'],
+  openrouter: ['openai/gpt-5', 'anthropic/claude-sonnet', 'google/gemini-2.5-flash', 'openai/gpt-4.1'],
+  deepseek: ['deepseek-chat', 'deepseek-v3'],
+  mistral: ['mistral-large-latest', 'mistral-medium', 'mistral-small'],
+  gemini: ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.5-pro'],
+  cerebras: ['gpt-oss-120b', 'qwen-3', 'llama-4', 'llama-3.3-70b', 'llama3.1-8b'],
+};
+const UYGUNSUZ = /embed|whisper|tts|audio|image|vision-only|guard|rerank|moderation|dall-e|realtime|transcribe|search|instruct-v0\.1/i;
+export async function healModel(p: Provider): Promise<string | null> {
+  if (p.id === 'anthropic') return null;
+  const { modeller } = await testProvider(p).catch(() => ({ modeller: [] as string[] }));
+  const list = modeller.filter(m => !UYGUNSUZ.test(m));
+  if (!list.length) return null;
+  const pick = (MODEL_TERCIH[p.id] ?? ['instruct', 'chat']).map(t => list.find(m => m.toLowerCase().includes(t.toLowerCase()))).find(Boolean) ?? list[0];
+  if (!pick || pick === providerModel(p)) return null;
+  overrides[p.id] = { model: pick, yerine: wanted(p) };
+  fs.mkdirSync(path.dirname(MODEL_FILE), { recursive: true });
+  fs.writeFileSync(MODEL_FILE, JSON.stringify(overrides, null, 1));
+  console.log(`[beyin] ${p.ad}: "${wanted(p)}" modeli yok/çalışmıyor → "${pick}" seçildi`);
+  return pick;
+}
 
 // ---------------------------------------------------------------- RouteLLM yedekleri
 
@@ -74,7 +111,7 @@ export function readyFallbacks(): { id: string; ad: string; base: string; key: s
     const p = findProvider(id);
     if (!p || !p.base || !providerReady(p)) continue;
     const a = authFor(p);
-    out.push({ id: p.id, ad: p.ad, base: p.base, key: a.key, model: providerModel(p), gorsel: GORSEL.has(p.id), headers: a.headers });
+    out.push({ id: p.id, ad: p.ad, base: p.base, key: a.key, model: providerModel(p), gorsel: GORSEL.has(p.id), headers: a.headers, ...(p.id === 'gemini' ? { native: (b: any, oc?: (d: string, f: string) => void) => geminiStream(a.headers['x-goog-api-key'], providerModel(p), b, oc, p.ad) } : {}) });
   }
   return out;
 }
@@ -120,9 +157,11 @@ export function authFor(p: Provider): { key: string; headers: Record<string, str
 
 async function openaiStream(p: Provider, body: any, onContent?: (d: string, full: string) => void): Promise<StreamResult> {
   const a = authFor(p);
+  // Gemini: OpenAI uyumlu uç yeni anahtarlarla "Missing or invalid Authorization header" veriyor → Google'ın kendi API'si
+  if (p.id === 'gemini') return geminiStream(a.headers['x-goog-api-key'], providerModel(p), body, onContent, p.ad);
   // NVIDIA NIM ve bazı açık model sağlayıcılarında varsayılan çıktı sınırı kısa (1024): sahne JSON'u yarıda kesiliyordu
   const extra = body.max_tokens ? {} : ['nvidia', 'groq', 'cerebras', 'together', 'deepinfra', 'huggingface', 'sambanova', 'fireworks', 'novita', 'hyperbolic'].includes(p.id) ? { max_tokens: 4096 } : {};
-  return routellmStream({ ...body, ...extra, model: providerModel(p) }, onContent, { base: p.base!, key: a.key, extraHeaders: a.headers });
+  return routellmStream({ ...body, ...extra, model: providerModel(p) }, onContent, { base: p.base!, key: a.key, extraHeaders: a.headers, ad: p.ad });
 }
 
 // ---------------------------------------------------------------- Anthropic (resmî SDK)
@@ -210,7 +249,7 @@ async function anthropicStream(p: Provider, body: any, onContent?: (d: string, f
   try {
     msg = await stream.finalMessage();
   } catch (e) {
-    if (e instanceof Anthropic.APIError) throw new RouteLLMError(e.status ?? 500, `Anthropic: ${e.message}`);
+    if (e instanceof Anthropic.APIError) throw new RouteLLMError(e.status ?? 500, e.message, 'Anthropic (Claude)');
     throw e;
   }
   if (msg.stop_reason === 'refusal' && !content) content = '{"sahneler":[{"ses":"Bu isteğe yardımcı olamıyorum efendim.","gorsel":{"tip":"yok"}}],"detay":""}';
@@ -254,7 +293,7 @@ export async function brainStream(body: any, onContent?: (d: string, full: strin
     order.push({ id: p.id, ad: p.ad, run: relay => (p.id === 'anthropic' ? anthropicStream(p, body, relay) : openaiStream(p, body, relay)) });
   }
   // RouteLLM: beyin oysa başta, değilse sonda; anahtarı yoksa hiç
-  const route = { id: 'routellm', ad: 'RouteLLM (Abacus.AI)', run: (relay: (d: string, f: string) => void) => routellmStream(body, relay, { base: process.env.ROUTELLM_BASE_URL || 'https://routellm.abacus.ai/v1', key: process.env.ABACUS_API_KEY || '' }) };
+  const route = { id: 'routellm', ad: 'RouteLLM (Abacus.AI)', run: (relay: (d: string, f: string) => void) => routellmStream(body, relay, { base: process.env.ROUTELLM_BASE_URL || 'https://routellm.abacus.ai/v1', key: process.env.ABACUS_API_KEY || '' }).catch(e => { throw e instanceof RouteLLMError ? new RouteLLMError(e.status, e.body) : e; }) };
   if (process.env.ABACUS_API_KEY) { if (brain === 'routellm') order.unshift(route); else order.push(route); }
   const live = order.filter(o => !resting(o.id));
   const list = live.length ? live : order; // hepsi dinlenmedeyse yine de dene
@@ -274,6 +313,14 @@ export async function brainStream(body: any, onContent?: (d: string, full: strin
       if (e?.status === 400 && body.tool_choice && body.tool_choice !== 'auto') {
         body.tool_choice = 'auto';
         try { return await o.run(relay); } catch { /* sıradakine */ }
+      }
+      // Model bulunamadı / kaldırıldı / adı yanlış: sağlayıcının listesinden çalışan model seçilip bir kez daha denenir
+      const prov = findProvider(o.id);
+      if (prov && (e?.status === 404 || e?.status === 410 || (e?.status === 400 && /model/i.test(String(e?.body ?? e?.message)))) && /model|not exist|not found|gone|decommission|deprecated/i.test(String(e?.body ?? e?.message))) {
+        const m = await healModel(prov).catch(() => null);
+        if (m) {
+          try { const r = await o.run(relay); cooldown.delete(o.id); return r; } catch (e2: any) { if (started) throw e2; e = e2; }
+        }
       }
       if (e?.status !== 400) rest(o.id, e);
       errs.push(`${o.ad}: ${String(e?.message || e).slice(0, 90)}`);

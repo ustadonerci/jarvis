@@ -6,19 +6,29 @@ export const CHAT_MODEL = process.env.CHAT_MODEL || 'route-llm';
 export const MOCK = process.env.MOCK === '1' || !API_KEY;
 
 export class RouteLLMError extends Error {
-  constructor(public status: number, public body: string) {
-    super((status === 401 || status === 403) && /invalid|unauthori[sz]ed|permission|password|forbidden/i.test(body)
+  constructor(public status: number, public body: string, public kaynak = 'RouteLLM') {
+    super(kaynak !== 'RouteLLM' ? providerError(kaynak, status, body) : (status === 401 || status === 403) && /invalid|unauthori[sz]ed|permission|password|forbidden/i.test(body)
       ? `Abacus.AI (RouteLLM) anahtarı geçersiz ya da süresi dolmuş (${status}). Ayarlar → Yapay zeka sağlayıcıları'ndan ücretsiz bir anahtar ekleyin (Google Gemini, Groq ya da NVIDIA); Jarvis kendiliğinden ona geçer. Ya da abacus.ai'den yeni anahtar alıp ABACUS_API_KEY alanına girin.`
       : status === 402 || status === 429 ? `Abacus.AI kredisi/kotası bitti (${status}). Ayarlar → Yapay zeka sağlayıcıları'ndan ücretsiz bir anahtar ekleyin (Gemini, Groq, NVIDIA); Jarvis kendiliğinden ona geçer.`
       : `RouteLLM ${status}: ${body.slice(0, 300)}`);
   }
 }
 
+/** Başka bir sağlayıcının hatası: kendi adıyla ve anlaşılır nedenle (eskiden hepsi "Abacus.AI" diye yazılıyordu) */
+function providerError(ad: string, status: number, body: string): string {
+  const neden = status === 402 ? 'bu hesapta kredi yok (ödeme gerekli)'
+    : status === 401 || status === 403 ? 'anahtar geçersiz ya da yetkisiz'
+    : status === 429 ? 'kota doldu, biraz sonra tekrar denenecek'
+    : (status === 404 || status === 410 || status === 400) && /model/i.test(body) ? 'model bulunamadı ya da kaldırılmış'
+    : '';
+  return `${ad} ${status}${neden ? ` (${neden})` : ''}: ${body.replace(/\s+/g, ' ').slice(0, 160)}`;
+}
+
 // ---------------------------------------------------------------- Yedek sağlayıcı
 // RouteLLM (Abacus.AI) anahtarı geçersiz, süresi dolmuş ya da kredisi bitmişse (401/402/403/429) sohbet istekleri
 // kullanıcının anahtarını girdiği başka bir OpenAI uyumlu sağlayıcıya (Gemini, Groq, NVIDIA…) yönlendirilir.
 // Sağlayıcı listesi providers.ts'te; döngüsel içe aktarma olmasın diye oradan kaydedilir.
-export interface Fallback { id: string; ad: string; base: string; key: string; model: string; gorsel: boolean; headers?: Record<string, string> }
+export interface Fallback { id: string; ad: string; base: string; key: string; model: string; gorsel: boolean; headers?: Record<string, string>; /** Kendi API'siyle konuşan sağlayıcı (Gemini) */ native?: (body: any, onContent?: (d: string, full: string) => void) => Promise<StreamResult> }
 let fallbacks: () => Fallback[] = () => [];
 export const registerFallbacks = (fn: () => Fallback[]) => { fallbacks = fn; };
 let onDown: (why: string) => void = () => {};
@@ -46,6 +56,10 @@ async function viaFallback<T>(path: string, body: any, cause: Error): Promise<T>
   let last: Error = cause;
   for (const f of pickFallbacks(body)) {
     try {
+      if (f.native) {
+        const r = await f.native(body);
+        return { model: r.model ?? f.model, choices: [{ message: { role: 'assistant', content: r.content, ...(r.tool_calls.length ? { tool_calls: r.tool_calls } : {}) }, finish_reason: 'stop' }] } as T;
+      }
       const { model: _m, ...rest } = body ?? {};
       const res = await fetch(`${f.base}/chat/completions`, {
         method: 'POST', headers: { ...(f.key ? { Authorization: `Bearer ${f.key}` } : {}), 'Content-Type': 'application/json', ...f.headers },
@@ -91,7 +105,7 @@ export interface StreamResult {
 export async function routellmStream(
   body: object, onContent?: (delta: string, full: string) => void,
   /** Başka bir OpenAI uyumlu sağlayıcı (providers.ts); verilmezse RouteLLM */
-  opts?: { base: string; key: string; extraHeaders?: Record<string, string> },
+  opts?: { base: string; key: string; extraHeaders?: Record<string, string>; ad?: string },
 ): Promise<StreamResult> {
   // RouteLLM bozuksa (anahtar/kredi) aynı istek sırayla yedek sağlayıcılara gider
   if (!opts && routeLlmDown()) {
@@ -116,7 +130,7 @@ export async function routellmStream(
   bump();
   if (!res.ok || !res.body) {
     clearTimeout(idle);
-    const e = new RouteLLMError(res.status, await res.text());
+    const e = new RouteLLMError(res.status, await res.text(), opts?.ad ?? 'RouteLLM');
     if (!opts && isKeyProblem(res.status)) {
       markDown(e);
       const fb = pickFallbacks(body);
@@ -173,8 +187,9 @@ async function streamFallbacks(body: any, onContent: ((d: string, full: string) 
   let last = cause;
   for (const f of list) {
     try {
+      if (f.native) return await f.native(body, onContent);
       const { model: _m, ...rest } = body ?? {};
-      return await routellmStream({ ...rest, model: f.model }, onContent, { base: f.base, key: f.key, extraHeaders: f.headers });
+      return await routellmStream({ ...rest, model: f.model }, onContent, { base: f.base, key: f.key, extraHeaders: f.headers, ad: f.ad });
     } catch (e: any) {
       last = e;
       console.warn(`[beyin] yedek ${f.ad} de olmadı: ${String(e?.message || e).slice(0, 120)}`);
