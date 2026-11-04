@@ -99,12 +99,22 @@ export async function routellmStream(
     if (fb.length) return streamFallbacks(body, onContent, fb, new Error(routeLlmDown()));
   }
   const t0 = performance.now();
-  const res = await fetch((opts?.base ?? BASE_URL) + '/chat/completions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${opts?.key ?? API_KEY}`, 'Content-Type': 'application/json', ...opts?.extraHeaders },
-    body: JSON.stringify({ ...body, stream: true }),
-  });
+  // Takılan sağlayıcı sonsuza kadar bekletmesin: 35 sn içinde cevap başlığı, sonra 60 sn'den uzun sessizlik yok
+  const ac = new AbortController();
+  let idle = setTimeout(() => ac.abort(new Error('yapay zekâ 35 sn içinde cevap vermedi')), 35_000);
+  const bump = () => { clearTimeout(idle); idle = setTimeout(() => ac.abort(new Error('yapay zekâ 60 sn sessiz kaldı')), 60_000); };
+  let res: Response;
+  try {
+    res = await fetch((opts?.base ?? BASE_URL) + '/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${opts?.key ?? API_KEY}`, 'Content-Type': 'application/json', ...opts?.extraHeaders },
+      body: JSON.stringify({ ...body, stream: true }),
+      signal: ac.signal,
+    });
+  } catch (e) { clearTimeout(idle); throw ac.signal.aborted ? ac.signal.reason : e; }
+  bump();
   if (!res.ok || !res.body) {
+    clearTimeout(idle);
     const e = new RouteLLMError(res.status, await res.text());
     if (!opts && isKeyProblem(res.status)) {
       markDown(e);
@@ -119,7 +129,9 @@ export async function routellmStream(
   let model: string | null = null;
   let firstTokenMs: number | null = null;
   const calls: { id: string; name: string; args: string }[] = [];
+  try {
   for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+    bump();
     buf += dec.decode(chunk, { stream: true });
     let nl: number;
     while ((nl = buf.indexOf('\n')) >= 0) {
@@ -146,6 +158,7 @@ export async function routellmStream(
       }
     }
   }
+  } catch (e) { throw ac.signal.aborted ? ac.signal.reason : e; } finally { clearTimeout(idle); }
   return {
     content,
     tool_calls: calls.filter(Boolean).map((c, i) => ({ id: c.id || `call_${i}`, type: 'function' as const, function: { name: c.name, arguments: c.args } })),

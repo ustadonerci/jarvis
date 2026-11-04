@@ -85,16 +85,8 @@ registerFallbacks(readyFallbacks);
  * bir kez açılır; anahtarı kullanıcı kendi Google hesabıyla alıp Ayarlar'a yapıştırır.
  */
 let keyPageOpened = false;
-onRouteDown(why => {
-  if (brain === 'routellm') {
-    const f = readyFallbacks()[0];
-    if (f) {
-      brain = f.id;
-      persistBrain(f.id);
-      console.log(`[beyin] ${why}: beyin kalıcı olarak ${f.ad} yapıldı`);
-      return;
-    }
-  }
+onRouteDown(() => {
+  // Beyin değiştirilmez (her turda sıradaki çalışan sağlayıcı kullanılır); hiç anahtar yoksa ücretsiz Gemini sayfası bir kez açılır
   if (!readyFallbacks().length && !keyPageOpened && process.platform === 'win32') {
     keyPageOpened = true;
     spawn('explorer.exe', ['https://aistudio.google.com/app/apikey'], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
@@ -264,7 +256,12 @@ export async function brainStream(body: any, onContent?: (d: string, full: strin
       return r;
     } catch (e: any) {
       if (started) throw e;
-      rest(o.id, e);
+      // 400: istek bu sağlayıcıya uymadı (zorunlu araç seçimi vb.); aynı sağlayıcı 'auto' ile bir kez daha denenir, dinlenmeye alınmaz
+      if (e?.status === 400 && body.tool_choice && body.tool_choice !== 'auto') {
+        body.tool_choice = 'auto';
+        try { return await o.run(relay); } catch { /* sıradakine */ }
+      }
+      if (e?.status !== 400) rest(o.id, e);
       errs.push(`${o.ad}: ${String(e?.message || e).slice(0, 90)}`);
       console.warn(`[beyin] ${o.ad} hata verdi, sıradakine geçiliyor: ${String(e?.message || e).slice(0, 160)}`);
     }

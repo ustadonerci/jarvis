@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { API_KEY, BASE_URL, MOCK, routellm, type ChatResponse } from './routellm.js';
+import { API_KEY, BASE_URL, MOCK, routeLlmDown, routellm, type ChatResponse } from './routellm.js';
 import { BRIEF_OPENING } from './brief.js';
 import { isMp3, isWav, normalizeSpeech, pcmToWav, wavSeconds } from './audio.js';
 import { elevenReady, elevenSpeak, isEleven, type ElevenCtx } from './eleven.js';
@@ -99,7 +99,34 @@ export function envVoice(): { sel: VoiceSel; warning?: string } {
   return { sel: { model, voice, speed: DEFAULT_RATE } };
 }
 
-export const ttsEnabled = (sel: VoiceSel) => sel.model !== BROWSER && (isEleven(sel.model) ? elevenReady() : isAzure(sel.model) ? azureReady() : isVoiceStudio(sel.model) ? vsUp() : !MOCK && !!API_KEY);
+// Abacus.AI (RouteLLM) çalışmazsa AYNI ses doğrudan sağlayıcıdan üretilir: OpenAI sesleri OPENAI_API_KEY ile,
+// Gemini sesleri GEMINI_API_KEY ile (kullanıcının seçtiği ses değişmez).
+const directKey = (model: string) => ((model.startsWith('gemini') ? process.env.GEMINI_API_KEY : process.env.OPENAI_API_KEY) || '').trim();
+export const ttsEnabled = (sel: VoiceSel) => sel.model !== BROWSER && (isEleven(sel.model) ? elevenReady() : isAzure(sel.model) ? azureReady() : isVoiceStudio(sel.model) ? vsUp() : (!MOCK && !!API_KEY) || !!directKey(sel.model));
+
+async function viaDirect(text: string, sel: VoiceSel): Promise<Speech> {
+  const key = directKey(sel.model);
+  if (!key) throw new Error('doğrudan ses anahtarı yok');
+  if (sel.model.startsWith('gemini')) {
+    const model = /tts/.test(sel.model) ? sel.model : 'gemini-2.5-flash-preview-tts';
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: 'POST', headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(45_000),
+      body: JSON.stringify({ contents: [{ parts: [{ text: `${READ}. ${style()}: ${text}` }] }], generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: sel.voice } } } } }),
+    });
+    const j: any = await r.json().catch(() => ({}));
+    const data = j?.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData)?.inlineData?.data;
+    if (!r.ok || !data) throw new Error(`Gemini ses ${r.status}: ${String(j?.error?.message ?? '').slice(0, 120)}`);
+    const raw = Buffer.from(data, 'base64');
+    const buf = isWav(raw) || isMp3(raw) ? raw : pcmToWav(raw);
+    return { buf, mime: isMp3(buf) ? 'audio/mpeg' : 'audio/wav' };
+  }
+  const r = await fetch('https://api.openai.com/v1/audio/speech', {
+    method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(45_000),
+    body: JSON.stringify({ model: 'gpt-4o-mini-tts', input: text, voice: sel.voice, speed: SERVER_SPEED, response_format: 'mp3', instructions: style() }),
+  });
+  if (!r.ok) throw new Error(`OpenAI ses ${r.status}: ${(await r.text()).slice(0, 120)}`);
+  return { buf: Buffer.from(await r.arrayBuffer()), mime: 'audio/mpeg' };
+}
 
 // ---------------------------------------------------------------- Üretim
 
@@ -159,8 +186,11 @@ async function generateOnce(text: string, sel: VoiceSel, ctx: ElevenCtx): Promis
     const buf = await elevenSpeak(text, sel.voice, sel.model, sel.speed, ctx);
     return { speech: { buf, mime: 'audio/mpeg' }, method: 'elevenlabs' };
   }
+  // Abacus.AI anahtarı yok/bozuk: aynı ses doğrudan OpenAI/Gemini'den
+  if (directKey(sel.model) && (!API_KEY || MOCK || routeLlmDown())) return { speech: await viaDirect(text, sel), method: 'speech' };
   if (methodFor.get(sel.model) !== 'chat') {
     const r = await viaSpeech(text, sel).catch(e => ({ error: String(e.message) }));
+    if (!(r !== 'yok' && !('error' in r)) && r !== 'yok' && directKey(sel.model) && /HTTP (401|402|403|429)/.test(r.error)) return { speech: await viaDirect(text, sel), method: 'speech' };
     if (r !== 'yok' && !('error' in r)) { methodFor.set(sel.model, 'speech'); return { speech: r, method: 'speech' }; }
     if (r === 'yok') methodFor.set(sel.model, 'chat');
     else return r;
