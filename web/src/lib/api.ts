@@ -330,6 +330,7 @@ export interface ProviderView { id: string; ad: string; tur: 'sohbet' | 'medya';
 export interface ProvidersData { beyin: string; aktif: string; saglayicilar: ProviderView[] }
 export const getProviders = () => fetch('/api/saglayicilar', { headers: headers() }).then(r => json<ProvidersData>(r));
 export const setBrain = (id: string) => fetch('/api/saglayicilar/beyin', { method: 'POST', headers: headers(), body: JSON.stringify({ id }) }).then(r => json<ProvidersData>(r));
+export const voiceCare = (ne: 'test' | 'klonla') => fetch(`/api/ses-bakim/${ne}`, { method: 'POST', headers: headers(), body: '{}' }).then(r => json<any>(r));
 export const testAllProviders = () => fetch('/api/saglayicilar/test-hepsi', { method: 'POST', headers: headers() }).then(r => json<{ sonuc: { ad: string; calisiyor: boolean; neden?: string }[] }>(r));
 export const testProvider = (id: string) => fetch(`/api/saglayicilar/${id}/test`, { method: 'POST', headers: headers() }).then(r => json<{ ok: boolean; modeller: string[] }>(r));
 

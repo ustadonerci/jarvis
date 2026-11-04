@@ -9,6 +9,8 @@ import { isMp3, isWav, normalizeSpeech, pcmToWav, wavSeconds } from './audio.js'
 import { elevenReady, elevenSpeak, isEleven, type ElevenCtx } from './eleven.js';
 import { azureReady, azureSpeak, isAzure } from './azure.js';
 import { isVoiceStudio, vsSpeak, vsUp } from './voicestudio.js';
+import { cloneFor } from './voiceclone.js';
+import { ELEVEN_KEY, ELEVEN_MODEL } from './eleven.js';
 import { SCRIPTED_LINES } from './scripted.js';
 
 /**
@@ -105,10 +107,21 @@ export function envVoice(): { sel: VoiceSel; warning?: string } {
 let ttsRouteDownUntil = 0;
 const clean = (k?: string) => (k || '').replace(/^["']|["']$/g, '').replace(/\s+/g, '');
 /** OpenAI sesi için OpenAI anahtarı yoksa Gemini anahtarıyla en yakın Gemini sesi kullanılır (sessiz kalmasın) */
-const directKey = (model: string) => (model.startsWith('gemini') ? clean(process.env.GEMINI_API_KEY) : clean(process.env.OPENAI_API_KEY) || clean(process.env.GEMINI_API_KEY));
+const directKey = (model: string, voice = '') => !!(clean(process.env.OPENAI_API_KEY) || clean(process.env.GEMINI_API_KEY) || (cloneFor(voice)?.voicestudio && vsUp()) || (cloneFor(voice)?.elevenlabs && ELEVEN_KEY)) && !!model;
 // OpenAI sesleri → benzer Gemini sesleri (erkek/kadın ve ton)
 const GEMINI_ESI: Record<string, string> = { onyx: 'Charon', echo: 'Orus', ash: 'Fenrir', ballad: 'Algenib', cedar: 'Iapetus', verse: 'Puck', fable: 'Enceladus', alloy: 'Kore', nova: 'Kore', shimmer: 'Aoede', coral: 'Leda', sage: 'Despina', marin: 'Zephyr' };
-export const ttsEnabled = (sel: VoiceSel) => sel.model !== BROWSER && (isEleven(sel.model) ? elevenReady() : isAzure(sel.model) ? azureReady() : isVoiceStudio(sel.model) ? vsUp() : (!MOCK && !!API_KEY) || !!directKey(sel.model));
+// Google'ın hazır ses adları (Gemini TTS yalnız bunları kabul eder; "onyx" gibi OpenAI adları reddedilir)
+const GEMINI_NAMES = ['Zephyr', 'Puck', 'Charon', 'Kore', 'Fenrir', 'Leda', 'Orus', 'Aoede', 'Callirrhoe', 'Autonoe', 'Enceladus', 'Iapetus', 'Umbriel', 'Algieba', 'Despina', 'Erinome', 'Algenib', 'Rasalgethi', 'Laomedeia', 'Achernar', 'Alnilam', 'Schedar', 'Gacrux', 'Pulcherrima', 'Achird', 'Zubenelgenubi', 'Vindemiatrix', 'Sadachbia', 'Sadaltager', 'Sulafat'];
+const OPENAI_NAMES = ['alloy', 'ash', 'ballad', 'cedar', 'coral', 'echo', 'fable', 'marin', 'nova', 'onyx', 'sage', 'shimmer', 'verse'];
+/** Seçili ses adı → Gemini'nin kabul ettiği ad */
+export const geminiVoice = (v: string) => GEMINI_NAMES.find(n => n.toLowerCase() === v.toLowerCase()) ?? GEMINI_ESI[v.toLowerCase()] ?? 'Charon';
+/** Seçili ses adı → OpenAI'nin kabul ettiği ad */
+export const openaiVoice = (v: string) => {
+  const l = v.toLowerCase();
+  if (OPENAI_NAMES.includes(l)) return l;
+  return Object.entries(GEMINI_ESI).find(([, g]) => g.toLowerCase() === l)?.[0] ?? 'onyx';
+};
+export const ttsEnabled = (sel: VoiceSel) => sel.model !== BROWSER && (isEleven(sel.model) ? elevenReady() : isAzure(sel.model) ? azureReady() : isVoiceStudio(sel.model) ? vsUp() : (!MOCK && !!API_KEY) || !!directKey(sel.model, sel.voice));
 
 async function geminiTts(text: string, voice: string, preferred?: string): Promise<Speech> {
   let last = 'Gemini anahtarı yok';
@@ -136,7 +149,7 @@ let openaiTtsDownUntil = 0;
 async function openaiTts(text: string, sel: VoiceSel): Promise<Speech> {
   const r = await fetch('https://api.openai.com/v1/audio/speech', {
     method: 'POST', headers: { Authorization: `Bearer ${clean(process.env.OPENAI_API_KEY)}`, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(45_000),
-    body: JSON.stringify({ model: 'gpt-4o-mini-tts', input: text, voice: sel.voice, speed: SERVER_SPEED, response_format: 'mp3', instructions: style() }),
+    body: JSON.stringify({ model: 'gpt-4o-mini-tts', input: text, voice: openaiVoice(sel.voice), speed: SERVER_SPEED, response_format: 'mp3', instructions: style() }),
   });
   if (!r.ok) {
     const body = (await r.text()).slice(0, 200);
@@ -146,15 +159,29 @@ async function openaiTts(text: string, sel: VoiceSel): Promise<Speech> {
   return { buf: Buffer.from(await r.arrayBuffer()), mime: 'audio/mpeg' };
 }
 
-/** Seçili sesi doğrudan üretir: OpenAI sesi → OpenAI (anahtar/kredi varsa) → Gemini'de en yakın ses */
+type Engine = { ad: string; run: () => Promise<Speech> };
+/** Seçili ses için doğrudan motorlar, sırayla: aynı ailenin sağlayıcısı → bu sesin klonları (VoiceStudio, ElevenLabs) → diğer aile */
+export function directEngines(text: string, sel: VoiceSel): Engine[] {
+  const gem = sel.model.startsWith('gemini');
+  const oa = clean(process.env.OPENAI_API_KEY), gk = clean(process.env.GEMINI_API_KEY);
+  const c = cloneFor(sel.voice);
+  const openai: Engine[] = oa && Date.now() >= openaiTtsDownUntil ? [{ ad: `OpenAI (${openaiVoice(sel.voice)})`, run: () => openaiTts(text, sel) }] : [];
+  const gemini: Engine[] = gk ? [{ ad: `Gemini (${geminiVoice(sel.voice)})`, run: () => geminiTts(text, geminiVoice(sel.voice), gem && /tts/.test(sel.model) ? sel.model : undefined) }] : [];
+  const klon: Engine[] = [
+    ...(c?.voicestudio && vsUp() ? [{ ad: `VoiceStudio klonu (${sel.voice})`, run: async () => ({ buf: await vsSpeak(text, c.voicestudio!, sel.speed), mime: 'audio/mpeg' }) }] : []),
+    ...(c?.elevenlabs && ELEVEN_KEY ? [{ ad: `ElevenLabs klonu (${sel.voice})`, run: async () => ({ buf: await elevenSpeak(text, c.elevenlabs!, ELEVEN_MODEL, sel.speed), mime: 'audio/mpeg' }) }] : []),
+  ];
+  // Seçili ad gerçek bir Gemini sesiyse önce Gemini; "onyx" gibi başka bir adsa önce o sesin klonu (asıl sese en yakın)
+  const gercekGemini = GEMINI_NAMES.some(n => n.toLowerCase() === sel.voice.toLowerCase());
+  return gem ? (gercekGemini ? [...gemini, ...klon, ...openai] : [...klon, ...gemini, ...openai]) : [...openai, ...klon, ...gemini];
+}
+
 async function viaDirect(text: string, sel: VoiceSel): Promise<Speech> {
-  if (sel.model.startsWith('gemini')) return geminiTts(text, sel.voice, /tts/.test(sel.model) ? sel.model : undefined);
-  let err = '';
-  if (clean(process.env.OPENAI_API_KEY) && Date.now() >= openaiTtsDownUntil) {
-    try { return await openaiTts(text, sel); } catch (e: any) { err = String(e?.message || e); console.warn(`[tts] ${err}; Gemini sesine geçiliyor`); }
+  const errs: string[] = [];
+  for (const e of directEngines(text, sel)) {
+    try { return await e.run(); } catch (err: any) { errs.push(`${e.ad}: ${String(err?.message || err).slice(0, 100)}`); console.warn(`[tts] ${e.ad} olmadı, sıradaki: ${String(err?.message || err).slice(0, 120)}`); }
   }
-  try { return await geminiTts(text, GEMINI_ESI[sel.voice.toLowerCase()] ?? 'Charon'); }
-  catch (e: any) { throw new Error([err, String(e?.message || e)].filter(Boolean).join(' · ')); }
+  throw new Error(errs.join(' · ') || 'kullanılabilir ses motoru yok');
 }
 
 // ---------------------------------------------------------------- Üretim
@@ -216,10 +243,10 @@ async function generateOnce(text: string, sel: VoiceSel, ctx: ElevenCtx): Promis
     return { speech: { buf, mime: 'audio/mpeg' }, method: 'elevenlabs' };
   }
   // Abacus.AI anahtarı yok/bozuk: aynı ses doğrudan OpenAI/Gemini'den
-  if (directKey(sel.model) && (!API_KEY || MOCK || routeLlmDown() || Date.now() < ttsRouteDownUntil)) return { speech: await viaDirect(text, sel), method: 'speech' };
+  if (directKey(sel.model, sel.voice) && (!API_KEY || MOCK || routeLlmDown() || Date.now() < ttsRouteDownUntil)) return { speech: await viaDirect(text, sel), method: 'speech' };
   if (methodFor.get(sel.model) !== 'chat') {
     const r = await viaSpeech(text, sel).catch(e => ({ error: String(e.message) }));
-    if (!(r !== 'yok' && !('error' in r)) && r !== 'yok' && directKey(sel.model) && /HTTP (401|402|403|429)/.test(r.error)) { ttsRouteDownUntil = Date.now() + 30 * 60_000; return { speech: await viaDirect(text, sel), method: 'speech' }; }
+    if (!(r !== 'yok' && !('error' in r)) && r !== 'yok' && directKey(sel.model, sel.voice) && /HTTP (401|402|403|429)/.test(r.error)) { ttsRouteDownUntil = Date.now() + 30 * 60_000; return { speech: await viaDirect(text, sel), method: 'speech' }; }
     if (r !== 'yok' && !('error' in r)) { methodFor.set(sel.model, 'speech'); return { speech: r, method: 'speech' }; }
     if (r === 'yok') methodFor.set(sel.model, 'chat');
     else return r;
@@ -228,7 +255,7 @@ async function generateOnce(text: string, sel: VoiceSel, ctx: ElevenCtx): Promis
   try { s = await viaChat(text, sel); }
   catch (e: any) {
     // Abacus.AI ses vermedi (anahtar/kredi): aynı ses doğrudan OpenAI'den, olmazsa Gemini'den
-    if (directKey(sel.model)) { ttsRouteDownUntil = Date.now() + 30 * 60_000; return { speech: await viaDirect(text, sel), method: 'speech' }; }
+    if (directKey(sel.model, sel.voice)) { ttsRouteDownUntil = Date.now() + 30 * 60_000; return { speech: await viaDirect(text, sel), method: 'speech' }; }
     throw e;
   }
   if (s.transcript != null && normalizeSpeech(s.transcript) !== normalizeSpeech(text)) return { error: `metinden sapma: "${s.transcript.slice(0, 60)}"` };
@@ -310,3 +337,21 @@ export async function warmOpening(sel: VoiceSel) {
 
 /** Ayarlar'daki ▶ dinle: sabit örnek cümle, diskte saklanır (ikinci dinleme kredisiz ve anında). */
 export const preview = (sel: VoiceSel) => synthesize(PREVIEW_TEXT, sel, `önizleme ${voiceId(sel)}`, true);
+
+
+/** Ses testi: seçili ses her motorla ayrı ayrı denenir (Ayarlar → Ses testi, Jarvis: "sesi test et") */
+export async function testVoices(sel: VoiceSel): Promise<{ motor: string; calisiyor: boolean; ms: number; neden?: string }[]> {
+  const text = 'Merhaba efendim, ses testi.';
+  const engines: Engine[] = [];
+  if (!MOCK && API_KEY && !isEleven(sel.model) && !isAzure(sel.model) && !isVoiceStudio(sel.model)) engines.push({ ad: `Abacus.AI (${sel.model} · ${sel.voice})`, run: async () => { const r = await viaSpeech(text, sel); if (r === 'yok') { const c = await viaChat(text, sel); return { buf: c.buf, mime: c.mime }; } return r; } });
+  if (isEleven(sel.model)) engines.push({ ad: `ElevenLabs (${sel.voice})`, run: async () => ({ buf: await elevenSpeak(text, sel.voice, sel.model, sel.speed), mime: 'audio/mpeg' }) });
+  if (isVoiceStudio(sel.model)) engines.push({ ad: `VoiceStudio (${sel.voice})`, run: async () => ({ buf: await vsSpeak(text, sel.voice, sel.speed), mime: 'audio/mpeg' }) });
+  engines.push(...directEngines(text, sel));
+  const out = [];
+  for (const e of engines) {
+    const t0 = Date.now();
+    try { const s = await e.run(); out.push({ motor: e.ad, calisiyor: s.buf.length > 1000, ms: Date.now() - t0 }); }
+    catch (err: any) { out.push({ motor: e.ad, calisiyor: false, ms: Date.now() - t0, neden: String(err?.message || err).slice(0, 140) }); }
+  }
+  return out;
+}

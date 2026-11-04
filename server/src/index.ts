@@ -45,6 +45,7 @@ import { initTgChannels, tgChannelsRouter } from './tgchannels.js';
 import { initDisRobot } from './disrobot.js';
 import { initOwnerMsg } from './ownermsg.js';
 import { initMesai, mesaiRouter } from './mesai.js';
+import { registerCurrentVoice, voiceCloneRouter } from './voiceclone.js';
 import { indicatorsRouter } from './indicators.js';
 import { tgWebRouter } from './telegramweb.js';
 import { financeRouter, initFinance } from './finance.js';
@@ -452,6 +453,8 @@ app.use(tgChannelsRouter());
 app.use(indicatorsRouter());
 app.use(tgWebRouter());
 app.use(mesaiRouter());
+app.use(voiceCloneRouter());
+registerCurrentVoice(() => currentVoice());
 app.use(providersRouter(id => { state.beyin = id; saveState(); }));
 
 // ---------- Onay kartları ve otomasyon (webhook) ----------
