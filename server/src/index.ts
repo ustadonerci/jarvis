@@ -86,6 +86,8 @@ interface State {
   hiz?: Hiz;
   /** Ana sohbeti yürüten yapay zeka sağlayıcısı (providers.ts); yoksa RouteLLM */
   beyin?: string;
+  /** Tek seferlik geçişler */
+  gecis?: string[];
   /** İki alkışla uyanma ayarları (tüm cihazlarda ortak) */
   wake?: WakeConfig;
   /** Konuşma tonu (persona) */
@@ -174,6 +176,14 @@ initContacts(broadcast);
 initMailClean();
 checkImapLogin();
 setHiz(state.hiz ?? defaultHiz());
+// Kullanıcının isteği (Kasım 2026): NVIDIA deneme süresi 6 ay; anahtarı kayıtlıysa beyin bir kez NVIDIA yapılır
+// (sonra Ayarlar'dan ya da sesle değiştirilebilir). Diğer anahtarlar yine sırayla yedek.
+if (!state.gecis?.includes('nvidia-beyin') && process.env.NVIDIA_API_KEY?.trim()) {
+  state.beyin = 'nvidia';
+  state.gecis = [...(state.gecis ?? []), 'nvidia-beyin'];
+  saveState();
+  console.log('[beyin] NVIDIA beyin yapıldı (kullanıcının isteği)');
+}
 setBrainProvider(initialBrain(state.beyin));
 initBrain();
 initSocial(broadcast);

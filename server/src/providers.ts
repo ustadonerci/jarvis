@@ -120,7 +120,9 @@ export function authFor(p: Provider): { key: string; headers: Record<string, str
 
 async function openaiStream(p: Provider, body: any, onContent?: (d: string, full: string) => void): Promise<StreamResult> {
   const a = authFor(p);
-  return routellmStream({ ...body, model: providerModel(p) }, onContent, { base: p.base!, key: a.key, extraHeaders: a.headers });
+  // NVIDIA NIM ve bazı açık model sağlayıcılarında varsayılan çıktı sınırı kısa (1024): sahne JSON'u yarıda kesiliyordu
+  const extra = body.max_tokens ? {} : ['nvidia', 'groq', 'cerebras', 'together', 'deepinfra', 'huggingface', 'sambanova', 'fireworks', 'novita', 'hyperbolic'].includes(p.id) ? { max_tokens: 4096 } : {};
+  return routellmStream({ ...body, ...extra, model: providerModel(p) }, onContent, { base: p.base!, key: a.key, extraHeaders: a.headers });
 }
 
 // ---------------------------------------------------------------- Anthropic (resmî SDK)
@@ -334,9 +336,9 @@ export async function testProvider(p: Provider): Promise<{ modeller: string[] }>
   }
   if (!r.ok) {
     const jj = Array.isArray(j) ? j[0] : j;
-    const msg = String(jj?.error?.message ?? jj?.message ?? '').slice(0, 160);
+    const msg = String(jj?.error?.message ?? jj?.message ?? jj?.error ?? '').slice(0, 160) || JSON.stringify(j).slice(0, 160);
     const ipucu = p.id === 'gemini'
-      ? (r.status === 400 && /api key not valid/i.test(msg) ? ' — anahtar hatalı kopyalanmış olabilir: aistudio.google.com/app/apikey sayfasından "Copy" ile yeniden kopyalayıp yapıştırın'
+      ? (r.status === 400 ? ' — Google anahtarı tanımadı ("API key not valid"): anahtar eksik/yanlış kopyalanmış ya da AI Studio dışından (ör. Google Cloud OAuth) alınmış olabilir: aistudio.google.com/app/apikey sayfasından "Copy" ile yeniden kopyalayıp yapıştırın'
         : r.status === 403 ? ' — anahtar kısıtlı ya da Generative Language API kapalı: AI Studio\'dan yeni anahtar oluşturun (Google Cloud kısıtlaması olmadan)'
         : r.status === 401 ? ' — anahtar tanınmadı: başında/sonunda boşluk ya da tırnak olmadan yapıştırın, kaydettikten sonra Jarvis yeniden başlasın' : '')
       : '';
