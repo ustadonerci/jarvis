@@ -8,7 +8,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import express, { type Router } from 'express';
 import { adminOnly } from './keys.js';
-import { RouteLLMError, routellmStream, type ChatMessage, type ContentPart, type StreamResult } from './routellm.js';
+import { RouteLLMError, registerFallbacks, routeLlmDown, routellmStream, type ChatMessage, type ContentPart, type StreamResult } from './routellm.js';
 
 /** tur: 'sohbet' = beyin olabilir (OpenAI uyumlu ya da Claude); 'medya' = yalnız anahtar kaydı (görsel/video/ses) */
 export interface Provider { id: string; ad: string; keyEnv: string; modelEnv: string; varsayilanModel: string; base?: string; anahtarUrl: string; anahtarSayfasi: string; not?: string; tur: 'sohbet' | 'medya' }
@@ -57,6 +57,26 @@ export const findProvider = (id: string) => PROVIDERS.find(p => p.id === id && p
 export const anyProvider = (id: string) => PROVIDERS.find(p => p.id === id);
 export const providerReady = (p: Provider) => !!env(p.keyEnv);
 export const providerModel = (p: Provider) => (p.modelEnv && env(p.modelEnv)) || p.varsayilanModel;
+
+// ---------------------------------------------------------------- RouteLLM yedekleri
+
+/** Yedek sırası: seçili beyin, sonra ücretsiz katmanı olanlar, sonra diğerleri (yalnız anahtarı girilmiş OpenAI uyumlular) */
+const YEDEK_SIRA = ['gemini', 'groq', 'nvidia', 'cerebras', 'openrouter', 'deepseek', 'openai', 'mistral', 'xai', 'together', 'deepinfra', 'huggingface', 'sambanova', 'fireworks', 'cohere', 'qwen'];
+const GORSEL = new Set(['gemini', 'openai', 'openrouter', 'xai', 'mistral']);
+export function readyFallbacks(): { id: string; ad: string; base: string; key: string; model: string; gorsel: boolean; headers?: Record<string, string> }[] {
+  const ids = [brain, ...YEDEK_SIRA, ...PROVIDERS.map(p => p.id)];
+  const seen = new Set<string>();
+  const out = [];
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const p = findProvider(id);
+    if (!p || !p.base || !providerReady(p)) continue;
+    out.push({ id: p.id, ad: p.ad, base: p.base, key: env(p.keyEnv), model: providerModel(p), gorsel: GORSEL.has(p.id), ...(p.id === 'openrouter' ? { headers: { 'X-Title': 'Jarvis' } } : {}) });
+  }
+  return out;
+}
+registerFallbacks(readyFallbacks);
 
 // ---------------------------------------------------------------- Beyin seçimi
 
