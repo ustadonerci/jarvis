@@ -112,6 +112,11 @@ async function json<T>(r: Response): Promise<T> {
 export const getProfile = () => fetch('/api/profile', { headers: headers() }).then(r => json<ProfileData>(r));
 export const saveProfile = (text: string) => fetch('/api/profile', { method: 'POST', headers: headers(), body: JSON.stringify({ text }) }).then(r => json<{ profile: ProfileData['profile'] }>(r));
 export const addMemory = (text: string) => fetch('/api/memory', { method: 'POST', headers: headers(), body: JSON.stringify({ text }) }).then(r => json<{ memory: MemoryItem[] }>(r));
+export interface HafizaState { acik: boolean; sayi: number; vektorlu: number; ollama: { kurulu: boolean; modeller: string[]; yerel_model: string; hazir: boolean }; son: { id: string; at: string; soru: string; cevap: string; kaynak: string }[] }
+export const getHafiza = () => fetch('/api/hafiza', { headers: headers() }).then(r => json<HafizaState>(r));
+export const deleteHafiza = (id: string) => fetch(`/api/hafiza/${encodeURIComponent(id)}`, { method: 'DELETE', headers: headers() }).then(r => json<{ silinen: number; sayi: number }>(r));
+export const setHafizaAcik = (acik: boolean) => fetch('/api/hafiza/ayar', { method: 'POST', headers: headers(), body: JSON.stringify({ acik }) }).then(r => json<{ acik: boolean }>(r));
+export const installOllama = () => fetch('/api/hafiza/ollama-kur', { method: 'POST', headers: headers() }).then(r => json<any>(r));
 export const deleteMemory = (id: string) => fetch(`/api/memory/${encodeURIComponent(id)}`, { method: 'DELETE', headers: headers() }).then(r => json<{ memory: MemoryItem[] }>(r));
 
 // ---------- Ayarlar → API anahtarları ve Yetenekler ----------

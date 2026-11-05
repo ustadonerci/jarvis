@@ -47,6 +47,8 @@ import { initDisRobot } from './disrobot.js';
 import { initOwnerMsg } from './ownermsg.js';
 import { initMesai, mesaiRouter } from './mesai.js';
 import { onVoicePick, onVoiceReset, piperRouter, setPiperFirst } from './piper.js';
+import { hafizaRouter, localAsk, ollamaStatus, remember } from './hafiza.js';
+import { setLocalAsk } from './routellm.js';
 import { XTTS_MODEL, initXtts, isXtts, xttsRouter, xttsVoices } from './xtts.js';
 import { indicatorsRouter } from './indicators.js';
 import { tgWebRouter } from './telegramweb.js';
@@ -525,6 +527,9 @@ app.use(xttsRouter(voice => {
   broadcast(settingsEvent());
 }));
 initXtts();
+app.use(hafizaRouter());
+setLocalAsk(localAsk);
+ollamaStatus().catch(() => {});
 app.use(providersRouter(id => { state.beyin = id; saveState(); }));
 
 // ---------- Onay kartları ve otomasyon (webhook) ----------
@@ -730,6 +735,7 @@ app.post('/api/chat', async (req, res) => {
     state.messages.push(msg);
     saveState();
     broadcast({ type: 'reply', message: msg, origin: client });
+    remember(text, msg.text, 'sohbet');
     res.json({ ok: true, scenes: total });
   } catch (e: any) {
     console.error(e);
@@ -768,6 +774,7 @@ async function askRemote(text: string, kanal: Kanal): Promise<string> {
     state.messages.push(msg);
     saveState();
     broadcast({ type: 'reply', message: msg, origin });
+    remember(text, msg.text, kanal);
     console.log(`[uzak] ${kanal} komutu cevaplandı · ${full.sahneler.length} sahne`);
     return msg.text;
   } finally {

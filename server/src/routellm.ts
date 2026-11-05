@@ -224,7 +224,11 @@ export interface ChatResponse {
 }
 
 /** Kısa tek seferlik metin isteği (özet, sınıflandırma). Demo modunda ya da hata olursa boş döner. */
+/** Yerel model (Ollama) kuruluysa kısa işler önce ona gider: hafiza.ts kaydeder (döngüsel içe aktarma olmasın) */
+let localAskFn: ((system: string, user: string) => Promise<string | null>) | null = null;
+export const setLocalAsk = (fn: typeof localAskFn) => { localAskFn = fn; };
 export async function askText(system: string, user: string, model = CHAT_MODEL): Promise<string> {
+  if (process.env.MOCK !== '1' && localAskFn) { const t = await localAskFn(system, user).catch(() => null); if (t) return t; }
   if (MOCK && (process.env.MOCK === '1' || !fallbacks().length)) return '';
   try {
     const r = await routellm<ChatResponse>('/chat/completions', { model, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] });
