@@ -25,12 +25,14 @@ import type { StoredMessage } from './types.js';
 export interface DailyCfg {
   raporSaati: number; sabahSaati: number;
   epostaOto: boolean; epostaGrupla: boolean; repoOto: boolean; gonder: boolean; harcamaOto: boolean;
-  sonSabah?: string; sonAksam?: string; epostaIlkYapildi?: boolean; harcamaIlkYapildi?: boolean; sonAyRaporu?: string;
+  sonSabah?: string; sonAksam?: string; epostaIlkYapildi?: boolean; harcamaIlkYapildi?: boolean; sonAyRaporu?: string; repoOnayGecis?: boolean;
 }
 const CFG_FILE = path.join(GUNLUK, 'ayar.json');
-const DEFAULT: DailyCfg = { raporSaati: 21, sabahSaati: 8, epostaOto: true, epostaGrupla: true, repoOto: true, gonder: true, harcamaOto: true };
+const DEFAULT: DailyCfg = { raporSaati: 21, sabahSaati: 8, epostaOto: true, epostaGrupla: true, repoOto: false, gonder: true, harcamaOto: true };
 let cfg: DailyCfg = (() => { try { return { ...DEFAULT, ...JSON.parse(fs.readFileSync(CFG_FILE, 'utf8')) }; } catch { return { ...DEFAULT }; } })();
 const saveCfg = () => { fs.mkdirSync(GUNLUK, { recursive: true }); fs.writeFileSync(CFG_FILE, JSON.stringify(cfg, null, 2)); };
+// Kullanıcının isteği (Kasım 2026): yeni repolar yalnız listelensin, onayı olmadan kurulmasın — bir kez kapatılır
+if (!cfg.repoOnayGecis) { cfg.repoOto = false; cfg.repoOnayGecis = true; try { saveCfg(); } catch { /* yazılamazsa bellekte kapalı */ } }
 
 type Kind = 'aksam' | 'eposta' | 'github' | 'harcama' | 'ay';
 interface DayReport { tarih: string; aksam?: string; eposta?: string; github?: string; harcama?: string; ay?: string; gonderildi?: Partial<Record<Kind, string[]>> }
@@ -112,11 +114,12 @@ export async function runMail(send = true): Promise<string> {
 
 export function githubText(list: RepoKarar[]): string {
   if (!list.length) return '🤖 🐙 GitHub: bugün daha önce görmediğim yeni yapay zeka reposu çıkmadı.';
-  const k = list.filter(x => x.kuruldu), n = list.filter(x => !x.kuruldu);
+  const k = list.filter(x => x.kuruldu), o = list.filter(x => !x.kuruldu && /onayınızı bekliyor/.test(x.neden)), n = list.filter(x => !x.kuruldu && !o.includes(x));
   const item = (x: RepoKarar, why: string) => `• ${x.repo} (⭐${x.yildiz})\n  ${x.url}\n  Ne işe yarar: ${short(x.ne_ise_yarar || 'açıklama yok', 260)}\n  ${why}: ${x.neden}`;
   return [
     `🤖 🐙 GitHub · son 2 günde çıkan ${list.length} yeni yapay zeka reposu`,
-    k.length ? `\n✅ Kurduklarım (${k.length}):\n${k.map(x => item(x, 'Neden kurdum')).join('\n')}` : '\n✅ Bugün kurulacak uygun repo çıkmadı.',
+    o.length ? `\n🟡 Onayınızı bekleyenler (${o.length}) — "şunu kur" derseniz kurarım:\n${o.map(x => item(x, 'Durum')).join('\n')}` : '',
+    k.length ? `\n✅ Kurduklarım (${k.length}):\n${k.map(x => item(x, 'Neden kurdum')).join('\n')}` : o.length ? '' : '\n✅ Bugün uygun yeni repo çıkmadı.',
     n.length ? `\n⏭️ Kurmadıklarım (${n.length}):\n${n.map(x => item(x, 'Neden kurmadım')).join('\n')}` : '',
   ].filter(Boolean).join('\n');
 }
@@ -252,7 +255,7 @@ export const DAILY_TOOLS = [
     type: 'function',
     function: {
       name: 'gunluk_rapor',
-      description: "Jarvis'in günlük raporu ve günlük işleri. rapor: bugün neler yaptığının raporu ('bugün ne yaptın', 'günlük rapor ver'). eposta: e-postaları şimdi düzenler (reklam/bülten/spam silinir, abonelikten çıkılır, gruplanır) ve önemlileri özetler ('maillerimi düzenle/temizle/özetle'). github: bugün çıkan yeni yapay zeka repolarını linkleriyle tarar, uygunları yetenek olarak kurar, neden kurduğunu/kurmadığını söyler. otomatik_kurulum (ac: true/false): 'otomatik repo kurmayı kapat/aç'. son: bugünün kayıtlı raporları. Rapor Telegram/WhatsApp'a da gönderilir.",
+      description: "Jarvis'in günlük raporu ve günlük işleri. rapor: bugün neler yaptığının raporu ('bugün ne yaptın', 'günlük rapor ver'). eposta: e-postaları şimdi düzenler (reklam/bülten/spam silinir, abonelikten çıkılır, gruplanır) ve önemlileri özetler ('maillerimi düzenle/temizle/özetle'). github: bugün çıkan yeni yapay zeka repolarını linkleriyle listeler; otomatik kurulum kapalıysa (varsayılan) KURMAZ, uygunları onay için sunar — kullanıcı açıkça 'kur' derse yetenek_kur ile kurulur. otomatik_kurulum (ac: true/false): 'otomatik repo kurmayı kapat/aç'. son: bugünün kayıtlı raporları. Rapor Telegram/WhatsApp'a da gönderilir.",
       parameters: { type: 'object', properties: { islem: { type: 'string', enum: ['rapor', 'eposta', 'github', 'son', 'otomatik_kurulum'] }, ac: { type: 'boolean', description: 'otomatik_kurulum: günlük bulunan repoları kendiliğinden kurma açık/kapalı' } }, required: ['islem'] },
     },
   },

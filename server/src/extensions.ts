@@ -892,7 +892,7 @@ export async function runExtensionTool(name: string, args: any, progress: (l: st
   if (name === 'yetenek_kur') {
     const kisa = String(args.url ?? '').replace('https://github.com/', '');
     progress(`GitHub'dan kuruluyor: ${kisa}`);
-    // Kurulum + çalışıyor mu denemesi dakikalar sürebilir: Jarvis en çok 40 sn bekler, gerisi arkada sürer
+    // Kurulum + çalışıyor mu denemesi dakikalar sürebilir: Jarvis en çok 10 sn bekler, gerisi arkada sürer
     // (önceden cevap 2,5 dk sınırına takılıp "cevap vermedi" görünüyordu).
     const job = (async () => {
       const r: any = await installFromGitHub(String(args.url ?? ''));
@@ -905,7 +905,7 @@ export async function runExtensionTool(name: string, args: any, progress: (l: st
     })();
     job.then(r => { logActivity('yetenek', `Kurulum bitti: ${kisa} · ${r.kurulmadi ? 'kurulmadı (uyumsuz)' : 'kuruldu'}`); changed(); })
       .catch(e => { logActivity('yetenek', `Kurulum olmadı: ${kisa} · ${String(e?.message || e).slice(0, 200)}`); changed(); });
-    const r = await Promise.race([job.catch(e => ({ hata: String(e?.message || e) })), new Promise<null>(res => setTimeout(() => res(null), 40_000))]);
+    const r = await Promise.race([job.catch(e => ({ hata: String(e?.message || e) })), new Promise<null>(res => setTimeout(() => res(null), 10_000))]);
     if (!r) return JSON.stringify({ suruyor: true, not: `Kurulum arka planda sürüyor (${kisa}); birkaç dakika sürebilir. Kullanıcıya bunu söyle; bitince Ayarlar → Yetenekler'de görünür. "Kuruldu mu" diye sorarsa repo_duzenle liste ile bak.` });
     return JSON.stringify(r);
   }

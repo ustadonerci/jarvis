@@ -175,7 +175,7 @@ export async function dailyRepos(o: { kur: boolean }): Promise<RepoKarar[]> {
     else if (info.arsiv) k.neden = 'arşivlenmiş (geliştirilmiyor)';
     else if (!j.kurulabilir) k.neden = 'Jarvis\'e yetenek olarak eklenecek dosyası yok (SKILL.md, iş akışı ya da MCP); bu bir uygulama/kütüphane, bilgisayarda ayrıca çalıştırılması gerekir';
     else if (info.yildiz < MIN_YILDIZ) k.neden = `henüz çok yeni ve az denenmiş (${info.yildiz} yıldız; en az ${MIN_YILDIZ} gerekiyor), güvenlik için kurulmadı`;
-    else if (!o.kur) k.neden = 'otomatik kurulum kapalı (Ayarlar → Günlük rapor)';
+    else if (!o.kur) k.neden = 'uygun · onayınızı bekliyor ("kur" derseniz kurarım)';
     else if (kurulan >= MAX_KURULUM) k.neden = `bugünkü kurulum sınırı (${MAX_KURULUM}) doldu; yarın tekrar değerlendirilecek`;
     else {
       try {
