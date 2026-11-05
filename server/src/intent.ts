@@ -21,7 +21,7 @@ const RULES: [Group, RegExp][] = [
   ['sms', /(\bsms|kisa mesaj)/],
   ['sosyal', /(youtube|youtu\.be|instagram|insta\b|tiktok|twitter|x\.com|takip|kanal|reels|shorts|video(yu|lari)? (ozetle|ac))/],
   ['android', /(telefonuma|telefonumdan|telefonumda|play store|google play|apk|android|uygulama(yi)? (yukle|indir|sil|kaldir))/],
-  ['medya', /(resm(i|in)|resim|foto|gorsel(i|in)? (kirp|boyut|filtre|donustur)|boyutlandir|kirp|filtre|siyah beyaz|\.(jpe?g|png|webp|mp3|wav|m4a|mp4|mov|mkv|webm)\b|ses(i|ini)? (temizle|cikar)|gurultu|video(yu|nun)? (kes|kirp|sikistir|donustur)|gif|altyazi|ffmpeg|reels?\b|shorts|tiktok video|dikey video|video (yap|hazirla|olustur|uret|kurgula)|videosu (yap|hazirla|olustur|uret))/],
+  ['medya', /(resm(i|in)|resim|foto|gorsel(i|in)? (kirp|boyut|filtre|donustur)|boyutlandir|kirp|filtre|siyah beyaz|\.(jpe?g|png|webp|mp3|wav|m4a|mp4|mov|mkv|webm)\b|ses(i|ini)? (temizle|cikar)|gurultu|video(yu|nun)? (kes|kirp|sikistir|donustur)|gif|altyazi|ffmpeg|reels?\b|shorts|tiktok video|dikey video|video (yap|hazirla|olustur|uret|kurgula)|tarz rehber|paylas|youtube'?a (yukle|at)|instagram'?a (yukle|at)|videosu (yap|hazirla|olustur|uret))/],
   ['ses', /(voicestudio|voice studio|ses(imi|ini)? (klonla|kopyala|degistir)|klon ses|ses klon|sesin(i)? (degistir|ayarla)|sesle konus|ses profil|ses modeli)/],
   ['satin', /(satin al|satın al|abonelik|abone ol|hostinger|hosting|alan adi|domain|vps|siparis|odeme yap|paket al|fatura|yenile)/],
   ['site', /(site(yi|sini)? (indir|arsivle|kaydet)|web sitesi(ni)? (indir|kaydet))/],

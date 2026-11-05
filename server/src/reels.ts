@@ -10,6 +10,7 @@ import { generateImage, IMG_DIR } from './imagegen.js';
 import { OUT_DIR, findFfmpeg, run } from './media.js';
 import { safePath } from './system.js';
 import { synthesize, type VoiceSel } from './tts.js';
+import { alignWords, buildAss, whisperWords } from './altyazi.js';
 
 const W = 1080, H = 1920, FPS = 30;
 const IMG = /\.(jpe?g|png|webp|bmp)$/i, VID = /\.(mp4|mov|mkv|webm|m4v)$/i, AUD = /\.(mp3|wav|m4a|aac|ogg|flac)$/i;
@@ -66,7 +67,7 @@ async function background(s: Scene, i: number, uret: boolean, log: (l: string) =
 }
 
 /** Tek sahneyi aynı biçimde (h264 + aac 44.1k stereo) üretir; böylece birleştirme yeniden kodlamadan yapılır */
-async function renderScene(ff: string, tmp: string, s: Scene, i: number, o: { seslendir: boolean; uret: boolean; log: (l: string) => void }): Promise<string> {
+async function renderScene(ff: string, tmp: string, s: Scene, i: number, o: { seslendir: boolean; uret: boolean; altyazi: boolean; log: (l: string) => void }): Promise<string> {
   const bg = await background(s, i, o.uret, o.log);
   let voiceFile = '';
   const sel = voice();
@@ -92,7 +93,17 @@ async function renderScene(ff: string, tmp: string, s: Scene, i: number, o: { se
   const txt = path.join(tmp, `yazi${i}.txt`);
   fs.writeFileSync(txt, wrap(s.metin), 'utf8');
   const font = fontFile();
-  const draw = `drawtext=${font ? `fontfile='${fpath(font)}':` : ''}textfile='${fpath(txt)}':fontcolor=white:fontsize=78:line_spacing=20:borderw=7:bordercolor=black@0.85:x=(w-tw)/2:y=h*0.64-th/2`;
+  // Kelime kelime vurgulu altyazı (seslendirme varsa): başlık üstte küçük, söylenen kelimeler ortada sarı vurguyla
+  let ass = '';
+  if (o.altyazi && voiceFile && say) {
+    o.log(`sahne ${i + 1}: altyazı zamanlanıyor`);
+    const words = alignWords(say, vlen, await whisperWords(voiceFile));
+    if (words.length) fs.writeFileSync(ass = path.join(tmp, `altyazi${i}.ass`), buildAss(words, { W, H, font: process.platform === 'win32' ? 'Arial' : 'DejaVu Sans' }), 'utf8');
+  }
+  const fontsDir = process.platform === 'win32' ? `:fontsdir='${fpath('C:\\Windows\\Fonts')}'` : '';
+  const draw = ass
+    ? `drawtext=${font ? `fontfile='${fpath(font)}':` : ''}textfile='${fpath(txt)}':fontcolor=white:fontsize=58:line_spacing=14:borderw=6:bordercolor=black@0.85:x=(w-tw)/2:y=h*0.16,subtitles=filename='${fpath(ass)}'${fontsDir}`
+    : `drawtext=${font ? `fontfile='${fpath(font)}':` : ''}textfile='${fpath(txt)}':fontcolor=white:fontsize=78:line_spacing=20:borderw=7:bordercolor=black@0.85:x=(w-tw)/2:y=h*0.64-th/2`;
   const vf = `[0:v]${bgf},eq=brightness=-0.06,${draw},fade=t=in:st=0:d=0.25,format=yuv420p[v]`;
   const audioIn = voiceFile ? ['-i', voiceFile] : ['-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo'];
   const out = path.join(tmp, `sahne${i}.mp4`);
@@ -102,7 +113,7 @@ async function renderScene(ff: string, tmp: string, s: Scene, i: number, o: { se
   return out;
 }
 
-export async function makeReels(a: { baslik?: string; sahneler: Scene[]; muzik?: string; seslendirme?: boolean; gorsel_uret?: boolean }, log: (l: string) => void) {
+export async function makeReels(a: { baslik?: string; sahneler: Scene[]; muzik?: string; seslendirme?: boolean; gorsel_uret?: boolean; altyazi?: boolean }, log: (l: string) => void) {
   const ff = findFfmpeg();
   if (!ff) throw new Error('ffmpeg kurulu değil. Kullanıcıya söyle ve uygulama_yonet ile "Gyan.FFmpeg" kurulumunu öner (onay kartı açar).');
   const scenes = (Array.isArray(a.sahneler) ? a.sahneler : []).filter(s => s && String(s.metin ?? '').trim()).slice(0, 12);
@@ -114,7 +125,7 @@ export async function makeReels(a: { baslik?: string; sahneler: Scene[]; muzik?:
     const parts: string[] = [];
     for (let i = 0; i < scenes.length; i++) {
       log(`reels: sahne ${i + 1}/${scenes.length}`);
-      parts.push(await renderScene(ff, tmp, { ...scenes[i], metin: String(scenes[i].metin) }, i, { seslendir: a.seslendirme !== false, uret: a.gorsel_uret !== false, log }));
+      parts.push(await renderScene(ff, tmp, { ...scenes[i], metin: String(scenes[i].metin) }, i, { seslendir: a.seslendirme !== false, uret: a.gorsel_uret !== false, altyazi: a.altyazi !== false, log }));
     }
     const list = path.join(tmp, 'liste.txt');
     fs.writeFileSync(list, parts.map(p => `file '${p.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`).join('\n'));
@@ -144,7 +155,7 @@ export const REELS_TOOLS = [
     type: 'function',
     function: {
       name: 'reels_yap',
-      description: "Dikey (9:16, 1080x1920) Reels / Shorts / TikTok videosu üretir: her sahnede ekranda büyük yazı, arka plan (kullanıcının resmi/videosu ya da yapay zekayla üretilen görsel) ve Jarvis'in sesiyle seslendirme; istenirse alta müzik. Önce konuyu 4-8 kısa sahneye böl: ilk sahne dikkat çeken bir kanca, son sahne çağrı (takip et, yorum yaz…). metin ekranda görünen kısa yazıdır (en çok ~12 kelime); seslendirme söylenecek cümledir. Sonuç İndirilenler\\\\Jarvis-Medya'ya yazılır; paylaşılmaz.",
+      description: "Dikey (9:16, 1080x1920) Reels / Shorts / TikTok videosu üretir: her sahnede ekranda büyük yazı, arka plan (kullanıcının resmi/videosu ya da yapay zekayla üretilen görsel) ve Jarvis'in sesiyle seslendirme; istenirse alta müzik. Önce konuyu 4-8 kısa sahneye böl: ilk sahne dikkat çeken bir kanca, son sahne çağrı (takip et, yorum yaz…). metin ekranda görünen kısa yazıdır (en çok ~12 kelime); seslendirme söylenecek cümledir. Seslendirilen cümleler kelime kelime sarı vurgulu altyazıyla basılır. ÖNCE tarz_rehberi'ni oku ve ona uy (giriş kalıbı, süre, ton). Sonuç İndirilenler\\\\Jarvis-Medya'ya yazılır; paylaşmak için paylas_video (önizleme + onay).",
       parameters: {
         type: 'object',
         properties: {
@@ -166,6 +177,7 @@ export const REELS_TOOLS = [
           muzik: { type: 'string', description: 'Arka plan müziği dosyası (mp3/wav), isteğe bağlı' },
           seslendirme: { type: 'boolean', description: 'Varsayılan true' },
           gorsel_uret: { type: 'boolean', description: 'Görseli olmayan sahnelere yapay zekayla görsel üret (varsayılan true)' },
+          altyazi: { type: 'boolean', description: 'Kelime kelime vurgulu altyazı (varsayılan true; Whisper ile zamanlanır)' },
         },
         required: ['sahneler'],
       },

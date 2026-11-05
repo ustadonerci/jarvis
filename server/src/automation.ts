@@ -22,7 +22,7 @@ export interface Webhook { id: string; ad: string; url: string; aciklama: string
 const hooks = (): Webhook[] => { try { return JSON.parse(fs.readFileSync(HOOK_FILE, 'utf8')); } catch { return []; } };
 const saveHooks = (l: Webhook[]) => { fs.mkdirSync(DATA, { recursive: true }); fs.writeFileSync(HOOK_FILE, JSON.stringify(l, null, 2)); };
 const norm = (s: string) => s.toLocaleLowerCase('tr').trim();
-const findHook = (ad: string) => hooks().find(h => norm(h.ad) === norm(ad)) ?? hooks().find(h => norm(h.ad).includes(norm(ad)));
+export const findHook = (ad: string) => hooks().find(h => norm(h.ad) === norm(ad)) ?? hooks().find(h => norm(h.ad).includes(norm(ad)));
 
 async function postHook(h: Webhook, veri: unknown): Promise<string> {
   const r = await fetch(h.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(veri ?? {}), signal: AbortSignal.timeout(60_000) });

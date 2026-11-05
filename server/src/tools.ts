@@ -24,6 +24,7 @@ import { isMediaTool, runMediaTool } from './media.js';
 import { isVoiceStudioTool, runVoiceStudioTool } from './voicestudio.js';
 import { isHostingerTool, runHostingerTool } from './hostinger.js';
 import { isReelsTool, runReelsTool } from './reels.js';
+import { isPaylasimTool, runPaylasimTool } from './paylasim.js';
 import { isRobotTool, runRobotTool } from './robot.js';
 import { isBrand24Tool, runBrand24Tool } from './brand24.js';
 import { isContactTool, runContactTool } from './contacts.js';
@@ -334,6 +335,7 @@ async function runToolOnce(name: string, rawArgs: string, progress: ToolProgress
   if (isVoiceStudioTool(name)) return runVoiceStudioTool(args);
   if (isHostingerTool(name)) return runHostingerTool(args, progress);
   if (isReelsTool(name)) return runReelsTool(args, progress);
+  if (isPaylasimTool(name)) return runPaylasimTool(name, args);
   if (isRobotTool(name)) return runRobotTool(args, progress);
   if (isBrand24Tool(name)) return runBrand24Tool(args, progress);
   if (isContactTool(name)) return runContactTool(name, args, progress);
