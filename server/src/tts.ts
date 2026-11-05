@@ -187,8 +187,11 @@ function directEngines(text: string, sel: VoiceSel): Engine[] {
   const yerel: Engine[] = piperReady() ? [{ ad: 'İnternetsiz ses (Piper)', run: async () => ({ buf: await piperSpeak(text, sel.speed), mime: 'audio/wav' }) }] : [];
   // Ses adı hangi sağlayıcınınsa önce o: "onyx" gerçek OpenAI onyx'i ile, "Charon" Gemini ile
   const l = sel.voice.toLowerCase();
-  const geminiFirst = GEMINI_NAMES.some(n => n.toLowerCase() === l) ? true : OPENAI_NAMES.includes(l) ? false : gem;
-  return geminiFirst ? [...gemini, ...openai, ...yerel] : [...openai, ...gemini, ...yerel];
+  // Kullanıcının isteği (Kasım 2026): ses ilk kurulumdaki gibi kalsın, başka bir sese (Gemini/Piper) geçmesin.
+  // Seçili ses yalnız kendi sağlayıcısından üretilir (onyx → OpenAI); o da olmazsa cevap eskisi gibi bilgisayar sesine düşer.
+  if (OPENAI_NAMES.includes(l)) return openai;
+  if (GEMINI_NAMES.some(n => n.toLowerCase() === l)) return gemini;
+  return gem ? gemini : openai.length ? openai : [...gemini, ...yerel];
 }
 
 async function viaDirect(text: string, sel: VoiceSel): Promise<Speech> {
