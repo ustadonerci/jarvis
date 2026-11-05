@@ -11,6 +11,7 @@ import express, { type Router } from 'express';
 import { propose } from './approvals.js';
 import { adminOnly } from './keys.js';
 import { cleanReference } from './voicestudio.js';
+import { recordVersion } from './versions.js';
 
 export const XTTS_MODEL = 'xtts';
 export const isXtts = (m: string) => m === XTTS_MODEL;
@@ -84,6 +85,8 @@ async function install(): Promise<string> {
   await run(VPY, ['-m', 'pip', 'install', '--upgrade', 'pip'], 10 * 60_000);
   await run(VPY, ['-m', 'pip', 'install', 'coqui-tts'], 60 * 60_000);
   fs.writeFileSync(MARK, new Date().toISOString());
+  const ver = (await run(VPY, ['-m', 'pip', 'show', 'coqui-tts'], 60_000).catch(() => '')).match(/Version:\s*(\S+)/)?.[1] ?? '?';
+  recordVersion('coqui-tts (XTTS)', { tur: 'arac', surum: ver, kaynak: 'https://pypi.org/project/coqui-tts/', lisans: 'MPL-2.0 (model: Coqui Public Model License)' });
   const ok = await startXtts();
   if (!ok) throw new Error(`XTTS kuruldu ama açılamadı: ${lastLog}`);
   return 'XTTS kuruldu ve açıldı. Ayarlar → Ses listesinde "XTTS" sesleri görünür; kendi sesinizi Ayarlar → XTTS bölümünden ekleyebilirsiniz.';

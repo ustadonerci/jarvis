@@ -23,6 +23,7 @@ import { logError } from './errors.js';
 import { propose } from './approvals.js';
 import { logActivity } from './activity.js';
 import { askText } from './routellm.js';
+import { forgetVersion, readVersions, recordVersion } from './versions.js';
 
 const run = promisify(execFile);
 const DATA = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
@@ -39,6 +40,8 @@ export interface Skill {
   kaynakUrl?: string;
   /** Becerinin repo içindeki klasörü (references/ gibi ek dosyaları yetenek_kullan ile okunabilir) */
   klasor?: string;
+  /** Kullanım sayısı ve son kullanım (kullanılmayanlar listelenip onayla arşive alınır) */
+  kullanim?: number; sonKullanim?: string;
 }
 export interface McpServer {
   id: string; ad: string; aktif: boolean; repo?: string;
@@ -51,8 +54,9 @@ export interface McpServer {
   kurulum?: 'npm';
   /** Kullanıcı elle kapattı: otomatik açma bunu açmaz */
   elleKapali?: boolean;
+  sonKullanim?: string;
 }
-interface Repo { slug: string; url: string; at: string; /** kurulan commit (eski kurulumlarda yok) */ sha?: string; /** Başlık (repo_duzenle ile) */ kategori?: string; /** Çalışan sürüm etiketine sabitlendi (en son sürüm çalışmadığı için) */ surum?: string }
+interface Repo { slug: string; url: string; at: string; /** kurulan commit (eski kurulumlarda yok) */ sha?: string; /** Başlık (repo_duzenle ile) */ kategori?: string; /** Çalışan sürüm etiketine sabitlendi (en son sürüm çalışmadığı için) */ surum?: string; /** Arşivde: dosyaları duruyor, yetenekleri kapalı (kutuphane arsivle) */ arsiv?: boolean; lisans?: string | null; yildiz?: number; son_guncelleme?: string }
 interface Store { skills: Skill[]; servers: McpServer[]; repos: Repo[]; /** Yeni ve kapalı MCP sunucuları kendiliğinden açılsın (varsayılan: evet) */ otoAc?: boolean }
 
 const MAX_SKILL = 40_000;
@@ -751,6 +755,14 @@ export const EXT_TOOLS = [
       parameters: { type: 'object', properties: { islem: { type: 'string', enum: ['durum', 'bozuklari_sil', 'hepsini_ac', 'ac'] }, ad: { type: 'string', description: "ac için sunucu adı (ör. HeyGen, Higgsfield)" } }, required: ['islem'] },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'kutuphane',
+      description: "Beceri kütüphanesi bakımı (repolar ve MCP'ler). denetle: her repoyu lisans (MIT/Apache uygun; AGPL/GPL/ticari-kullanım-yasak işaretlenir), son güncelleme (6 aydır güncellenmeyen = terk), yıldız ve kullanım bakımından inceler; her başlıkta en iyi 1-2 repo aktif kalır, gerisini arşive almayı ONAY KARTIYLA önerir. kullanilmayan: 30 gündür kullanılmayan becerileri listeler, arşive almayı onay kartıyla önerir (kendiliğinden silinmez). arsivden_cikar (ad): arşivdeki repoyu yeniden açar. geri_al (ad): güncellemeden önce alınan yedeğe döner (onay kartı). surumler: kurulu sürümler (versions.json). guncelleme_kontrol: yeni sürümü olan repoları bulur; güncelleme ONAY KARTIYLA ve önce yedek alınarak yapılır (ayda bir kendiliğinden de kontrol edilir). 'kütüphaneyi düzenle/denetle', 'hangi beceriler kullanılmıyor', 'eski sürüme dön' isteklerinde.",
+      parameters: { type: 'object', properties: { islem: { type: 'string', enum: ['denetle', 'kullanilmayan', 'arsivden_cikar', 'geri_al', 'surumler', 'guncelleme_kontrol'] }, ad: { type: 'string', description: 'repo adı (sahip/ad ya da ad)' } }, required: ['islem'] },
+    },
+  },
 ] as const;
 
 /** skills.sh arama API'si (npx skills find ile aynı); güvenilirlik için kurulum sayısı ve bilinen kaynaklar öne alınır */
@@ -851,6 +863,7 @@ export async function runExtensionTool(name: string, args: any, progress: (l: st
     const q = String(args.ad ?? '').toLocaleLowerCase('tr').trim();
     const s = active().find(x => x.ad.toLocaleLowerCase('tr') === q) ?? active().find(x => x.ad.toLocaleLowerCase('tr').includes(q));
     if (!s) return JSON.stringify({ hata: `"${args.ad}" adında aktif yetenek yok.`, mevcut: active().map(x => x.ad) });
+    s.kullanim = (s.kullanim ?? 0) + 1; s.sonKullanim = new Date().toISOString(); save();
     // Beceri klasöründeki ek dosyalar (references/ vb.): talimatlar bunlara atıf yapıyorsa dosya ile okunur
     const dir = s.repo && s.klasor !== undefined ? path.join(REPOS, s.repo, s.klasor) : null;
     if (dir && args.dosya) {
@@ -878,6 +891,9 @@ export async function runExtensionTool(name: string, args: any, progress: (l: st
     progress(`${mine ? 'yetenek güncellendi' : 'yeni yetenek'}: ${ad}`);
     console.log(`[yetenek] Jarvis ${mine ? 'güncelledi' : 'öğrendi'}: ${ad} (${tur})`);
     return JSON.stringify({ ok: true, ad, tur, guncellendi: !!mine });
+  }
+  if (name === 'kutuphane') {
+    try { return JSON.stringify(await runLibrary(args, progress)); } catch (e: any) { return JSON.stringify({ hata: String(e?.message || e).slice(0, 300) }); }
   }
   if (name === 'repo_duzenle') {
     try {
@@ -912,6 +928,7 @@ export async function runExtensionTool(name: string, args: any, progress: (l: st
   const ref = toolIndex.get(name)!;
   const l = live.get(ref.server);
   const srv = store.servers.find(s => s.id === ref.server);
+  if (srv) { srv.sonKullanim = new Date().toISOString(); save(); }
   if (!l?.client) return JSON.stringify({ hata: `${srv?.ad ?? 'MCP'} bağlı değil.` });
   progress(`${srv?.ad ?? 'mcp'}: ${ref.tool}`);
   try {
@@ -1165,6 +1182,7 @@ export async function installFromGitHub(url: string, o: { mcpKapali?: boolean; g
       : `Repo indirilemedi: ${msg.split('\n').pop()}`);
   }
   if (eski) {
+    backupRepo(slug); // yeni sürüm bozuk çıkarsa "kutuphane geri_al" ile dönülür
     await removeRepo(slug);
     fs.renameSync(hedef, dir);
   }
@@ -1188,6 +1206,8 @@ export async function installFromGitHub(url: string, o: { mcpKapali?: boolean; g
   }
   if (o.mcpKapali) for (const x of found.servers) { x.aktif = false; x.elleKapali = true; }
   store.repos.push({ slug, url, at: new Date().toISOString(), sha, ...(o.ref ? { surum: o.ref } : {}) });
+  recordVersion(`${owner}/${name}`, { tur: 'repo', surum: o.ref ?? sha.slice(0, 10), kaynak: `https://github.com/${owner}/${name}` });
+  repoMeta(`${owner}/${name}`).then(m => { const r = store.repos.find(x => x.slug === slug); if (m && r) { Object.assign(r, m); save(); recordVersion(`${owner}/${name}`, { tur: 'repo', surum: o.ref ?? sha.slice(0, 10), kaynak: `https://github.com/${owner}/${name}`, lisans: m.lisans }); } }).catch(() => {});
   store.skills.push(...found.skills);
   store.servers.push(...found.servers);
   save();
@@ -1629,4 +1649,166 @@ export function extensionsRouter(): Router {
 export function serverStats() {
   const v = view().servers;
   return { toplam: v.length, bagli: v.filter(s => s.durum === 'bağlı').length, hata: v.filter(s => s.durum === 'hata').map(s => s.ad), beceri: store.skills.filter(s => s.aktif).length };
+}
+
+// ---------------------------------------------------------------- Beceri kütüphanesi bakımı (talimat Bölüm 1 · 2-3, 9)
+
+const BACKUPS = path.join(DATA, 'yedek', 'eklentiler');
+const LISANS_UYGUN = /^(MIT|Apache-2\.0|BSD-2-Clause|BSD-3-Clause|ISC|MPL-2\.0|Unlicense|0BSD|CC0-1\.0|Zlib)$/i;
+const AY = 30 * 86400_000;
+
+/** GitHub'dan lisans, yıldız, son güncelleme (anahtarsız API; GITHUB_TOKEN varsa sınır yükselir) */
+async function repoMeta(full: string): Promise<{ lisans: string | null; yildiz: number; son_guncelleme: string; arsivlenmis: boolean } | null> {
+  const token = process.env.GITHUB_TOKEN;
+  const r = await fetch(`https://api.github.com/repos/${full}`, { headers: { 'User-Agent': 'jarvis', Accept: 'application/vnd.github+json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, signal: AbortSignal.timeout(15_000) });
+  if (!r.ok) return null;
+  const j: any = await r.json();
+  return { lisans: j.license?.spdx_id ?? null, yildiz: j.stargazers_count ?? 0, son_guncelleme: String(j.pushed_at ?? '').slice(0, 10), arsivlenmis: !!j.archived };
+}
+
+/** Güncellemeden önce repo klasörü ve kaydı yedeklenir (her repo için son 2 yedek tutulur) */
+function backupRepo(slug: string) {
+  try {
+    const src = path.join(REPOS, slug);
+    if (!fs.existsSync(src)) return;
+    const dest = path.join(BACKUPS, slug, new Date().toISOString().replace(/[:.]/g, '-'));
+    fs.mkdirSync(dest, { recursive: true });
+    fs.cpSync(src, path.join(dest, 'dosyalar'), { recursive: true });
+    fs.writeFileSync(path.join(dest, 'kayit.json'), JSON.stringify({ repo: store.repos.find(r => r.slug === slug), skills: store.skills.filter(x => x.repo === slug), servers: store.servers.filter(x => x.repo === slug) }));
+    const all = fs.readdirSync(path.join(BACKUPS, slug)).sort();
+    for (const old of all.slice(0, -2)) fs.rmSync(path.join(BACKUPS, slug, old), { recursive: true, force: true });
+    console.log(`[yetenek] yedek alındı: ${slug}`);
+  } catch (e) { console.warn('[yetenek] yedek alınamadı:', String(e).slice(0, 120)); }
+}
+
+function findRepo(ad: string): Repo | undefined {
+  const q = ad.toLowerCase().replace(/^https:\/\/github\.com\//, '').trim();
+  return store.repos.find(r => repoName(r).toLowerCase() === q) ?? store.repos.find(r => repoName(r).toLowerCase().endsWith(`/${q}`)) ?? store.repos.find(r => repoName(r).toLowerCase().includes(q));
+}
+
+function setArchived(r: Repo, on: boolean) {
+  r.arsiv = on || undefined;
+  for (const x of store.skills.filter(y => y.repo === r.slug)) x.aktif = !on;
+  for (const x of store.servers.filter(y => y.repo === r.slug)) { if (on) { x.aktif = false; x.elleKapali = true; disconnect(x.id).catch(() => {}); } }
+}
+
+/** Puan: yıldız (log), güncellik, lisans uygunluğu, kullanım */
+function repoScore(r: Repo): number {
+  const used = store.skills.filter(x => x.repo === r.slug).reduce((t, x) => t + (x.kullanim ?? 0), 0) + store.servers.filter(x => x.repo === r.slug && x.sonKullanim).length * 3;
+  const ageDays = r.son_guncelleme ? (Date.now() - Date.parse(r.son_guncelleme)) / 86400_000 : 365;
+  return Math.log10((r.yildiz ?? 0) + 1) * 10 + Math.max(0, 10 - ageDays / 30) + (r.lisans && LISANS_UYGUN.test(r.lisans) ? 5 : 0) + Math.min(20, used * 2);
+}
+
+/** Yeni sürümü olan repolar (git ls-remote; indirme yok). Güncelleme onay kartıyla: tidyRepos önce yedek alır. */
+export async function checkUpdates(progress: (l: string) => void = () => {}) {
+  const yeni: string[] = [];
+  for (const r of store.repos.filter(x => !x.arsiv && !x.surum && x.sha)) {
+    const m = GH.exec(r.url);
+    if (!m) continue;
+    progress(`sürüm kontrolü: ${repoName(r)}`);
+    const sha = await remoteSha(m[1], m[2], m[3]?.split('/')[0]).catch(() => null);
+    if (sha && sha !== r.sha && !yeni.includes(repoName(r))) yeni.push(repoName(r));
+  }
+  if (!yeni.length) return { yeni_surum: [], not: 'Bütün repolar güncel.' };
+  const onay = JSON.parse(propose('komut', `Repo güncellemesi (${yeni.length})`, yeni.map(x => `• ${x}`).join('\n'),
+    'Onaylarsanız her repo güncellenmeden önce yedeklenir; yeni sürüm bozuk çıkarsa "kütüphane geri al" ile eskiye dönülür.',
+    async () => { const r = await tidyRepos(); return `Güncellendi: ${r.guncellenen?.join(', ') || 'yok'}${r.hata?.length ? ` · sorun: ${r.hata.join('; ')}` : ''}`; }));
+  return { yeni_surum: yeni, onay, not: 'Yeni sürümü olanları söyle; güncelleme onay kartıyla, yedek alınarak yapılır.' };
+}
+// Ayda bir kendiliğinden kontrol: yalnız onay kartı açılır, kendiliğinden güncellemez
+const UPDATE_MARK = path.join(DATA, 'son-guncelleme-kontrolu.txt');
+setInterval(() => {
+  try {
+    const last = fs.existsSync(UPDATE_MARK) ? Date.parse(fs.readFileSync(UPDATE_MARK, 'utf8')) : 0;
+    if (Date.now() - last < AY) return;
+    fs.mkdirSync(DATA, { recursive: true });
+    fs.writeFileSync(UPDATE_MARK, new Date().toISOString());
+    checkUpdates().then(r => { if (r.yeni_surum.length) logActivity('yetenek', `Aylık kontrol: ${r.yeni_surum.length} reponun yeni sürümü var (onay bekliyor)`); }).catch(() => {});
+  } catch { /* yok say */ }
+}, 6 * 3600_000).unref();
+
+export async function runLibrary(a: any, progress: (l: string) => void): Promise<any> {
+  if (a.islem === 'guncelleme_kontrol') return checkUpdates(progress);
+  if (a.islem === 'surumler') return { surumler: readVersions(), not: 'Sürüm numarası ve kurulum tarihleriyle kısaca söyle.' };
+
+  if (a.islem === 'arsivden_cikar') {
+    const r = findRepo(String(a.ad ?? ''));
+    if (!r) return { hata: `"${a.ad}" kurulu değil` };
+    setArchived(r, false); rebuildIndex(); save(); changed();
+    return { ok: true, acildi: repoName(r), not: 'Becerileri yeniden açıldı; MCP sunucuları güvenlik için kapalı kalır (Ayarlar → Yetenekler).' };
+  }
+
+  if (a.islem === 'geri_al') {
+    // Aynı repodan birden fazla kayıt olabilir (alt klasör kurulumları): yedeği olan seçilir
+    const q = String(a.ad ?? '').toLowerCase();
+    const adaylar = store.repos.filter(x => repoName(x).toLowerCase().includes(q.replace(/^https:\/\/github\.com\//, '')));
+    const r = adaylar.find(x => fs.existsSync(path.join(BACKUPS, x.slug))) ?? findRepo(q);
+    if (!r) return { hata: `"${a.ad}" kurulu değil` };
+    const dir = path.join(BACKUPS, r.slug);
+    const last = fs.existsSync(dir) ? fs.readdirSync(dir).sort().pop() : undefined;
+    if (!last) return { hata: `${repoName(r)} için yedek yok (yalnız güncellenen repoların yedeği alınır).` };
+    return JSON.parse(propose('komut', `${repoName(r)}: önceki sürüme dön`, `Yedek: ${last}\nŞu anki sürüm kaldırılır, yedekteki sürüm geri yüklenir.`, 'Güncelleme sonrası sorun çıktıysa önceki çalışan sürüme döner.', async () => {
+      const kayit = JSON.parse(fs.readFileSync(path.join(dir, last, 'kayit.json'), 'utf8'));
+      await removeRepo(r.slug);
+      fs.cpSync(path.join(dir, last, 'dosyalar'), path.join(REPOS, r.slug), { recursive: true });
+      if (kayit.repo) store.repos.push(kayit.repo);
+      store.skills.push(...(kayit.skills ?? []));
+      store.servers.push(...(kayit.servers ?? []));
+      rebuildIndex(); save(); changed();
+      recordVersion(repoName(kayit.repo ?? r), { tur: 'repo', surum: kayit.repo?.surum ?? String(kayit.repo?.sha ?? '').slice(0, 10), kaynak: kayit.repo?.url });
+      logActivity('yetenek', `${repoName(r)} önceki sürüme döndürüldü (${last})`);
+      return `${repoName(r)} önceki sürüme döndü.`;
+    }));
+  }
+
+  if (a.islem === 'kullanilmayan') {
+    const sinir = Date.now() - AY;
+    const eski = store.skills.filter(x => x.aktif && x.kaynak !== 'jarvis' && (!x.sonKullanim || Date.parse(x.sonKullanim) < sinir));
+    // Yeni kurulanlar (30 günden yeni) hiç kullanılmamış sayılmaz
+    const liste = eski.filter(x => { const r = store.repos.find(y => y.slug === x.repo); return !r || Date.parse(r.at) < sinir; });
+    if (!liste.length) return { kullanilmayan: [], not: '30 günden uzun süredir kullanılmayan beceri yok.' };
+    const onay = propose('komut', `Kullanılmayan becerileri arşive al (${liste.length})`, liste.map(x => `• ${x.ad}${x.sonKullanim ? ` · son kullanım ${x.sonKullanim.slice(0, 10)}` : ' · hiç kullanılmadı'}`).join('\n'),
+      'Silinmez: yalnız kapatılır (arşiv). İstediğinizde "arşivden çıkar" ile geri açılır.',
+      async () => { for (const x of liste) x.aktif = false; save(); changed(); return `${liste.length} beceri arşive alındı.`; });
+    return { kullanilmayan: liste.map(x => ({ ad: x.ad, son: x.sonKullanim?.slice(0, 10) ?? 'hiç' })).slice(0, 40), onay: JSON.parse(onay), not: 'Listeyi söyle; onay kartını onaylarsa arşive alınır, silinmez.' };
+  }
+
+  // denetle
+  progress('kütüphane denetleniyor (lisans, güncellik, yıldız)');
+  await categorize().catch(() => {});
+  for (const r of store.repos) {
+    const m = await repoMeta(repoName(r)).catch(() => null);
+    if (m) Object.assign(r, { lisans: m.lisans, yildiz: m.yildiz, son_guncelleme: m.son_guncelleme });
+  }
+  save();
+  const riskler: string[] = [];
+  for (const r of store.repos) {
+    const ad = repoName(r);
+    if (r.lisans === undefined) continue;
+    if (!r.lisans || r.lisans === 'NOASSERTION') riskler.push(`${ad}: lisansı belirsiz (ticari üründe kullanılmamalı)`);
+    else if (!LISANS_UYGUN.test(r.lisans)) riskler.push(`${ad}: ${r.lisans} lisansı (AGPL/GPL vb. ticari üründe sorunlu)`);
+    if (r.son_guncelleme && Date.now() - Date.parse(r.son_guncelleme) > 6 * AY) riskler.push(`${ad}: ${r.son_guncelleme}'den beri güncellenmiyor (terk edilmiş olabilir; alternatif önerilebilir)`);
+  }
+  const kategoriler: Record<string, { aktif: string[]; arsive: string[] }> = {};
+  const arsive: Repo[] = [];
+  const byCat = new Map<string, Repo[]>();
+  for (const r of store.repos.filter(x => !x.arsiv)) byCat.set(r.kategori ?? 'Diğer', [...(byCat.get(r.kategori ?? 'Diğer') ?? []), r]);
+  for (const [kat, list] of byCat) {
+    const sorted = [...list].sort((x, y) => repoScore(y) - repoScore(x));
+    // "Diğer" farklı işler içerir: arşive önerilmez
+    const keep = kat === 'Diğer' ? sorted : sorted.slice(0, 2);
+    const rest = kat === 'Diğer' ? [] : sorted.slice(2);
+    arsive.push(...rest);
+    kategoriler[kat] = { aktif: keep.map(repoName), arsive: rest.map(repoName) };
+  }
+  let onay: any;
+  // GitHub bilgisi alınamadıysa (istek sınırı, ağ) sıralama güvenilmez: arşiv önerilmez
+  const bilinen = store.repos.filter(r => r.yildiz !== undefined).length;
+  if (bilinen < store.repos.length / 2) return { kategoriler: Object.fromEntries(Object.entries(kategoriler).map(([k, v]) => [k, [...v.aktif, ...v.arsive]])), riskler, not: "GitHub'dan repoların yıldız/lisans bilgisi alınamadı (istek sınırı ya da ağ); arşiv önerisi yapılmadı. Biraz sonra tekrar denenebilir; Ayarlar → API anahtarlarına GITHUB_TOKEN eklemek sınırı yükseltir." };
+  if (arsive.length) {
+    onay = JSON.parse(propose('komut', `Kütüphane: ${arsive.length} repoyu arşive al`, Object.entries(kategoriler).filter(([, v]) => v.arsive.length).map(([k, v]) => `${k}\n  ✅ aktif: ${v.aktif.join(', ')}\n  📦 arşive: ${v.arsive.join(', ')}`).join('\n\n'),
+      'Her başlıkta en iyi 1-2 repo (yıldız, güncellik, lisans, kullanım) aktif kalır. Diğerleri SİLİNMEZ; becerileri kapatılır, istenirse "arşivden çıkar" ile açılır.',
+      async () => { for (const r of arsive) setArchived(r, true); rebuildIndex(); save(); changed(); logActivity('yetenek', `Kütüphane: ${arsive.length} repo arşive alındı`); return `${arsive.length} repo arşive alındı.`; }));
+  }
+  return { kategoriler, riskler, arsivde: store.repos.filter(x => x.arsiv).map(repoName), onay, not: 'Başlık başlık aktif kalanları ve arşive önerilenleri, sonra riskleri (lisans, terk) kısaca söyle. Arşiv onay kartıyla yapılır.' };
 }

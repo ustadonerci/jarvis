@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import express, { type Router } from 'express';
 import { propose } from './approvals.js';
 import { adminOnly } from './keys.js';
+import { recordVersion } from './versions.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DATA = path.join(HERE, '..', 'data');
@@ -66,6 +67,7 @@ async function install(): Promise<string> {
   if (!fs.existsSync(`${MODEL}.json`)) fs.writeFileSync(`${MODEL}.json`, await download(VOICE.json, ''));
   // Deneme: kısa bir cümle
   await piperSpeak('Merhaba efendim, internetsiz sesim hazır.');
+  recordVersion('Piper', { tur: 'arac', surum: '2023.11.14-2', kaynak: 'https://github.com/rhasspy/piper', lisans: 'MIT' });
   return 'İnternetsiz Türkçe ses kuruldu ve denendi (Piper, tr_TR-dfki). Asıl ses sağlayıcıları çalışmazsa Jarvis bu sesle konuşur.';
 }
 
