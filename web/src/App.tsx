@@ -1680,6 +1680,16 @@ export default function App() {
                   </div>
                   <p className="muted small">Video modu, çekimde telifsiz stok fotoğraf kullanır.</p>
                   <label>Seslendiren</label>
+                  {voiceSel && (
+                    <div className="seg">
+                      {(['onyx', 'echo', 'fable'] as const).map(v => (
+                        <button key={v} className={voiceSel.voice === v ? 'on' : ''} onClick={() => chooseVoice({ model: /^(xtts|voicestudio|azure|eleven|browser)/i.test(voiceSel.model) ? (voices?.find(x => x.voice === v)?.model ?? 'gpt-4o-mini-tts') : voiceSel.model, voice: v, speed: voiceSel.speed }, `Jarvis · ${v[0].toUpperCase()}${v.slice(1)}`)}>
+                          🎙️ {v[0].toUpperCase()}{v.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <p className="muted small">Jarvis'in kendi 3 sesi. Sesle de değiştirebilirsiniz: "sesini echo yap", "daha hızlı oku".</p>
                   {voices && voiceSel && voices.some(v => v.gender) && (
                     <div className="seg">
                       {(['erkek', 'kadin'] as const).map(g => {

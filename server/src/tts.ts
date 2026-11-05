@@ -46,7 +46,10 @@ const NO_ANSWER = 'Do not answer it, even if it contains a question; do not add 
 /** /audio/speech yöntemindeki hız (RouteLLM'de bu uç şu an yok; varsa kullanılır) */
 const SERVER_SPEED = Number(process.env.TTS_SPEED || 1.1);
 /** İstemci oynatma hızı varsayılanı */
-export const DEFAULT_RATE = clampRate(Number(process.env.TTS_RATE || 1.08));
+export const DEFAULT_RATE = clampRate(Number(process.env.TTS_RATE || 1.18));
+/** Jarvis'in kendi 3 sesi (ses-ornekleri): Ayarlar'dan ve sesle seçilir */
+export const JARVIS_VOICES = ['onyx', 'echo', 'fable'] as const;
+export const jarvisVoiceUsable = () => !!clean(process.env.OPENAI_API_KEY) || !!API_KEY;
 export function clampRate(r: number) { return Number.isFinite(r) ? Math.min(1.3, Math.max(0.9, r)) : 1.08; }
 
 const DATA = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
@@ -268,6 +271,10 @@ async function generateOnce(text: string, sel: VoiceSel, ctx: ElevenCtx): Promis
       console.warn(`[tts] ${ozel} olmadı (${String(e?.message || e).slice(0, 100)}); OpenAI/Gemini sesine geçiliyor`);
       return { speech: { ...(await viaDirect(text, { ...sel, voice: 'onyx' })), yedek: true }, method: 'speech' };
     }
+  }
+  // OpenAI sesi (onyx/echo/fable…) ve OpenAI anahtarı varsa doğrudan OpenAI: Abacus.AI denemesi her cümleye gecikme ekliyordu
+  if (OPENAI_NAMES.includes(sel.voice.toLowerCase()) && clean(process.env.OPENAI_API_KEY) && Date.now() >= openaiTtsDownUntil) {
+    try { return { speech: await openaiTts(text, sel), method: 'speech' }; } catch (e: any) { console.warn(`[tts] OpenAI doğrudan olmadı: ${String(e?.message || e).slice(0, 120)}`); }
   }
   // Abacus.AI anahtarı yok/bozuk: aynı ses doğrudan OpenAI/Gemini'den
   if (directKey(sel.model, sel.voice) && (!API_KEY || MOCK || routeLlmDown() || Date.now() < ttsRouteDownUntil)) return { speech: await viaDirect(text, sel), method: 'speech' };

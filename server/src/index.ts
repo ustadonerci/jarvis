@@ -16,7 +16,7 @@ import { transcribe, STT_MODEL } from './stt.js';
 import {
   BROWSER, DEFAULT_RATE, clampRate, envVoice, isRoutedModel, loadCatalog, preview, synthesize, ttsEnabled, ttsLastError, usableVoices, voiceId, warmOpening,
   type VoiceSel,
-  resetOpenAiTts,
+  resetOpenAiTts, JARVIS_VOICES, jarvisVoiceUsable,
 } from './tts.js';
 import { knownImageUrls, type PhotoMode } from './photos.js';
 import { DEFAULT_WAKE, greetingPeriod, health, mergeWake, type WakeConfig } from './wake.js';
@@ -46,7 +46,7 @@ import { initTgChannels, tgChannelsRouter } from './tgchannels.js';
 import { initDisRobot } from './disrobot.js';
 import { initOwnerMsg } from './ownermsg.js';
 import { initMesai, mesaiRouter } from './mesai.js';
-import { onVoiceReset, piperRouter, setPiperFirst } from './piper.js';
+import { onVoicePick, onVoiceReset, piperRouter, setPiperFirst } from './piper.js';
 import { XTTS_MODEL, initXtts, isXtts, xttsRouter, xttsVoices } from './xtts.js';
 import { indicatorsRouter } from './indicators.js';
 import { tgWebRouter } from './telegramweb.js';
@@ -121,6 +121,8 @@ if (env.warning) console.warn(`[tts] UYARI: ${env.warning}`);
 function validVoice(v: VoiceSel | undefined): v is VoiceSel {
   if (!v || typeof v.model !== 'string' || typeof v.voice !== 'string') return false;
   if (v.model === BROWSER) return true;
+  // Jarvis'in kendi 3 sesi (onyx/echo/fable): OpenAI ya da Abacus anahtarı varsa her zaman seçilebilir
+  if ((JARVIS_VOICES as readonly string[]).includes(v.voice.toLowerCase()) && jarvisVoiceUsable() && !isRoutedModel(v.model) && !/^(xtts|voicestudio|azure|eleven)/i.test(v.model)) return true;
   // ElevenLabs: anahtar varsa ve ses kimliği biçimi doğruysa (sesler hesaptan gelir, npm run voices'tan değil)
   if (isEleven(v.model)) return elevenReady() && /^[A-Za-z0-9]{8,40}$/.test(v.voice);
   if (isAzure(v.model)) return azureReady() && AZURE_VOICES.some(a => a.voice === v.voice);
@@ -150,6 +152,21 @@ function resetVoiceToDefault(): string {
   return voiceId(sel);
 }
 onVoiceReset(resetVoiceToDefault);
+const isJarvisVoice = (v: string) => (JARVIS_VOICES as readonly string[]).includes(v.toLowerCase());
+/** Jarvis'in kendi 3 sesinden birine geçiş (onyx/echo/fable) ve/veya okuma hızı */
+function pickJarvisVoice(ses?: string, hiz?: number): string {
+  const cur = currentVoice();
+  const voice = ses && isJarvisVoice(ses) ? ses.toLowerCase() : cur.voice;
+  // Özel motorlardaysa (XTTS, VoiceStudio…) ilk kurulumdaki modele dönülür
+  const model = isJarvisVoice(voice) && !isJarvisVoice(cur.voice) ? env.sel.model : cur.model;
+  state.voice = { model, voice, speed: clampRate(hiz ?? cur.speed) };
+  saveState();
+  const sel = currentVoice();
+  console.log(`[tts] ses seçildi: ${voiceId(sel)} · hız ${sel.speed}`);
+  try { broadcast(settingsEvent()); warmOpening(sel).catch(() => {}); warmGreetings(sel); } catch { /* açılış */ }
+  return `${voice} · hız ${sel.speed}`;
+}
+onVoicePick(pickJarvisVoice);
 const sfx = () => state.sfx ?? true;
 const wakeCfg = (): WakeConfig => mergeWake(DEFAULT_WAKE, state.wake ?? {});
 
@@ -216,6 +233,13 @@ if (!state.gecis?.includes('openai-hizli') && process.env.OPENAI_API_KEY?.trim()
   preferModel('openai', 'gpt-4.1-mini');
   saveState();
   console.log('[beyin] OpenAI (gpt-4.1-mini) beyin yapıldı (kullanıcının isteği)');
+}
+// Kullanıcının isteği (Kasım 2026): "okuma hızını hızlandır" — bir kez en az 1,18×
+if (!state.gecis?.includes('okuma-hizi')) {
+  state.gecis = [...(state.gecis ?? []), 'okuma-hizi'];
+  const v = currentVoice();
+  if (v.speed < 1.18) state.voice = { ...v, speed: 1.18 };
+  saveState();
 }
 setBrainProvider(initialBrain(state.beyin));
 initBrain();

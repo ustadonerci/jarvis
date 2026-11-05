@@ -40,6 +40,8 @@ export const setPiperFirst = (on: boolean) => { cfg.oncelik = on; saveCfg(); };
 /** "Sesi ilk ayara döndür": index.ts kaydeder (seçili sesi .env varsayılanına alır) */
 let voiceReset: () => string = () => 'kullanılamıyor';
 export const onVoiceReset = (fn: () => string) => { voiceReset = fn; };
+let voicePick: (ses?: string, hiz?: number) => string = () => 'kullanılamıyor';
+export const onVoicePick = (fn: (ses?: string, hiz?: number) => string) => { voicePick = fn; };
 
 async function download(url: string, sha: string): Promise<Buffer> {
   const r = await fetch(url, { signal: AbortSignal.timeout(15 * 60_000) });
@@ -132,8 +134,8 @@ export const PIPER_TOOLS = [
     type: 'function',
     function: {
       name: 'internetsiz_ses',
-      description: "İnternetsiz Türkçe ses (Piper) ve Jarvis'in ses dosyaları. durum; kur (bilgisayara indirip kurar, onay kartı; 'sesleri bilgisayara indir', 'internetsiz ses kur'); oncelik (ac: true → Jarvis her zaman internetsiz sesle konuşur, false → yalnız diğerleri çalışmazsa); kaydet (Jarvis'in örnek kayıtlarını ve söylediği cümlelerin ses dosyalarını İndirilenler\\Jarvis-Sesler'e kopyalar); ilk_ayar ('ses ayarlarını ilk haline getir', 'eski sesine dön'): seçili ses ilk kurulumdaki varsayılana döner, internetsiz-önce kapanır; kurulu sesler (Piper, XTTS, kendi ses kaydı) silinmez.",
-      parameters: { type: 'object', properties: { islem: { type: 'string', enum: ['durum', 'kur', 'oncelik', 'kaydet', 'ilk_ayar'] }, ac: { type: 'boolean' } }, required: ['islem'] },
+      description: "Jarvis'in sesi. ses_sec: Jarvis'in kendi 3 sesinden birine geçer (ses: onyx | echo | fable; 'sesini echo yap', 'fable sesine geç') ve/veya okuma hızını değiştirir (hiz; 'daha hızlı/yavaş oku'). İnternetsiz Türkçe ses (Piper) ve Jarvis'in ses dosyaları. durum; kur (bilgisayara indirip kurar, onay kartı; 'sesleri bilgisayara indir', 'internetsiz ses kur'); oncelik (ac: true → Jarvis her zaman internetsiz sesle konuşur, false → yalnız diğerleri çalışmazsa); kaydet (Jarvis'in örnek kayıtlarını ve söylediği cümlelerin ses dosyalarını İndirilenler\\Jarvis-Sesler'e kopyalar); ilk_ayar ('ses ayarlarını ilk haline getir', 'eski sesine dön'): seçili ses ilk kurulumdaki varsayılana döner, internetsiz-önce kapanır; kurulu sesler (Piper, XTTS, kendi ses kaydı) silinmez.",
+      parameters: { type: 'object', properties: { islem: { type: 'string', enum: ['durum', 'kur', 'oncelik', 'kaydet', 'ilk_ayar', 'ses_sec'] }, ac: { type: 'boolean' }, ses: { type: 'string', enum: ['onyx', 'echo', 'fable'] }, hiz: { type: 'number', description: 'okuma hızı 0.9–1.3 (ör. "daha hızlı oku" → mevcut + 0.1)' } }, required: ['islem'] },
     },
   },
 ] as const;
@@ -143,6 +145,7 @@ export async function runPiperTool(a: any): Promise<string> {
   try {
     if (a.islem === 'kur') return piperReady() ? j({ kurulu: true, not: 'Zaten kurulu.' }) : kurOneri();
     if (a.islem === 'oncelik') { cfg.oncelik = a.ac === true; saveCfg(); return j({ ok: true, oncelik: cfg.oncelik, kurulu: piperReady() }); }
+    if (a.islem === 'ses_sec') return j({ ok: true, ses: voicePick(a.ses, typeof a.hiz === 'number' ? a.hiz : undefined) });
     if (a.islem === 'ilk_ayar') return j({ ok: true, ses: voiceReset(), not: 'Kurulu sesler silinmedi; Ayarlar → Ses listesinden yine seçilebilir.' });
     if (a.islem === 'kaydet') return j({ ok: true, ...exportVoices(), not: 'Klasörün yerini ve kaç dosya kopyalandığını söyle.' });
     return j({ kurulu: piperReady(), oncelik: cfg.oncelik });
