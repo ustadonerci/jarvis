@@ -890,18 +890,24 @@ export async function runExtensionTool(name: string, args: any, progress: (l: st
     }
   }
   if (name === 'yetenek_kur') {
-    progress(`GitHub'dan kuruluyor: ${String(args.url ?? '').replace('https://github.com/', '')}`);
-    try {
+    const kisa = String(args.url ?? '').replace('https://github.com/', '');
+    progress(`GitHub'dan kuruluyor: ${kisa}`);
+    // Kurulum + çalışıyor mu denemesi dakikalar sürebilir: Jarvis en çok 40 sn bekler, gerisi arkada sürer
+    // (önceden cevap 2,5 dk sınırına takılıp "cevap vermedi" görünüyordu).
+    const job = (async () => {
       const r: any = await installFromGitHub(String(args.url ?? ''));
       if (r.mcp && !r.guncel) {
-        const v = await verifyRepo(r.slug, progress).catch(() => null);
-        if (v?.durum === 'uyumsuz_kaldirildi' && !store.repos.some(x => x.slug === r.slug)) return JSON.stringify({ kurulmadi: true, neden: 'Bu repo bu bilgisayarda çalışmıyor; eski sürümleri de denendi, hiçbiri çalışmadı. Kurulmadı.', ayrinti: v.ayrinti });
+        const v = await verifyRepo(r.slug, () => {}).catch(() => null);
+        if (v?.durum === 'uyumsuz_kaldirildi' && !store.repos.some(x => x.slug === r.slug)) return { kurulmadi: true, neden: 'Bu repo bu bilgisayarda çalışmıyor; eski sürümleri de denendi, hiçbiri çalışmadı. Kurulmadı.', ayrinti: v.ayrinti };
         if (v) r.kontrol = v;
       }
-      return JSON.stringify({ ok: true, ...r, not: r.mcp ? 'MCP sunucuları kapalı eklendi; kullanıcı Ayarlar → Yetenekler bölümünden açmalı.' : undefined, yetenekler: store.skills.filter(s => s.repo === r.slug).map(s => s.ad).slice(0, 30) });
-    } catch (e: any) {
-      return JSON.stringify({ hata: String(e?.message || e) });
-    }
+      return { ok: true, ...r, not: r.mcp ? 'MCP sunucuları kapalı eklendi; kullanıcı Ayarlar → Yetenekler bölümünden açmalı.' : undefined, yetenekler: store.skills.filter(s => s.repo === r.slug).map(s => s.ad).slice(0, 30) };
+    })();
+    job.then(r => { logActivity('yetenek', `Kurulum bitti: ${kisa} · ${r.kurulmadi ? 'kurulmadı (uyumsuz)' : 'kuruldu'}`); changed(); })
+      .catch(e => { logActivity('yetenek', `Kurulum olmadı: ${kisa} · ${String(e?.message || e).slice(0, 200)}`); changed(); });
+    const r = await Promise.race([job.catch(e => ({ hata: String(e?.message || e) })), new Promise<null>(res => setTimeout(() => res(null), 40_000))]);
+    if (!r) return JSON.stringify({ suruyor: true, not: `Kurulum arka planda sürüyor (${kisa}); birkaç dakika sürebilir. Kullanıcıya bunu söyle; bitince Ayarlar → Yetenekler'de görünür. "Kuruldu mu" diye sorarsa repo_duzenle liste ile bak.` });
+    return JSON.stringify(r);
   }
   const ref = toolIndex.get(name)!;
   const l = live.get(ref.server);
