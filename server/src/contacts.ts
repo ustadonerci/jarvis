@@ -22,6 +22,8 @@ export interface Contact { ad: string; numaralar: { numara: string; tur?: string
 const load = (): Contact[] => { try { return JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch { return []; } };
 const save = (l: Contact[]) => { fs.mkdirSync(DATA, { recursive: true }); fs.writeFileSync(FILE, JSON.stringify(l)); };
 export const contactCount = () => load().length;
+/** Numara rehberde kayıtlı mı (son 10 hane) */
+export const isKnownNumber = (n: string) => { const k = n.replace(/\D/g, '').slice(-10); return k.length >= 7 && load().some(c => c.numaralar.some(x => x.numara.replace(/\D/g, '').slice(-10) === k)); };
 
 // ---------------------------------------------------------------- Okuma (CSV / vCard)
 

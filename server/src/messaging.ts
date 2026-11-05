@@ -4,6 +4,7 @@
 // - Otomatik cevap (isteğe bağlı): siz bakamıyorken kısa ve kibar cevap verir; kişisel bilgi paylaşmaz, söz vermez.
 // - WhatsApp araması (isteğe bağlı): gelen arama reddedilir ve arayana mesaj gönderilir. Sesli cevap mümkün değil:
 //   WhatsApp ve Telegram, kişisel hesaplardaki aramaları programların açmasına izin vermiyor.
+import { salesHandles, salesReply } from './sales.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -93,6 +94,23 @@ function record(m: Omit<Msg, 'at'> & { at?: string }) {
 // ---------------------------------------------------------------- Otomatik cevap
 
 const lastAuto = new Map<string, number>();
+
+/** Satış danışmanı turu: sohbet başına en çok 5 sn'de bir ve günde 60 cevap (karşı taraf bot ise döngü olmasın) */
+const salesCount = new Map<string, { gun: string; n: number; t: number }>();
+function salesTurn(chat: string, send: (t: string) => Promise<void>) {
+  if (MOCK) return;
+  const gun = new Date().toISOString().slice(0, 10);
+  const c = salesCount.get(chat);
+  const cur = c && c.gun === gun ? c : { gun, n: 0, t: 0 };
+  if (cur.n >= 60 || Date.now() - cur.t < 5000) return;
+  cur.n++; cur.t = Date.now(); salesCount.set(chat, cur);
+  // Müşteri art arda yazıyorsa 4 sn beklenir: hepsi tek cevapla karşılanır
+  setTimeout(() => {
+    const history = msgs.filter(m => m.platform === 'whatsapp' && m.chat === chat && !m.arama).slice(-16).map(m => ({ gelen: m.gelen, metin: m.metin }));
+    salesReply({ platform: 'whatsapp', chat, kisi: history.at(-1)?.metin ?? '', history, send, notify: t => notifyOwner(t, 'telegram') })
+      .catch(e => console.warn('[satış] cevap verilemedi:', String(e?.message || e).slice(0, 120)));
+  }, 4000);
+}
 
 async function autoReply(platform: Platform, chat: string, send: (t: string) => Promise<void>) {
   if (MOCK) return;
@@ -364,7 +382,8 @@ function waCloudIncoming(body: any) {
         const metin = m.type === 'text' ? m.text?.body : m.type === 'image' ? `[fotoğraf] ${m.image?.caption ?? ''}` : m.type === 'audio' ? '[sesli mesaj]' : m.type === 'button' ? m.button?.text : m.type === 'interactive' ? (m.interactive?.button_reply?.title ?? m.interactive?.list_reply?.title) : `[${m.type}]`;
         if (!metin) continue;
         const saved = record({ id: `wac-${m.id}`, platform: 'whatsapp', chat: from, kisi: names.get(from) || `+${from}`, metin: String(metin), gelen: true, at: new Date(Number(m.timestamp) * 1000 || Date.now()).toISOString() });
-        if (saved && cfg.whatsappOto) autoReply('whatsapp', from, t => waCloudSend(from, t));
+        if (saved && salesHandles('whatsapp', from, false)) salesTurn(from, t => waCloudSend(from, t));
+        else if (saved && cfg.whatsappOto) autoReply('whatsapp', from, t => waCloudSend(from, t));
       }
     }
   }
@@ -470,7 +489,8 @@ async function waConnect(fresh = false) {
         katilimci: grup && !m.key.fromMe ? m.key.participant : undefined,
         at: new Date(Number(m.messageTimestamp ?? Date.now() / 1000) * 1000).toISOString(),
       });
-      if (saved && saved.gelen && !grup && cfg.whatsappOto) autoReply('whatsapp', jid, t => waSend(jid, t));
+      if (saved && saved.gelen && !grup && salesHandles('whatsapp', jid, grup)) salesTurn(jid, t => waSend(jid, t));
+      else if (saved && saved.gelen && !grup && cfg.whatsappOto) autoReply('whatsapp', jid, t => waSend(jid, t));
     }
   });
   sock.ev.on('call', async (calls: any[]) => {
