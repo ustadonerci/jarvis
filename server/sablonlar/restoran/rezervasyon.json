@@ -1,0 +1,126 @@
+{
+ "_jarvis": {
+  "ad": "Restoran · Rezervasyon",
+  "sektor": "restoran",
+  "aciklama": "Formdan/WhatsApp'tan gelen rezervasyonu Google Takvim'e ekler ve müşteriye onay gönderir.",
+  "anahtar_kelimeler": [
+   "rezervasyon",
+   "masa",
+   "randevu",
+   "takvim"
+  ],
+  "test_verisi": {
+   "ad": "Test Müşteri",
+   "telefon": "905550000000",
+   "kisi": 4,
+   "tarih_saat": "2030-01-01T19:00:00+03:00"
+  },
+  "baglanacak_hesaplar": [
+   "Google Calendar",
+   "WhatsApp Business Cloud"
+  ]
+ },
+ "name": "Restoran · Rezervasyon",
+ "nodes": [
+  {
+   "parameters": {
+    "httpMethod": "POST",
+    "path": "rezervasyon",
+    "responseMode": "onReceived"
+   },
+   "name": "Rezervasyon formu",
+   "type": "n8n-nodes-base.webhook",
+   "typeVersion": 2,
+   "position": [
+    0,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "const b = $input.first().json.body ?? $input.first().json;\nconst bas = new Date(b.tarih_saat);\nreturn [{ json: { ad: b.ad, telefon: b.telefon, kisi: b.kisi ?? 2, bas: bas.toISOString(), bit: new Date(bas.getTime() + 2*3600e3).toISOString() } }];"
+   },
+   "name": "Bilgileri hazırla",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    220,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "calendar": {
+     "__rl": true,
+     "mode": "list",
+     "value": "primary"
+    },
+    "start": "={{ $json.bas }}",
+    "end": "={{ $json.bit }}",
+    "additionalFields": {
+     "summary": "=Rezervasyon: {{ $json.ad }} ({{ $json.kisi }} kişi)"
+    }
+   },
+   "name": "Takvime ekle",
+   "type": "n8n-nodes-base.googleCalendar",
+   "typeVersion": 1.3,
+   "position": [
+    440,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "operation": "send",
+    "phoneNumberId": "",
+    "recipientPhoneNumber": "={{ $('Bilgileri hazırla').item.json.telefon }}",
+    "textBody": "=Rezervasyonunuz alındı, sizi bekliyoruz!"
+   },
+   "name": "Onay mesajı",
+   "type": "n8n-nodes-base.whatsApp",
+   "typeVersion": 1,
+   "position": [
+    660,
+    0
+   ]
+  }
+ ],
+ "connections": {
+  "Rezervasyon formu": {
+   "main": [
+    [
+     {
+      "node": "Bilgileri hazırla",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Bilgileri hazırla": {
+   "main": [
+    [
+     {
+      "node": "Takvime ekle",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Takvime ekle": {
+   "main": [
+    [
+     {
+      "node": "Onay mesajı",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ }
+}

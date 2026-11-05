@@ -1,0 +1,102 @@
+{
+ "_jarvis": {
+  "ad": "Restoran · Menü / kampanya duyurusu",
+  "sektor": "restoran",
+  "aciklama": "Yeni menü/kampanya duyurusunu, ileti izni veren müşterilere WhatsApp'tan gönderir (İYS/izin listesi esas alınır).",
+  "anahtar_kelimeler": [
+   "menü",
+   "kampanya",
+   "duyuru",
+   "indirim",
+   "toplu mesaj"
+  ],
+  "test_verisi": {
+   "metin": "TEST: Bu hafta pide + ayran 150 TL"
+  },
+  "baglanacak_hesaplar": [
+   "Google Sheets",
+   "WhatsApp Business Cloud"
+  ]
+ },
+ "name": "Restoran · Menü / kampanya duyurusu",
+ "nodes": [
+  {
+   "parameters": {
+    "httpMethod": "POST",
+    "path": "duyuru",
+    "responseMode": "onReceived"
+   },
+   "name": "Duyuru isteği",
+   "type": "n8n-nodes-base.webhook",
+   "typeVersion": 2,
+   "position": [
+    0,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "operation": "read",
+    "documentId": {
+     "__rl": true,
+     "mode": "url",
+     "value": ""
+    },
+    "sheetName": {
+     "__rl": true,
+     "mode": "name",
+     "value": "Müşteriler (izinli)"
+    }
+   },
+   "name": "Müşteri listesini oku",
+   "type": "n8n-nodes-base.googleSheets",
+   "typeVersion": 4.5,
+   "position": [
+    220,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "operation": "send",
+    "phoneNumberId": "",
+    "recipientPhoneNumber": "={{ $json.telefon }}",
+    "textBody": "={{ $('Duyuru isteği').item.json.body.metin }}"
+   },
+   "name": "Duyuruyu gönder",
+   "type": "n8n-nodes-base.whatsApp",
+   "typeVersion": 1,
+   "position": [
+    440,
+    0
+   ]
+  }
+ ],
+ "connections": {
+  "Duyuru isteği": {
+   "main": [
+    [
+     {
+      "node": "Müşteri listesini oku",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Müşteri listesini oku": {
+   "main": [
+    [
+     {
+      "node": "Duyuruyu gönder",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ }
+}

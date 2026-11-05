@@ -389,6 +389,9 @@ function waCloudIncoming(body: any) {
   }
 }
 
+/** Bir numaraya WhatsApp mesajı (onay kartından sonra çağrılır; ör. otomasyon izleme bildirimi) */
+export const sendWhatsAppTo = (telefon: string, text: string) => waSend(`${telefon.replace(/\D/g, '')}@s.whatsapp.net`, text);
+
 async function waSend(jid: string, text: string) {
   // Cloud API sohbetleri yalnızca rakamdan oluşur (wa_id); WhatsApp Web sohbetleri "@" içerir
   if (waCloud() && (!jid.includes('@') || wa.durum !== 'bağlı')) return waCloudSend(jid.split('@')[0], text);

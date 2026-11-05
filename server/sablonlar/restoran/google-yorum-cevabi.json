@@ -1,0 +1,90 @@
+{
+ "_jarvis": {
+  "ad": "Restoran · Google yorum cevabı (taslak + onay)",
+  "sektor": "restoran",
+  "aciklama": "Yeni Google yorumuna puana göre cevap taslağı hazırlar; taslak işletme sahibine onay için gider (otomatik yayınlanmaz).",
+  "anahtar_kelimeler": [
+   "google yorum",
+   "yorum",
+   "değerlendirme",
+   "itibar"
+  ],
+  "test_verisi": {
+   "ad": "Test Kişi",
+   "puan": 5,
+   "yorum": "Pideler harikaydı"
+  },
+  "baglanacak_hesaplar": [
+   "Telegram"
+  ]
+ },
+ "name": "Restoran · Google yorum cevabı (taslak + onay)",
+ "nodes": [
+  {
+   "parameters": {
+    "httpMethod": "POST",
+    "path": "yorum",
+    "responseMode": "onReceived"
+   },
+   "name": "Yeni yorum",
+   "type": "n8n-nodes-base.webhook",
+   "typeVersion": 2,
+   "position": [
+    0,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "const b = $input.first().json.body ?? $input.first().json;\nconst puan = Number(b.puan ?? 5);\nconst cevap = puan >= 4 ? `Değerli yorumunuz için çok teşekkür ederiz ${b.ad ?? ''}! Sizi tekrar ağırlamak isteriz.` : `Yaşadığınız olumsuzluk için özür dileriz ${b.ad ?? ''}. Bize ulaşırsanız telafi etmek isteriz.`;\nreturn [{ json: { ...b, cevap_taslagi: cevap } }];"
+   },
+   "name": "Cevap taslağı yaz",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    220,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "chatId": "",
+    "text": "=Yeni Google yorumu ({{ $json.puan }}★): {{ $json.yorum }}\\nTaslak cevap: {{ $json.cevap_taslagi }}"
+   },
+   "name": "İşletme sahibine gönder (onay için)",
+   "type": "n8n-nodes-base.telegram",
+   "typeVersion": 1.2,
+   "position": [
+    440,
+    0
+   ]
+  }
+ ],
+ "connections": {
+  "Yeni yorum": {
+   "main": [
+    [
+     {
+      "node": "Cevap taslağı yaz",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Cevap taslağı yaz": {
+   "main": [
+    [
+     {
+      "node": "İşletme sahibine gönder (onay için)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ }
+}

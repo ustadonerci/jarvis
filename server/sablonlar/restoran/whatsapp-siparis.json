@@ -1,0 +1,130 @@
+{
+ "_jarvis": {
+  "ad": "Restoran · WhatsApp sipariş",
+  "sektor": "restoran",
+  "aciklama": "WhatsApp'tan gelen siparişi tabloya yazar ve müşteriye otomatik onay mesajı gönderir.",
+  "anahtar_kelimeler": [
+   "sipariş",
+   "whatsapp",
+   "paket servis",
+   "online sipariş"
+  ],
+  "test_verisi": {
+   "musteri": "Test Müşteri",
+   "telefon": "905550000000",
+   "siparis": "2 kıymalı pide, 1 ayran",
+   "adres": "Test Mah. 1"
+  },
+  "baglanacak_hesaplar": [
+   "Google Sheets",
+   "WhatsApp Business Cloud"
+  ]
+ },
+ "name": "Restoran · WhatsApp sipariş",
+ "nodes": [
+  {
+   "parameters": {
+    "httpMethod": "POST",
+    "path": "siparis",
+    "responseMode": "onReceived"
+   },
+   "name": "Sipariş geldi",
+   "type": "n8n-nodes-base.webhook",
+   "typeVersion": 2,
+   "position": [
+    0,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "const b = $input.first().json.body ?? $input.first().json;\nreturn [{ json: { musteri: b.musteri ?? b.name ?? '', telefon: b.telefon ?? b.phone ?? '', siparis: b.siparis ?? b.text ?? '', adres: b.adres ?? '', zaman: new Date().toISOString() } }];"
+   },
+   "name": "Siparişi ayrıştır",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    220,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "operation": "append",
+    "documentId": {
+     "__rl": true,
+     "mode": "url",
+     "value": ""
+    },
+    "sheetName": {
+     "__rl": true,
+     "mode": "name",
+     "value": "Siparişler"
+    },
+    "columns": {
+     "mappingMode": "autoMapInputData"
+    }
+   },
+   "name": "Sipariş tablosuna yaz",
+   "type": "n8n-nodes-base.googleSheets",
+   "typeVersion": 4.5,
+   "position": [
+    440,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "operation": "send",
+    "phoneNumberId": "",
+    "recipientPhoneNumber": "={{ $('Siparişi ayrıştır').item.json.telefon }}",
+    "textBody": "=Siparişiniz alındı: {{ $('Siparişi ayrıştır').item.json.siparis }}. Teşekkür ederiz!"
+   },
+   "name": "Müşteriye onay gönder",
+   "type": "n8n-nodes-base.whatsApp",
+   "typeVersion": 1,
+   "position": [
+    660,
+    0
+   ]
+  }
+ ],
+ "connections": {
+  "Sipariş geldi": {
+   "main": [
+    [
+     {
+      "node": "Siparişi ayrıştır",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Siparişi ayrıştır": {
+   "main": [
+    [
+     {
+      "node": "Sipariş tablosuna yaz",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Sipariş tablosuna yaz": {
+   "main": [
+    [
+     {
+      "node": "Müşteriye onay gönder",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ }
+}

@@ -41,6 +41,8 @@ export const KEY_FIELDS: KeyField[] = [
   { name: 'TWILIO_ACCOUNT_SID', label: 'Twilio Account SID', hint: 'İsteğe bağlı: telefon aramaları. console.twilio.com ana sayfası', secret: false },
   { name: 'TWILIO_AUTH_TOKEN', label: 'Twilio Auth Token', hint: 'console.twilio.com ana sayfası', secret: true },
   { name: 'TWILIO_PHONE_NUMBER', label: 'Twilio telefon numarası', hint: 'Twilio\'dan aldığınız numara, ör. +15551234567', secret: false },
+  { name: 'N8N_URL', label: 'n8n adresi (otomasyon kurulumu)', hint: 'Ör. https://n8n.sirketiniz.com — Jarvis şablonları buraya kurar (onay kartıyla).', secret: false },
+  { name: 'N8N_API_KEY', label: 'n8n API anahtarı', hint: 'n8n → Settings → n8n API → Create an API key.', secret: true },
   { name: 'BRAVE_SEARCH_API_KEY', label: 'Brave Search (internette arama)', hint: 'İsteğe bağlı. Boşsa anahtarsız DuckDuckGo kullanılır. api.search.brave.com', secret: true },
   { name: 'EMAIL_ADDRESS', label: 'E-posta adresi', hint: 'Gmail, Outlook, Yandex, iCloud… Jarvis gelen kutusunu okur, taslak yazar, onay kartıyla gönderir.', secret: false },
   { name: 'EMAIL_APP_PASSWORD', label: 'E-posta uygulama şifresi', hint: 'Gmail: Google Hesabı → Güvenlik → 2 adımlı doğrulama → Uygulama şifreleri (16 hane). Normal şifreniz çalışmaz.', secret: true },

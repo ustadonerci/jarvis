@@ -14,6 +14,7 @@ import { isKnownNumber } from './contacts.js';
 import { logActivity } from './activity.js';
 import { brainStream } from './providers.js';
 import { webSearch } from './search.js';
+import { eslestir } from './sablon-katalog.js';
 
 const DATA = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
 const CFG_FILE = path.join(DATA, 'satis.json');
@@ -111,7 +112,8 @@ async function finish(c: Customer, send: (t: string) => Promise<void>, notify: (
   saveRecs();
   const kayit = { ...c.bilgiler, telefon: c.telefon, sirket_notlari: c.sirket_notlari, zorluk_tahmini: c.zorluk_tahmini };
   const ozet = `💼 Yeni müşteri kaydı (satış danışmanı)\n${FIELDS.map(f => `• ${f}: ${c.bilgiler[f] || '—'}`).join('\n')}\n• telefon: +${c.telefon}\n• zorluk: ${c.zorluk_tahmini ?? '—'}\n\n🏢 Şirket notları:\n${c.sirket_notlari ?? '—'}\n\n💰 Fiyat taslağı (müşteriye GİTMEDİ, onayınızı bekliyor):\n${c.fiyat_taslagi ?? '—'}`;
-  notify(ozet).catch(() => {});
+  const uygun = eslestir(c.bilgiler.sektor ?? '', `${c.bilgiler.talep ?? ''} ${c.bilgiler.mevcut_araclar ?? ''}`).slice(0, 3);
+  notify(ozet + (uygun.length ? `\n\n🧩 Uygun hazır şablonlar: ${uygun.map(u => u.ad).join(', ')} (Jarvis'e "otomasyon kur" diyebilirsiniz)` : '')).catch(() => {});
   if (cfg.webhook) fetch(cfg.webhook, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(kayit), signal: AbortSignal.timeout(15_000) }).catch(e => console.warn('[satış] webhook:', String(e).slice(0, 100)));
   logActivity('satis', `Müşteri kaydı tamamlandı: ${c.bilgiler.ad ?? ''} · ${c.bilgiler.sirket ?? ''}`);
   if (c.fiyat_taslagi) {

@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+.git
+server/data
+server/.env
+server/.env.*
+!server/.env.example
+ses-ornekleri
+docs/DEVIR-NOTU.md
+telefon-linki.txt
+.claude

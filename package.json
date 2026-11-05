@@ -12,6 +12,7 @@
     "test": "npm --prefix server run test",
     "models": "npm --prefix server run models",
     "voices": "npm --prefix server run voices",
-    "el-modeli": "node scripts/el-modeli.mjs"
+    "el-modeli": "node scripts/el-modeli.mjs",
+    "temiz-surum": "node scripts/temiz-surum.mjs"
   }
 }

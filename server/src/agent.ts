@@ -34,6 +34,8 @@ import { VOICESTUDIO_TOOLS } from './voicestudio.js';
 import { HOSTINGER_TOOLS } from './hostinger.js';
 import { REELS_TOOLS } from './reels.js';
 import { PAYLASIM_TOOLS } from './paylasim.js';
+import { SABLON_TOOLS } from './sablonlar.js';
+import { URUN_TOOLS } from './urun.js';
 import { ROBOT_TOOLS } from './robot.js';
 import { BRAND24_TOOLS } from './brand24.js';
 import { CONTACT_TOOLS } from './contacts.js';
@@ -102,7 +104,7 @@ export function toolsFor(groups: Set<Group>, isBrief = false): any[] {
   return [
     ...(isBrief ? TOOLS : TOOLS.filter(t => t.function.name !== 'get_news')), ...SEARCH_TOOLS, ...ERROR_TOOLS, ...APPROVAL_TOOLS, ...DAILY_TOOLS, ...BRAIN_TOOLS, ...BROWSER_TOOLS, ...EXPENSE_TOOLS, ...TGCHANNEL_TOOLS, ...TGWEB_TOOLS, ...LINKREAD_TOOLS, ...OWNERMSG_TOOLS, ...CONTACT_TOOLS, ...SCREEN_TOOLS, ...MESAI_TOOLS, ...PIPER_TOOLS, ...XTTS_TOOLS, ...LOCALSCAN_TOOLS, ...HAFIZA_TOOLS,
     ...pick('finans', FINANCE_TOOLS), ...pick('mesaj', MSG_TOOLS), ...pick('mesaj', WATIDY_TOOLS), ...pick('mesaj', SALES_TOOLS), ...pick('eposta', EMAIL_TOOLS), ...pick('github', GITHUB_TOOLS),
-    ...pick('ajan', agentTools()), ...pick('sistem', SYSTEM_TOOLS), ...pick('otomasyon', AUTOMATION_TOOLS), ...pick('telefon', PHONE_TOOLS),
+    ...pick('ajan', agentTools()), ...pick('sistem', SYSTEM_TOOLS), ...pick('otomasyon', AUTOMATION_TOOLS), ...pick('otomasyon', SABLON_TOOLS), ...pick('otomasyon', URUN_TOOLS), ...pick('mesaj', URUN_TOOLS), ...pick('mesaj', SABLON_TOOLS), ...pick('telefon', PHONE_TOOLS),
     ...pick('sms', SMS_TOOLS), ...pick('sosyal', SOCIAL_TOOLS), ...pick('android', ANDROID_TOOLS), ...pick('site', SITE_TOOLS), ...pick('medya', MEDIA_TOOLS), ...pick('ses', VOICESTUDIO_TOOLS), ...pick('satin', HOSTINGER_TOOLS), ...pick('finans', ROBOT_TOOLS), ...pick('finans', DISROBOT_TOOLS), ...pick('finans', EXCHANGE_TOOLS), ...pick('finans', INDICATOR_TOOLS), ...pick('medya', REELS_TOOLS), ...pick('medya', PAYLASIM_TOOLS), ...pick('marka', BRAND24_TOOLS), ...pick('eposta', MAILCLEAN_TOOLS), ...pick('sistem', MICDIAG_TOOLS), ...pick('medya', SYSTEM_TOOLS.filter(t => t.function.name === 'dosya_listele' || t.function.name === 'uygulama_yonet' || t.function.name === 'uygulama_ara')),
     ...pick('yetenek', EXT_TOOLS), ...pick('mcp', mcpTools()), ...pick('yetenek', mcpTools()),
   ].filter((t, i, a) => a.findIndex(x => x.function.name === t.function.name) === i);

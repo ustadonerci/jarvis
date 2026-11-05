@@ -1,0 +1,10 @@
+# Müşteri başına bir kurulum: klasörü kopyalayın, .env'i müşterinin kendi anahtarlarıyla doldurun, "docker compose up -d".
+services:
+  jarvis:
+    build: .
+    restart: unless-stopped
+    env_file: ./musteri.env
+    ports:
+      - "8787:8787"
+    volumes:
+      - ./musteri-veri:/app/server/data
