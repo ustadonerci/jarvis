@@ -158,6 +158,15 @@ onRouteDown(() => {
 
 let brain = 'routellm';
 export const setBrainProvider = (id: string) => { brain = id === 'routellm' || findProvider(id) ? id : 'routellm'; };
+/** İkinci beyin: ana beyin cevap veremezse ilk ona sorulur (sonra diğerleri). data/beyin2.json'da saklanır. */
+const BRAIN2_FILE = path.join(path.dirname(MODEL_FILE), 'beyin2.json');
+let brain2 = (() => { try { return String(JSON.parse(fs.readFileSync(BRAIN2_FILE, 'utf8')).id ?? ''); } catch { return ''; } })();
+export const getBrain2 = () => brain2;
+export function setBrain2(id: string) {
+  brain2 = id === 'routellm' || findProvider(id) ? id : '';
+  fs.mkdirSync(path.dirname(BRAIN2_FILE), { recursive: true });
+  fs.writeFileSync(BRAIN2_FILE, JSON.stringify({ id: brain2 }));
+}
 export const getBrainProvider = () => brain;
 /** Seçili ve anahtarı girilmiş sağlayıcı; yoksa null (RouteLLM) */
 export function activeProvider(): Provider | null {
@@ -328,7 +337,9 @@ export async function brainStream(body: any, onContent?: (d: string, full: strin
   // her turda hepsini baştan denemek "düşünüyor"da uzun beklemeye yol açıyordu.
   const now = Date.now();
   const retry = order.filter(o => resting(o.id) && (retriedAt.get(o.id) ?? 0) < now - 3 * 60_000);
-  const list = [...order.filter(o => !resting(o.id)).sort((a, b) => score(a.id) - score(b.id)), ...retry];
+  // Ana beyin ve ikinci beyin her zaman önde (bu sırayla); diğerleri hızlarına göre
+  const pin = (id: string) => (id === brain ? 0 : id === brain2 ? 1 : 2);
+  const list = [...order.filter(o => !resting(o.id)).sort((a, b) => pin(a.id) - pin(b.id) || score(a.id) - score(b.id)), ...retry];
   if (!list.length && order.length) list.push(...order); // hepsi dinlenmede ve yakın zamanda denendiyse yine de dene
   const t0 = Date.now();
   if (!list.length) throw new Error('Hiçbir yapay zekâ anahtarı girilmemiş. Ayarlar → Yapay zeka sağlayıcıları\'ndan ücretsiz bir anahtar ekleyin (Google Gemini, Groq ya da NVIDIA).');
@@ -449,6 +460,7 @@ export function providerStatus() {
   const aktif = activeProvider();
   return {
     beyin: brain,
+    beyin2: brain2,
     aktif: aktif?.id ?? 'routellm',
     saglayicilar: PROVIDERS.map(p => ({ id: p.id, ad: p.ad, tur: p.tur, hazir: providerReady(p), model: providerModel(p), anahtarSayfasi: p.anahtarSayfasi, anahtarUrl: p.anahtarUrl, not: p.not })),
   };
@@ -467,8 +479,8 @@ export const BRAIN_TOOLS = [
     type: 'function',
     function: {
       name: 'beyin',
-      description: "Jarvis'in sohbetini yürüten yapay zekayı (beyin) gösterir ya da değiştirir. islem: durum (hangi beyin, anahtarı girilmiş sağlayıcılar), test ('anahtarlarımı test et', 'hangi yapay zekalar çalışıyor': kayıtlı bütün anahtarları dener), sec (saglayici: nvidia, openai, anthropic, gemini, groq, deepseek… ya da routellm). 'Beyni NVIDIA yap', 'hangi yapay zekayı kullanıyorsun', 'Claude'a geç' isteklerinde.",
-      parameters: { type: 'object', properties: { islem: { type: 'string', enum: ['durum', 'sec', 'test'] }, saglayici: { type: 'string' } }, required: ['islem'] },
+      description: "Jarvis'in sohbetini yürüten yapay zekayı (beyin) gösterir ya da değiştirir. islem: durum (hangi beyin, anahtarı girilmiş sağlayıcılar), test ('anahtarlarımı test et', 'hangi yapay zekalar çalışıyor': kayıtlı bütün anahtarları dener), sec (saglayici: nvidia, openai, anthropic, gemini, groq, deepseek… ya da routellm). 'Beyni NVIDIA yap', 'hangi yapay zekayı kullanıyorsun', 'Claude'a geç' isteklerinde. İkinci beyin (yedek): sec + ikinci: true ('ikinci beyin ekle/Gemini olsun'); ana beyin cevap veremezse önce ona sorulur.",
+      parameters: { type: 'object', properties: { islem: { type: 'string', enum: ['durum', 'sec', 'test'] }, saglayici: { type: 'string' }, ikinci: { type: 'boolean', description: "true: ikinci beyin (yedek) seçilir — 'ikinci beyin Gemini olsun'. saglayici 'yok' ise ikinci beyin kaldırılır" } }, required: ['islem'] },
     },
   },
 ] as const;
@@ -482,17 +494,26 @@ export async function runBrainTool(a: any): Promise<string> {
   const ready = PROVIDERS.filter(p => p.tur === 'sohbet' && providerReady(p)).map(p => ({ id: p.id, ad: p.ad, model: providerModel(p) }));
   if (a.islem === 'sec') {
     const q = String(a.saglayici ?? '').toLowerCase().trim();
+    if (a.ikinci && /^(yok|kaldır|kaldir|hiçbiri|hicbiri)$/.test(q)) { setBrain2(''); return j({ ok: true, ikinci_beyin: 'yok' }); }
     const id = /^(routellm|varsay[ıi]lan|abacus)$/.test(q) ? 'routellm' : PROVIDERS.find(p => p.tur === 'sohbet' && (p.id === q || p.ad.toLowerCase().includes(q)))?.id;
     if (!id) return j({ hata: `"${a.saglayici}" bulunamadı`, anahtari_girilmis: ready });
     const p = findProvider(id);
     if (p && !providerReady(p)) return j({ hata: `${p.ad} anahtarı girilmemiş. Ayarlar → Yapay zeka sağlayıcıları → ${p.ad} kartındaki "anahtar al" linkinden alıp kaydetmesi gerekiyor: ${p.anahtarUrl}`, anahtari_girilmis: ready });
+    if (a.ikinci) {
+      if (id === brain) return j({ hata: 'Bu zaten ana beyin; ikinci beyin için başka bir yapay zekâ seçin.', anahtari_girilmis: ready });
+      setBrain2(id);
+      console.log(`[beyin] ikinci beyin: ${id}`);
+      return j({ ok: true, ikinci_beyin: p ? `${p.ad} · ${providerModel(p)}` : 'RouteLLM', not: 'Ana beyin cevap veremezse soru önce ikinci beyne gider.' });
+    }
     setBrainProvider(id);
     persistBrain(id);
+    if (brain2 === id) setBrain2('');
     console.log(`[beyin] sohbetle seçildi: ${id}`);
     return j({ ok: true, beyin: p ? `${p.ad} · ${providerModel(p)}` : 'RouteLLM', not: 'Bir sonraki cevaptan itibaren geçerli. Hata verirse o cevap anahtarı girilmiş sıradaki yapay zekayla tamamlanır.' });
   }
   const p = activeProvider();
-  return j({ beyin: p ? `${p.ad} · ${providerModel(p)}` : 'RouteLLM', secili: brain, anahtari_girilmis: ready, sira: 'Seçili beyin hata verirse anahtarı girilmiş diğerleri sırayla kullanılır (Gemini, Groq, NVIDIA, …, en son RouteLLM).', dinlenen: brainHealth() });
+  const p2 = brain2 ? findProvider(brain2) : null;
+  return j({ beyin: p ? `${p.ad} · ${providerModel(p)}` : 'RouteLLM', ikinci_beyin: brain2 ? (p2 ? `${p2.ad} · ${providerModel(p2)}` : 'RouteLLM') : 'yok', secili: brain, anahtari_girilmis: ready, sira: 'Seçili beyin hata verirse anahtarı girilmiş diğerleri sırayla kullanılır (Gemini, Groq, NVIDIA, …, en son RouteLLM).', dinlenen: brainHealth() });
 }
 
 /** Ayarlar → Yapay zeka sağlayıcıları. persist: beyin seçimi state'e yazılsın */
@@ -508,7 +529,18 @@ export function providersRouter(persist: (id: string) => void): Router {
     if (p && !providerReady(p)) return res.status(400).json({ error: `${p.ad} anahtarı girilmemiş` });
     setBrainProvider(id);
     persist(id);
+    if (brain2 === id) setBrain2('');
     console.log(`[beyin] sağlayıcı: ${p ? `${p.ad} · ${providerModel(p)}` : 'RouteLLM'}`);
+    res.json(providerStatus());
+  });
+  r.post('/api/saglayicilar/beyin2', (req, res) => {
+    const id = String(req.body?.id ?? '');
+    const p = id ? findProvider(id) : null;
+    if (id && id !== 'routellm' && !p) return res.status(404).json({ error: 'Sağlayıcı bulunamadı' });
+    if (p && !providerReady(p)) return res.status(400).json({ error: `${p.ad} anahtarı girilmemiş` });
+    if (id && id === brain) return res.status(400).json({ error: 'Bu zaten ana beyin' });
+    setBrain2(id);
+    console.log(`[beyin] ikinci beyin: ${id || 'yok'}`);
     res.json(providerStatus());
   });
   r.post('/api/saglayicilar/test-hepsi', async (_req, res) => res.json({ sonuc: await testAllProviders() }));

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getKeys, getProviders, saveKeys, setBrain, testAllProviders, testProvider, type KeyView, type ProvidersData } from '../lib/api';
+import { getKeys, getProviders, saveKeys, setBrain, setBrain2, testAllProviders, testProvider, type KeyView, type ProvidersData } from '../lib/api';
 
 const LOGO: Record<string, string> = { routellm: '🧭', perplexity: '🔎', cohere: '🟣', together: '🤝', fireworks: '🎆', cerebras: '🧠', sambanova: '🔶', deepinfra: '🌊', huggingface: '🤗', nvidia: '🟩', qwen: '🐉', moonshot: '🌙', zhipu: '🔷', minimax: '🔺', ai21: '🔵', novita: '✨', hyperbolic: '🌀', stability: '🖼️', replicate: '🔁', fal: '⚡', runway: '🎬', luma: '🎥', heygen: '🧑‍💼', assemblyai: '🎙️', elevenlabs: '🔊', deepgram: '👂', openai: '🟢', anthropic: '🟠', gemini: '🔷', xai: '✖️', deepseek: '🐋', mistral: '🌬️', groq: '⚡', openrouter: '🔀' };
 
@@ -46,6 +46,10 @@ export function ProviderSettings({ flash }: { flash(t: string): void }) {
     setData(d);
     flash(id === 'routellm' ? 'Beyin: RouteLLM' : `Beyin: ${d.saglayicilar.find(p => p.id === id)?.ad} · bir sonraki cevaptan itibaren`);
   }).catch(e => flash(e.message));
+  const brain2 = (id: string) => setBrain2(id).then(d => {
+    setData(d);
+    flash(!id ? 'İkinci beyin kaldırıldı' : `İkinci beyin: ${id === 'routellm' ? 'RouteLLM' : d.saglayicilar.find(p => p.id === id)?.ad} · ana beyin cevap veremezse o devreye girer`);
+  }).catch(e => flash(e.message));
 
   if (error) return (
     <>
@@ -65,6 +69,13 @@ export function ProviderSettings({ flash }: { flash(t: string): void }) {
           <button key={p.id} className={data.beyin === p.id ? 'on' : ''} onClick={() => brain(p.id)}>{LOGO[p.id] ?? '🤖'} {p.ad}</button>
         ))}
       </div>
+      <p className="small"><b>🧠 İkinci beyin</b> (ana beyin cevap veremezse önce buna sorulur):</p>
+      <div className="seg">
+        <button className={!data.beyin2 ? 'on' : ''} onClick={() => brain2('')}>Yok</button>
+        {data.saglayicilar.filter(p => p.hazir && p.tur === 'sohbet' && p.id !== data.beyin).map(p => (
+          <button key={p.id} className={data.beyin2 === p.id ? 'on' : ''} onClick={() => brain2(p.id)}>{LOGO[p.id] ?? '🤖'} {p.ad}</button>
+        ))}
+      </div>
       {data.beyin !== 'routellm' && data.aktif === 'routellm' && <p className="warn small">⚠️ Seçili sağlayıcının anahtarı yok; şimdilik RouteLLM kullanılıyor.</p>}
       {([['sohbet', 'Sohbet yapay zekaları (beyin yapılabilir)'], ['medya', 'Görsel / video / ses yapay zekaları (anahtar kaydı)']] as const).map(([tur, baslik]) => (
       <div key={tur}>
@@ -76,7 +87,7 @@ export function ProviderSettings({ flash }: { flash(t: string): void }) {
           return (
             <details key={p.id} className="ext-box borsa-card">
               <summary>
-                <span>{LOGO[p.id] ?? '🤖'} <b>{p.ad}</b>{data.aktif === p.id ? ' · BEYİN' : ''} <a href={p.anahtarUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="small">🔑 anahtar al</a></span>
+                <span>{LOGO[p.id] ?? '🤖'} <b>{p.ad}</b>{data.aktif === p.id ? ' · BEYİN' : data.beyin2 === p.id ? ' · 2. BEYİN' : ''} <a href={p.anahtarUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="small">🔑 anahtar al</a></span>
                 <em className={p.hazir ? 'ok' : 'muted'}>{p.hazir ? `anahtar kayıtlı · ${p.model}` : 'anahtar yok'}</em>
               </summary>
               <p className="small">🔑 Anahtarı buradan alın: <a href={p.anahtarUrl} target="_blank" rel="noopener noreferrer">{p.anahtarUrl}</a> (giriş yapın → yeni anahtar oluşturun → kopyalayıp aşağıya yapıştırın)</p>

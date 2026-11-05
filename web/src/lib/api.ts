@@ -328,8 +328,9 @@ export const getExchanges = () => fetch('/api/borsalar', { headers: headers() })
 export const testExchange = (id: string) => fetch(`/api/borsalar/${id}/test`, { method: 'POST', headers: headers() }).then(r => json<{ ok: boolean; borsa: string; bakiye: { varlik: string; serbest: number; kilitli: number }[] }>(r));
 
 export interface ProviderView { id: string; ad: string; tur: 'sohbet' | 'medya'; hazir: boolean; model: string; anahtarSayfasi: string; anahtarUrl: string; not?: string }
-export interface ProvidersData { beyin: string; aktif: string; saglayicilar: ProviderView[] }
+export interface ProvidersData { beyin: string; beyin2?: string; aktif: string; saglayicilar: ProviderView[] }
 export const getProviders = () => fetch('/api/saglayicilar', { headers: headers() }).then(r => json<ProvidersData>(r));
+export const setBrain2 = (id: string) => fetch('/api/saglayicilar/beyin2', { method: 'POST', headers: headers(), body: JSON.stringify({ id }) }).then(r => json<ProvidersData>(r));
 export const setBrain = (id: string) => fetch('/api/saglayicilar/beyin', { method: 'POST', headers: headers(), body: JSON.stringify({ id }) }).then(r => json<ProvidersData>(r));
 export interface XttsState { kurulu: boolean; acik: boolean; sesler: { hazir: string[]; kendi: string[] }; son?: string }
 export const xttsStatus = () => fetch('/api/xtts', { headers: headers() }).then(r => json<XttsState>(r));
