@@ -40,11 +40,21 @@ async function viaWhisper(audio: Buffer, mime: string, format: string): Promise<
   form.append('file', new Blob([new Uint8Array(audio)], { type: mime }), `kayit.${format}`);
   form.append('model', model);
   form.append('language', 'tr');
+  form.append('temperature', '0');
+  // Bağlam ipucu: Whisper sessizlikte daha az uydurur, komut kelimelerini (program adları) daha doğru yazar
+  form.append('prompt', "Jarvis'e sesli komut: Not Defteri'ni aç ve merhaba yaz. Hava nasıl? WhatsApp mesajlarımı oku.");
   const r = await fetch('https://api.openai.com/v1/audio/transcriptions', { method: 'POST', headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, body: form, signal: AbortSignal.timeout(limitMs(audio) + 10_000) });
   if (!r.ok) throw new Error(`OpenAI ${r.status}: ${(await r.text()).slice(0, 120)}`);
   const j: any = await r.json();
   return { text: String(j.text ?? '').trim(), model: `openai/${model}` };
 }
+
+/**
+ * Ses tanıma modellerinin sessiz/boş kayıtta uydurduğu bilinen cümleler (Whisper Türkçe dizi/YouTube altyazılarından
+ * ezberlemiş: "Altyazı M.K.", "İzlediğiniz için teşekkürler"…). Bunlar kullanıcının sözü değil: boş sayılır.
+ */
+const HALLUCINATION = /^\W*(altyaz[ıi]\b.*|.*\bm\.?\s?k\.?\W*$|izlediğiniz için teşekkür(ler| ederim)|abone ol(mayı unutmayın|un)|bir sonraki videoda (görüşmek üzere|görüşürüz)|sesli betimleme.*|.*altyazılar? .* tarafından.*|teşekkürler\.?|teşekkür ederim\.?|hoşça kalın\.?|www\..*|.*\.com\W*)\W*$/i;
+export function isHallucination(text: string): boolean { return HALLUCINATION.test(text.trim().toLocaleLowerCase('tr')); }
 
 /** Uzun kayıt (mikrofon kullanıcı kapatana kadar açık) daha uzun sürer: 20 sn + her ~20 KB için 1 sn */
 const limitMs = (audio: Buffer) => 20_000 + Math.round(audio.length / 20);
@@ -70,6 +80,10 @@ export async function transcribe(audio: Buffer, mime: string, sureMs?: number): 
     if (!ready) continue;
     try {
       const r = await run();
+      if (isHallucination(r.text) || tooLong(r.text, sureMs)) {
+        console.warn(`[stt] ses tanıma uydurdu (sessiz ya da çok kısık kayıt), yok sayıldı: "${r.text.slice(0, 80)}"`);
+        return { text: '', model: r.model, ms: Date.now() - t0 };
+      }
       return { ...r, ms: Date.now() - t0 };
     } catch (e: any) {
       console.warn(`[stt] ${String(e?.message || e).slice(0, 140)} · sıradaki sağlayıcı deneniyor`);
