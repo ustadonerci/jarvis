@@ -48,6 +48,7 @@ import { isXttsTool, runXttsTool } from './xtts.js';
 import { isLocalScanTool, runLocalScanTool } from './localscan.js';
 import { isSalesTool, runSalesTool } from './sales.js';
 import { isHafizaTool, runHafizaTool } from './hafiza.js';
+import { isDesktopTool, runDesktopTool } from './desktop.js';
 import { isBrainTool, runBrainTool } from './providers.js';
 import { isMicDiagTool, runMicDiagTool } from './micdiag.js';
 import { isExchangeTool, runExchangeTool } from './exchanges.js';
@@ -361,6 +362,7 @@ async function runToolOnce(name: string, rawArgs: string, progress: ToolProgress
   if (isLocalScanTool(name)) return runLocalScanTool(args, progress);
   if (isSalesTool(name)) return runSalesTool(args);
   if (isHafizaTool(name)) return runHafizaTool(args);
+  if (isDesktopTool(name)) return runDesktopTool(args, progress);
   if (isBrainTool(name)) return runBrainTool(args);
   if (isMicDiagTool(name)) return runMicDiagTool(args, progress, name);
   if (isExchangeTool(name)) return runExchangeTool(args, progress);

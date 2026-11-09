@@ -49,6 +49,7 @@ import { initMesai, mesaiRouter } from './mesai.js';
 import { onVoicePick, onVoiceReset, piperRouter, setPiperFirst } from './piper.js';
 import { hafizaRouter, localAsk, ollamaStatus, remember } from './hafiza.js';
 import { attachLiveVoice, liveReady } from './livevoice.js';
+import { warmDesktop } from './desktop.js';
 import { setLocalAsk } from './routellm.js';
 import { XTTS_MODEL, initXtts, isXtts, xttsRouter, xttsVoices } from './xtts.js';
 import { indicatorsRouter } from './indicators.js';
@@ -530,6 +531,7 @@ app.use(xttsRouter(voice => {
 initXtts();
 app.use(hafizaRouter());
 setLocalAsk(localAsk);
+warmDesktop();
 ollamaStatus().catch(() => {});
 app.use(providersRouter(id => { state.beyin = id; saveState(); }));
 
