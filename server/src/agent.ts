@@ -18,7 +18,7 @@ import { XTTS_TOOLS } from './xtts.js';
 import { LOCALSCAN_TOOLS } from './localscan.js';
 import { SALES_TOOLS } from './sales.js';
 import { HAFIZA_TOOLS } from './hafiza.js';
-import { DESKTOP_TOOLS } from './desktop.js';
+import { DESKTOP_TOOLS, quickDesktop } from './desktop.js';
 import { CHAT_MODEL, MOCK, RouteLLMError, type ChatMessage, type ContentPart } from './routellm.js';
 import { TOOLS, runTool, type ToolProgress } from './tools.js';
 import { EXT_TOOLS, extensionsForPrompt, mcpTools } from './extensions.js';
@@ -390,6 +390,16 @@ export async function runJarvis(opts: RunOptions): Promise<JarvisReply> {
     scripted.sahneler.forEach(enqueue);
     const r = await finish(scripted.detay);
     return { ...r, model: 'hazır komut', router: 'hazır komut' };
+  }
+
+  // Hızlı yol: "Not Defteri'ni aç ve merhaba yaz" gibi program komutları yapay zekâya sorulmadan yapılır (Windows)
+  if (!opts.image && !fal) {
+    const quick = await quickDesktop(text, log).catch(() => null);
+    if (quick) {
+      enqueue({ ses: quick, gorsel: { tip: 'yok' } });
+      const r = await finish('');
+      return { ...r, model: 'hızlı komut', router: 'hızlı komut' };
+    }
   }
 
   if (MOCK) {

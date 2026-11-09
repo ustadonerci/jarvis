@@ -95,7 +95,16 @@ export function toSendKeys(k: string): string {
 }
 const RISKY_KEYS = /^(alt\+f4|ctrl\+w|ctrl\+shift\+w|delete|del|shift\+delete|shift\+del|ctrl\+shift\+delete|ctrl\+alt\+delete)$/i;
 
+// Türkçe adlar → Windows komutu (Başlat menüsünde bulunamazsa ya da en güvenilir yol buysa)
+const ALIAS: Record<string, string> = { 'not defteri': 'notepad', 'notepad': 'notepad', 'hesap makinesi': 'calc', 'paint': 'mspaint', 'dosya gezgini': 'explorer', 'komut istemi': 'cmd', 'görev yöneticisi': 'taskmgr', 'denetim masası': 'control', 'ayarlar': 'ms-settings:', 'word': 'winword', 'excel': 'excel', 'powerpoint': 'powerpnt', 'wordpad': 'write', 'ekran alıntısı': 'snippingtool' };
+const aliasOf = (ad: string) => { const l = ad.toLocaleLowerCase('tr').trim(); return ALIAS[l] ?? Object.entries(ALIAS).find(([k]) => l.includes(k) || (l.length >= 4 && k.startsWith(l)))?.[1]; };
+
 async function openApp(ad: string) {
+  const alias = aliasOf(ad);
+  if (alias) {
+    const r = await runPs(`Start-Process ${q(alias)}; J-Out @{ acildi = ${q(ad)} }`);
+    if (!r?.hata) return r;
+  }
   return runPs(`
 $q = ${q(ad)}
 $apps = @(Get-StartApps | Where-Object { $_.Name -like "*$q*" } | Select-Object -First 5)
@@ -108,8 +117,9 @@ async function windows() {
 }
 
 async function focus(ad: string) {
+  const alias = aliasOf(ad);
   return runPs(`
-$q = ${q(ad)}
+$q = ${q(alias && !alias.includes(':') ? alias : ad)}
 $p = Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and ($_.MainWindowTitle -like "*$q*" -or $_.ProcessName -like "*$q*") } | Select-Object -First 1
 if (-not $p) { J-Out @{ hata = "'$q' adlı açık pencere yok" } } else { [JW]::Front($p.MainWindowHandle); J-Out @{ odak = $p.MainWindowTitle } }`);
 }
@@ -240,3 +250,43 @@ export async function runDesktopTool(a: any, progress: (l: string) => void): Pro
 
 /** Sunucu açılırken PowerShell oturumunu ısıtır (ilk komut da hızlı olsun) */
 export function warmDesktop() { if (WIN) runPs('J-Out @{ ok = $true }', 60_000).catch(() => {}); }
+
+/**
+ * Hızlı yol: "Not Defteri'ni aç (ve merhaba yaz)" gibi komutlar yapay zekâya sorulmadan doğrudan yapılır.
+ * Program açılamazsa null döner (istek normal yoldan beyne gider).
+ */
+const OPEN_RE = /^\s*(?:jarvis[\s,]*)?(.{2,40}?)\s+(?:aç|başlat|çalıştır)(?:ar mısın|abilir misin|ır mısın)?(?:\s+ve\s+(?:içine\s+|oraya\s+)?["“'‘]?(.+?)["”'’]?\s+yaz(?:ar mısın|abilir misin)?)?\s*[.!?]*\s*$/i;
+export function parseDesktopCommand(text: string): { ad: string; yazi?: string } | null {
+  const m = OPEN_RE.exec(text.trim());
+  if (!m) return null;
+  let ad = m[1].trim();
+  if (/https?:|www\.|\.com|\.net|\.org|site|sayfa|link|video|şarkı|müzik|kapı|ışık|klima|kanal/i.test(ad)) return null;
+  // "Not Defteri'ni" → "Not Defteri"; "hesap makinesini" → "hesap makinesi"
+  if (/['’]/.test(ad)) ad = ad.split(/['’]/)[0].trim();
+  else if (/[aeıioöuü]n[iıuü]$/i.test(ad)) ad = ad.slice(0, -2);        // defterini → defteri, makinesini → makinesi
+  else if (/[^aeıioöuü][iıuüyı]$/i.test(ad) && !/ /.test(ad)) ad = ad.slice(0, -1); // notepadi → notepad
+  if (ad.length < 2 || ad.split(/\s+/).length > 4) return null;
+  return { ad, yazi: m[2]?.trim() || undefined };
+}
+
+export async function quickDesktop(text: string, progress: (l: string) => void): Promise<string | null> {
+  if (!WIN) return null;
+  const c = parseDesktopCommand(text);
+  if (!c) return null;
+  if (c.yazi && (SECRET.test(c.yazi) || /^\d{12,19}$/.test(c.yazi.replace(/\s/g, '')))) return null;
+  progress(`açılıyor: ${c.ad}`);
+  const r = await openApp(c.ad).catch(() => null);
+  if (!r || r.hata) return null;
+  const adi = String(r.acildi ?? c.ad);
+  if (!c.yazi) return `${adi} açıldı efendim.`;
+  // Pencere gelsin: en çok ~5 sn odaklanmayı dene, sonra yaz
+  for (let i = 0; i < 12; i++) {
+    await new Promise(res => setTimeout(res, 400));
+    const f = await focus(c.ad).catch(() => null);
+    if (f && !f.hata) break;
+  }
+  await new Promise(res => setTimeout(res, 300));
+  progress('yazılıyor');
+  const y = await typeText(c.yazi).catch((e: any) => ({ hata: String(e?.message || e) }));
+  return y?.hata ? `${adi} açıldı ama yazamadım: ${y.hata}` : `${adi} açıldı, "${c.yazi}" yazdım efendim.`;
+}

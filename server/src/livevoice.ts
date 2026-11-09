@@ -29,6 +29,8 @@ export interface LiveDeps {
   systemPrompt: () => string;
   voice: () => string;
   runTask: (istek: string) => Promise<string>;
+  /** Masaüstü aracı (program aç, yaz, tıkla…) doğrudan: beyne gitmeden, hızlı */
+  runDesktop?: (args: any) => Promise<string>;
   log?: (l: string) => void;
 }
 
@@ -37,6 +39,14 @@ const TOOLS = [{
     name: 'jarvis_gorev',
     description: "Jarvis'in asıl beynine iş verir: güncel bilgi (haber, hava, piyasa, döviz, borsa), internette arama, sayfa açma, mesajlar (WhatsApp/Telegram), e-posta, takvim, hatırlatma, bilgisayarda program/dosya işlemleri, portföy, mesai, yetenekler ve bütün diğer araçlar. Bilgi ya da işlem gereken HER istekte kullan; kendi bilginle güncel bilgi uydurma. Sonuç metnini kullanıcıya kısaca, doğal Türkçe konuşarak anlat. Uzun sürebilir: çağırmadan önce 'hemen bakıyorum efendim' gibi kısa bir şey söyle.",
     parameters: { type: 'OBJECT', properties: { istek: { type: 'STRING', description: 'Kullanıcının isteği, tam ve açık cümleyle (Türkçe)' } }, required: ['istek'] },
+  }, {
+    name: 'program_ac',
+    description: "Bilgisayarda programı HEMEN açar ve istenirse içine yazı yazar ('Not Defteri'ni aç ve merhaba yaz', 'hesap makinesini aç', 'Excel'i aç'). Program açma isteklerinde bunu kullan, başka şey anlatma.",
+    parameters: { type: 'OBJECT', properties: { ad: { type: 'STRING', description: 'Programın adı (ör. Not Defteri, Excel, Spotify)' }, yazi: { type: 'STRING', description: 'Açıldıktan sonra yazılacak metin (isteğe bağlı)' } }, required: ['ad'] },
+  }, {
+    name: 'masaustu',
+    description: "Açık programlarda işlem: odakla (ad), ogeler (pencerenin numaralı düğme/alanları), tikla (no), yaz (metin, no?), tus ('ctrl+s', 'enter'), kaydir (yon), ekrana_bak (soru). Şifre/kart/kod yazma.",
+    parameters: { type: 'OBJECT', properties: { islem: { type: 'STRING', enum: ['pencereler', 'odakla', 'ogeler', 'tikla', 'yaz', 'tus', 'kaydir', 'ekrana_bak'] }, ad: { type: 'STRING' }, no: { type: 'NUMBER' }, metin: { type: 'STRING' }, tus: { type: 'STRING' }, yon: { type: 'STRING' }, soru: { type: 'STRING' } }, required: ['islem'] },
   }],
 }];
 
@@ -112,9 +122,16 @@ function session(ws: any, d: LiveDeps) {
       }
       if (m.toolCall?.functionCalls?.length) {
         const responses = await Promise.all(m.toolCall.functionCalls.map(async (fc: any) => {
+          let result: string;
+          if (fc.name === 'program_ac' || fc.name === 'masaustu') {
+            const komut = fc.name === 'program_ac' ? `${fc.args?.ad ?? ''} aç${fc.args?.yazi ? ` ve ${fc.args.yazi} yaz` : ''}` : `masaüstü: ${fc.args?.islem ?? ''}`;
+            send({ type: 'gorev', metin: komut });
+            try { result = d.runDesktop ? await d.runDesktop(fc.name === 'program_ac' ? { _hizli: true, ad: fc.args?.ad, yazi: fc.args?.yazi } : fc.args ?? {}) : 'Masaüstü aracı yok.'; } catch (e: any) { result = `Yapılamadı: ${String(e?.message || e).slice(0, 200)}`; }
+            send({ type: 'gorev_bitti' });
+            return { id: fc.id, name: fc.name, response: { result: result.slice(0, 6000) } };
+          }
           const istek = String(fc.args?.istek ?? '').trim();
           send({ type: 'gorev', metin: istek });
-          let result: string;
           try { result = istek ? await d.runTask(istek) : 'İstek boş.'; } catch (e: any) { result = `Yapılamadı: ${String(e?.message || e).slice(0, 200)}`; }
           send({ type: 'gorev_bitti' });
           return { id: fc.id, name: fc.name, response: { result: result.slice(0, 6000) } };
