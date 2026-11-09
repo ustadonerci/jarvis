@@ -48,6 +48,7 @@ import { Markdown } from './lib/markdown';
 import { createRecognizer, speechRecognitionSupported, voice } from './lib/speech';
 import { Conversation, classify, type ConvState } from './lib/conversation';
 import { ConvDiagnostics } from './components/ConvDiagnostics';
+import { LiveVoice, type LiveEvent } from './lib/livevoice';
 import { DEVICE_LABEL, type PersonaOption, type ThemeOption, type CoreState, type Ekran, type CurrencyCode, type Dashboard, type Device, type GreetingPeriod, type Health, type JarvisReply, type Sahne, type ServerEvent, type StoredMessage, type UiMode, type VoiceOption, type VoiceSel, type WakeConfig } from './lib/types';
 import { atServerTime, clockInfo, keepAwake, listenForCommand, preciseTimeout, startClockSync, syncClock, type CommandListen } from './lib/wake';
 
@@ -141,6 +142,11 @@ export default function App() {
   /** Oynatılan sahne (söze girilince kaldığı yer) */
   const sceneIdxRef = useRef(-1);
   const recRef = useRef<{ stop(): void } | null>(null);
+  // Canlı ses (Gemini Live): mikrofona basınca hızlı, söz kesilebilen sohbet. Açılamazsa normal mikrofona düşer.
+  const [canliMod, setCanliMod] = useState(() => { try { return localStorage.getItem('jarvis.canli') !== '0'; } catch { return true; } });
+  const liveVoiceRef = useRef<LiveVoice | null>(null);
+  const liveFailedRef = useRef(false);
+  const liveHeardRef = useRef('');
   const liveRef = useRef<Live | null>(null);
   /** Gönderme anı: "ilk sahne geldi" ve "ilk ses çalmaya başladı" ölçümü için */
   const t0Ref = useRef<number | null>(null);
@@ -781,8 +787,41 @@ export default function App() {
 
   // Asıl yol: mikrofon kaydı → RouteLLM ile yazıya çevirme. Kullanıcı mikrofona (ya da boşluğa) tekrar basana kadar
   // açık kalır: uzun konuşmada düşünmek için verilen aralar kaydı kesmez.
+  const onLiveEvent = (e: LiveEvent) => {
+    switch (e.type) {
+      case 'hazir': setCore('listening'); setInterim(''); setTelemetry(['⚡ canlı sohbet açık · konuşun (bitirmek için mikrofona basın)']); break;
+      case 'yazi':
+        if (e.kim === 'sen') { liveHeardRef.current += e.metin; setInterim(liveHeardRef.current); }
+        else setPreCaption(c => (c + e.metin).slice(-220));
+        break;
+      case 'gorev': setCore('thinking'); setTelemetry(t => [...t.slice(-4), `görev: ${e.metin}`]); break;
+      case 'konusuyor': setCore('speaking'); break;
+      case 'tur_bitti': liveHeardRef.current = ''; setInterim(''); setTimeout(() => setPreCaption(''), 2500); setCore(c => (liveVoiceRef.current?.active ? 'listening' : c)); break;
+      case 'hata':
+      case 'kapandi': {
+        const wasOpen = liveVoiceRef.current?.active;
+        liveVoiceRef.current?.stop(); liveVoiceRef.current = null;
+        setCore('idle'); setInterim(''); setPreCaption('');
+        if (e.type === 'hata') { liveFailedRef.current = true; flash(`${e.metin} · normal mikrofona geçildi`); }
+        else if (wasOpen && e.neden) flash(`Canlı sohbet kapandı: ${e.neden}`);
+        break;
+      }
+    }
+  };
+  const toggleLive = () => {
+    if (liveVoiceRef.current?.active) { liveVoiceRef.current.stop(); liveVoiceRef.current = null; setCore('idle'); setInterim(''); setPreCaption(''); return; }
+    stopPlayback(); setVideo(null); convRef.current?.suspend();
+    liveHeardRef.current = '';
+    const lv = new LiveVoice(onLiveEvent);
+    liveVoiceRef.current = lv;
+    setCore('thinking'); setTelemetry(['⚡ canlı sohbet bağlanıyor…']);
+    lv.start().catch(err => onLiveEvent({ type: 'hata', metin: String(err?.message ?? err) }));
+  };
+
   const toggleMic = async () => {
     voice.unlock();
+    // Canlı mod: tek dokunuşla açılır/kapanır; bu oturumda açılamadıysa normal kayıt
+    if ((canliMod && !liveFailedRef.current) || liveVoiceRef.current?.active) { toggleLive(); return; }
     if (core === 'listening') { recRef.current?.stop(); return; }
     // Sohbet modu açıksa elle kayıt sürerken onun dinlemesi susar (tarayıcıda aynı anda tek ses tanıma)
     convRef.current?.suspend();
@@ -1690,6 +1729,11 @@ export default function App() {
                     </div>
                   )}
                   <p className="muted small">Jarvis'in kendi 3 sesi. Sesle de değiştirebilirsiniz: "sesini echo yap", "daha hızlı oku".</p>
+                  <label>Hızlı canlı sohbet (Gemini Live)</label>
+                  <div className="seg">
+                    <button className={canliMod ? 'on' : ''} onClick={() => { const v = !canliMod; setCanliMod(v); liveFailedRef.current = false; try { localStorage.setItem('jarvis.canli', v ? '1' : '0'); } catch { /* */ } flash(v ? '⚡ Mikrofon artık canlı sohbet açar' : 'Mikrofon normal kayda döndü'); }}>{canliMod ? '✅' : '⬜'} ⚡ Mikrofona basınca canlı sohbet</button>
+                  </div>
+                  <p className="muted small">Konuştuğunuz an cevap verir, sözünü kesebilirsiniz; haber, mesaj, tarayıcı gibi işleri Jarvis'in asıl beynine yaptırır. Ses Gemini'nin canlı sesidir (onyx'e en yakın: Charon). Gemini anahtarı gerekir; açılamazsa normal mikrofon kullanılır.</p>
                   {voices && voiceSel && voices.some(v => v.gender) && (
                     <div className="seg">
                       {(['erkek', 'kadin'] as const).map(g => {

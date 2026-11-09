@@ -97,7 +97,7 @@ export default defineConfig({
     // xfwd: sunucu isteğin gerçekten bu bilgisayardan mı geldiğini görsün (Ayarlar → anahtarlar/yetenekler)
     // /twilio ve /hook: telefon görüşmeleri ve WhatsApp Business webhookları tünelden sunucuya ulaşsın
     proxy: {
-      '/api': { target: 'http://localhost:8787', changeOrigin: true, xfwd: true },
+      '/api': { target: 'http://localhost:8787', changeOrigin: true, xfwd: true, ws: true },
       '/twilio': { target: 'http://localhost:8787', changeOrigin: true, xfwd: true },
       '/hook': { target: 'http://localhost:8787', changeOrigin: true, xfwd: true },
     },
