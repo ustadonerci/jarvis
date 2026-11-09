@@ -72,6 +72,8 @@ const FETCH_TIMEOUT = 8000;
 function cached<T>(okMs: number, failMs: number, label: string, load: () => Promise<T | null>) {
   let at = 0;
   let value: T | null = null;
+  // Son başarılı değer: kaynak geçici olarak cevap vermezse (istek sınırı, ağ) 3 saate kadar o gösterilir
+  let good: { v: T; at: number } | null = null;
   let inflight: Promise<T | null> | null = null;
   return (): Promise<T | null> => {
     if (at && Date.now() - at < (value === null ? failMs : okMs)) return Promise.resolve(value);
@@ -81,6 +83,8 @@ function cached<T>(okMs: number, failMs: number, label: string, load: () => Prom
         return null;
       })
       .then(v => {
+        if (v !== null) good = { v, at: Date.now() };
+        else if (good && Date.now() - good.at < 3 * 3600_000) v = good.v;
         value = v;
         at = Date.now();
         inflight = null;
@@ -128,6 +132,43 @@ const WMO: Record<number, [string, WeatherIcon]> = {
 export const describeWeather = (code: number): [string, WeatherIcon] => WMO[code] ?? ['Bilinmiyor', 'bulutlu'];
 
 export const getWeather = cached<Weather>(TEN_MIN, 60_000, 'hava', async () => {
+  try { return await openMeteo(); } catch (e) {
+    console.warn('Pano: Open-Meteo olmadı, MET Norway deneniyor:', e instanceof Error ? e.message : e);
+    return metNorway();
+  }
+});
+
+// MET Norway sembol adı → WMO kodu (ikon ve açıklama aynı tablodan)
+const MET_WMO: [RegExp, number][] = [[/thunder/, 95], [/heavysnow/, 75], [/snowshowers/, 85], [/lightsnow/, 71], [/snow/, 73], [/sleet/, 66], [/heavyrainshowers/, 82], [/lightrainshowers/, 80], [/rainshowers/, 81], [/heavyrain/, 65], [/lightrain/, 61], [/rain/, 63], [/fog/, 45], [/cloudy/, 3], [/partlycloudy/, 2], [/fair/, 1], [/clearsky/, 0]];
+const metCode = (sym?: string) => { const s = String(sym ?? '').replace(/_(day|night|polartwilight)$/, ''); if (s === 'partlycloudy') return 2; return MET_WMO.find(([re]) => re.test(s))?.[1] ?? 3; };
+
+/** Yedek hava kaynağı: MET Norway (Norveç Meteoroloji, anahtarsız; User-Agent zorunlu) */
+async function metNorway(): Promise<Weather | null> {
+  const city = process.env.WEATHER_CITY || 'İstanbul';
+  const lat = Number(process.env.WEATHER_LAT || 41.01).toFixed(4);
+  const lon = Number(process.env.WEATHER_LON || 28.98).toFixed(4);
+  const r = await fetch(`https://api.met.no/weatherapi/locationforecast/2.0/complete?lat=${lat}&lon=${lon}`, { headers: { 'User-Agent': 'Jarvis-asistan/1.0 github.com/ustadonerci/jarvis' }, signal: AbortSignal.timeout(FETCH_TIMEOUT) });
+  if (!r.ok) throw new Error(`MET Norway HTTP ${r.status}`);
+  const j: any = await r.json();
+  const ts: any[] = j.properties?.timeseries ?? [];
+  const now = ts[0];
+  const c = now?.data?.instant?.details ?? {};
+  const temp = num(c.air_temperature), feels = num(c.apparent_air_temperature) ?? temp, wind = num(c.wind_speed);
+  if (!now || temp === null || wind === null) throw new Error('MET Norway cevabında eksik alan');
+  const code = metCode(now.data.next_1_hours?.summary?.symbol_code ?? now.data.next_6_hours?.summary?.symbol_code);
+  const local = (iso: string) => new Date(iso).toLocaleString('sv-SE', { timeZone: 'Europe/Istanbul' }); // "2026-11-09 22:00:00"
+  const today = local(now.time).slice(0, 10);
+  const temps = ts.filter(t => local(t.time).slice(0, 10) === today).map(t => num(t.data?.instant?.details?.air_temperature)).filter((x): x is number => x !== null);
+  const [description, icon] = describeWeather(code);
+  return {
+    city, temp, feels_like: feels ?? temp, code, description, icon, wind: Math.round(wind * 3.6),
+    today: { max: Math.max(temp, ...temps), min: Math.min(temp, ...temps), rain_prob: num(now.data.next_1_hours?.details?.probability_of_precipitation), code: metCode(now.data.next_12_hours?.summary?.symbol_code) },
+    hourly: ts.slice(0, 12).map(t => ({ time: local(t.time).slice(11, 16), temp: num(t.data?.instant?.details?.air_temperature) ?? temp, rain_prob: num(t.data?.next_1_hours?.details?.probability_of_precipitation) })),
+    sunrise: null, sunset: null, updated_at: String(j.properties?.meta?.updated_at ?? new Date().toISOString()),
+  };
+}
+
+async function openMeteo(): Promise<Weather | null> {
   const city = process.env.WEATHER_CITY || 'İstanbul';
   const lat = Number(process.env.WEATHER_LAT || 41.01);
   const lon = Number(process.env.WEATHER_LON || 28.98);
@@ -173,7 +214,7 @@ export const getWeather = cached<Weather>(TEN_MIN, 60_000, 'hava', async () => {
     sunset: d.sunset?.[0] ? String(d.sunset[0]).slice(11, 16) : null,
     updated_at: String(c.time ?? new Date().toISOString()),
   };
-});
+}
 
 // ---------- Döviz: TCMB (anahtarsız) ----------
 
