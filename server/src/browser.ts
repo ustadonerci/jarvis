@@ -20,6 +20,16 @@ let ctx: BrowserContext | null = null;
 let current: Page | null = null;
 let starting: Promise<BrowserContext> | null = null;
 
+/**
+ * Tıklama/Enter sonrası akıllı bekleme: sayfa değişiyorsa yüklenmesi (en çok 4 sn), değişmiyorsa kısa bir an (~300 ms).
+ * Önceden her işlemden sonra sabit 1,5 sn bekleniyordu.
+ */
+async function settle(p: Page) {
+  const nav = p.waitForEvent('framenavigated', { timeout: 250 }).then(() => true).catch(() => false);
+  if (await nav) await p.waitForLoadState('domcontentloaded', { timeout: 4000 }).catch(() => {});
+  await p.waitForTimeout(150);
+}
+
 async function launch(): Promise<BrowserContext> {
   fs.mkdirSync(PROFILE, { recursive: true });
   const cdp = process.env.TARAYICI_CDP?.trim();
@@ -286,7 +296,7 @@ export async function runBrowserTool(a: any, progress: (l: string) => void): Pro
         if (MONEY_BUTTON.test(t)) return j({ hata: `"${t.trim().slice(0, 60)}" bir satın alma/ödeme düğmesi. Jarvis buna basmaz; kullanıcı tarayıcı penceresinde kendisi basmalı.` });
         progress(`tıklanıyor: ${t.trim().slice(0, 40)}`);
         await el().click({ timeout: 10_000 });
-        await p.waitForTimeout(1500);
+        await settle(p);
         break;
       }
       case 'yaz': {
@@ -297,16 +307,16 @@ export async function runBrowserTool(a: any, progress: (l: string) => void): Pro
         if (/password/i.test(info) || SECRET_FIELD.test(info) || looksLikeCard(metin)) return j({ hata: 'Bu bir şifre / kart / doğrulama kodu alanı. Jarvis bunlara yazmaz; kullanıcı tarayıcı penceresinde kendisi yazmalı.' });
         progress('yazılıyor');
         await el().fill(metin, { timeout: 10_000 }).catch(async () => { await el().click(); await p.keyboard.type(metin); });
-        if (a.enter) { await p.keyboard.press('Enter'); await p.waitForTimeout(1500); }
+        if (a.enter) { await p.keyboard.press('Enter'); await settle(p); }
         break;
       }
       case 'tus':
         await p.keyboard.press(String(a.tus || 'Enter'));
-        await p.waitForTimeout(800);
+        await settle(p);
         break;
       case 'kaydir':
         await p.mouse.wheel(0, 900);
-        await p.waitForTimeout(700);
+        await p.waitForTimeout(250);
         break;
       case 'geri':
         await p.goBack({ timeout: 15_000 }).catch(() => {});
