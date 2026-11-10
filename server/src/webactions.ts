@@ -61,7 +61,7 @@ export async function playYouTube(q: string, progress: (l: string) => void = () 
 export async function playYouTubeSafe(q: string, progress: (l: string) => void = () => {}) {
   try { return await playYouTube(q, progress); } catch (e: any) {
     const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
-    if (process.platform === 'win32') { spawn('explorer.exe', [url], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref(); return { ok: true, baslik: `${q} (YouTube araması varsayılan tarayıcıda açıldı)`, url, not: `Jarvis'in tarayıcısı açılamadı: ${String(e?.message || e).slice(0, 120)}` }; }
+    if (process.platform === 'win32') { spawn('explorer.exe', [url], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref(); return { ok: true, baslik: `${q} (YouTube araması varsayılan tarayıcıda açıldı)`, url, not: String(e?.message || e).slice(0, 300) }; }
     throw e;
   }
 }

@@ -14,6 +14,7 @@ import express, { type Router } from 'express';
 import { chromium, type BrowserContext, type Frame, type Page } from 'playwright-core';
 import { adminOnly } from './keys.js';
 import { logActivity } from './activity.js';
+import { logError } from './errors.js';
 
 const PROFILE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data', 'tarayici-profil');
 let ctx: BrowserContext | null = null;
@@ -41,42 +42,68 @@ async function launch(): Promise<BrowserContext> {
     console.log(`[tarayici] açık Chrome'a bağlandı (${cdp})`);
     return c;
   }
-  const exe = process.env.TARAYICI_YOLU?.trim();
-  const channels = exe ? [undefined] : process.env.TARAYICI_KANAL ? [process.env.TARAYICI_KANAL] : ['chrome', 'msedge'];
-  let last: unknown;
-  for (const channel of channels) {
-    try {
-      const c = await chromium.launchPersistentContext(PROFILE, {
-        ...(exe ? { executablePath: exe } : { channel }),
-        headless: process.env.TARAYICI_GIZLI === '1',
-        viewport: null,
-        args: [
-          '--no-first-run', '--no-default-browser-check',
-          // Arka planda (ekran dışında / küçültülmüş) çalışırken sayfalar yavaşlamasın
-          '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows',
-          ...(background() ? ['--window-position=-32000,-32000', '--window-size=1280,900'] : ['--start-maximized']),
-        ],
-      });
-      c.on('close', () => { ctx = null; current = null; });
-      c.on('page', p => { current = p; });
-      console.log(`[tarayici] açıldı (${exe ? 'özel yol' : channel})`);
-      return c;
-    } catch (e) {
-      last = e;
+  // Sırayla denenecek yollar: Chrome (kanal), Edge (kanal), bilgisayarda bulunan chrome.exe/msedge.exe (kullanıcıya
+  // özel kurulumlar dahil). Hepsi olmazsa profil kilidi temizlenip yeniden; o da olmazsa yeni (boş) bir profil.
+  const envExe = process.env.TARAYICI_YOLU?.trim();
+  const found = findChrome();
+  const tries: { ad: string; opt: Record<string, unknown> }[] = envExe ? [{ ad: 'özel yol', opt: { executablePath: envExe } }]
+    : process.env.TARAYICI_KANAL ? [{ ad: process.env.TARAYICI_KANAL, opt: { channel: process.env.TARAYICI_KANAL } }]
+    : [{ ad: 'chrome', opt: { channel: 'chrome' } }, { ad: 'msedge', opt: { channel: 'msedge' } }, ...(found ? [{ ad: path.basename(found), opt: { executablePath: found } }] : [])];
+  const errs: string[] = [];
+  const attempt = async (profile: string) => {
+    fs.mkdirSync(profile, { recursive: true });
+    for (const t of tries) {
+      try {
+        const c = await chromium.launchPersistentContext(profile, {
+          ...t.opt,
+          headless: process.env.TARAYICI_GIZLI === '1',
+          viewport: null,
+          timeout: 45_000,
+          args: [
+            '--no-first-run', '--no-default-browser-check',
+            // Arka planda (ekran dışında / küçültülmüş) çalışırken sayfalar yavaşlamasın
+            '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows',
+            ...(background() ? ['--window-position=-32000,-32000', '--window-size=1280,900'] : ['--start-maximized']),
+          ],
+        });
+        c.on('close', () => { ctx = null; current = null; });
+        c.on('page', p => { current = p; });
+        console.log(`[tarayici] açıldı (${t.ad}${profile !== PROFILE ? ', yeni profil' : ''})`);
+        return c;
+      } catch (e: any) {
+        const why = cleanErr(e);
+        errs.push(`${t.ad}: ${why}`);
+        console.warn(`[tarayici] ${t.ad} açılamadı: ${String(e?.message || e).slice(0, 600)}`);
+      }
     }
-  }
-  // Jarvis'in profili kilitli olabilir: Jarvis güncellenip yeniden başlarken eski Chrome arka planda açık kalınca
-  // profil kilitli kalıyordu. YALNIZ bu profili kullanan Chrome/Edge süreçleri kapatılır (kullanıcının kendi Chrome'una
-  // dokunulmaz), kilit dosyaları silinir ve bir kez daha denenir.
-  if (!retried) {
-    retried = true;
-    const n = releaseProfile();
-    console.warn(`[tarayici] açılamadı, profil kilidi temizleniyor (${n} eski süreç kapatıldı) ve yeniden deneniyor`);
-    try { return await launch(); } finally { retried = false; }
-  }
-  throw new Error(`Tarayıcı açılamadı (Chrome ya da Edge bulunamadı ya da Jarvis profili başka bir pencerede açık): ${String((last as any)?.message || last).split('\n')[0].slice(0, 200)}`);
+    return null;
+  };
+  let c = await attempt(PROFILE);
+  if (c) return c;
+  // Profil kilitli olabilir (yeniden başlarken açık kalan eski Chrome): YALNIZ bu profili kullanan süreçler kapatılır
+  // (kullanıcının kendi Chrome'una dokunulmaz), kilit dosyaları silinir, bir kez daha denenir.
+  const n = releaseProfile();
+  console.warn(`[tarayici] profil kilidi temizlendi (${n} eski süreç kapatıldı), yeniden deneniyor`);
+  c = await attempt(PROFILE);
+  if (c) return c;
+  // Profil bozulmuş olabilir: yeni profille (giriş yapılmış oturumlar bu pencerede yeniden gerekir)
+  c = await attempt(`${PROFILE}-yeni`);
+  if (c) { console.warn('[tarayici] eski profil açılmadı; yeni profil kullanılıyor'); return c; }
+  const ozet = [...new Set(errs)].slice(-3).join(' · ');
+  logError('tarayıcı', `Açılamadı: ${errs.join(' | ')}`);
+  throw new Error(`Tarayıcı açılamadı. Sebep: ${ozet}`);
 }
-let retried = false;
+
+/** Playwright hatasının anlaşılır kısmı (önek ve uzun günlük olmadan) */
+function cleanErr(e: any): string {
+  const m = String(e?.message || e).replace(/^browserType\.launchPersistentContext:\s*/i, '');
+  const exe = /Chromium distribution '([^']+)' is not found/i.exec(m);
+  if (exe) return `${exe[1]} kurulu değil`;
+  if (/exitCode=21|has been closed|Opening in existing browser session/i.test(m)) return 'profil başka bir Chrome tarafından kullanılıyor';
+  if (/Timeout/i.test(m)) return 'tarayıcı zamanında açılmadı';
+  if (/EACCES|EPERM|Access is denied|erişim/i.test(m)) return 'erişim izni yok (antivirüs engelliyor olabilir)';
+  return m.split('\n').find(l => l.trim() && !/^=+|Call log|^\s*-/.test(l))?.trim().slice(0, 160) ?? m.slice(0, 160);
+}
 
 /** Jarvis profilini kullanan artık tarayıcı süreçlerini kapatır ve kilit dosyalarını siler; kapatılan süreç sayısı */
 export function releaseProfile(): number {
@@ -84,7 +111,7 @@ export function releaseProfile(): number {
   if (process.platform === 'win32') {
     const prof = PROFILE.replace(/'/g, "''");
     const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-      `$p = Get-CimInstance Win32_Process -Filter "Name='chrome.exe' OR Name='msedge.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine.Contains('${prof}') }; foreach ($x in $p) { Stop-Process -Id $x.ProcessId -Force -ErrorAction SilentlyContinue }; @($p).Count`],
+      `$p = Get-CimInstance Win32_Process -Filter "Name='chrome.exe' OR Name='msedge.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine.ToLower().Contains('${prof}'.ToLower()) }; foreach ($x in $p) { Stop-Process -Id $x.ProcessId -Force -ErrorAction SilentlyContinue }; @($p).Count`],
       { encoding: 'utf8', windowsHide: true, timeout: 20_000 });
     n = Number(String(r.stdout).trim().split(/\s+/).pop()) || 0;
     if (n) spawnSync('powershell.exe', ['-NoProfile', '-Command', 'Start-Sleep -Milliseconds 800'], { windowsHide: true });

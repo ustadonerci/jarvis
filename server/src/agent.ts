@@ -397,7 +397,7 @@ export async function runJarvis(opts: RunOptions): Promise<JarvisReply> {
   // Hızlı yol: "YouTube'dan Tarkan'ı aç" → doğrudan çalar; "Trendyol'dan kulaklık al" → arar ve listeler
   const muzik = !opts.image && !fal ? parseMusic(text) : null;
   if (muzik) {
-    const y: any = await playYouTubeSafe(muzik, log).catch((e: any) => ({ ok: false, not: `YouTube açılamadı: ${String(e?.message || e).slice(0, 120)}` }));
+    const y: any = await playYouTubeSafe(muzik, log).catch((e: any) => ({ ok: false, not: `YouTube açılamadı: ${String(e?.message || e).slice(0, 300)}` }));
     enqueue({ ses: y.ok ? `${y.baslik} açıldı efendim.` : (y.not ?? 'YouTube açılamadı.'), gorsel: { tip: 'yok' } });
     const r = await finish('');
     return { ...r, model: 'hızlı komut', router: 'hızlı komut' };
