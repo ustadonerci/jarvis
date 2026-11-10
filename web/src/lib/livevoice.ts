@@ -1,7 +1,7 @@
 // Canlı ses modu istemcisi: mikrofon → 16 kHz PCM16 → sunucu (/api/canli-ses) → Gemini Live; gelen 24 kHz PCM16 ses
 // kuyruğa alınıp kesintisiz çalınır. Kullanıcı konuşmaya başlayınca Gemini "kesildi" der: çalan ses hemen susturulur.
 import { token } from './api';
-import { micBoostOn, micConstraints } from './recorder';
+import { ensureRealMic, micBoostOn, micConstraints } from './recorder';
 
 export type LiveEvent =
   | { type: 'durum'; metin: string } | { type: 'hazir'; model: string } | { type: 'kesildi' }
@@ -64,6 +64,7 @@ export class LiveVoice {
     // Ayarlar'da seçilen mikrofon (kablolu vb.); yoksa varsayılan
     try { this.mic = await navigator.mediaDevices.getUserMedia({ audio: { ...micConstraints(), channelCount: 1 } }); }
     catch { this.mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } }); }
+    this.mic = await ensureRealMic(this.mic);
     this.inCtx = new AudioContext();
     const url = URL.createObjectURL(new Blob([WORKLET], { type: 'application/javascript' }));
     await this.inCtx.audioWorklet.addModule(url);

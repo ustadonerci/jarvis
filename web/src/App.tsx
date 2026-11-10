@@ -29,7 +29,7 @@ import { emitCamera, getCameras, getRole, isCameraEvent, onCamera, setRole, togg
 import { type ElevenUsage, clearConversation, cloneVoice, uploadFile, detectDevice, getDashboard, getHealth, getState, getVoices, metric, postAttention, postSleep, postWake, previewUrl, saveDevice, saveSettings, sendChat, setPhotoMode, stt, subscribe, token, clientId } from './lib/api';
 import { startClapListener, type ClapListener } from './lib/clap';
 import { shrinkImage } from './lib/image';
-import { findWorkingMic, micBoostOn, micInfo, recorderSupported, setMicBoost, startRecording, suspiciousMic, warmMic } from './lib/recorder';
+import { clearMicSwitch, findWorkingMic, lastMicSwitch, micBoostOn, micInfo, recorderSupported, setMicBoost, startRecording, suspiciousMic, warmMic } from './lib/recorder';
 import { MicTest, SpeakerSettings } from './components/MicTest';
 import { OfflineVoice } from './components/OfflineVoice';
 import { XttsSettings } from './components/XttsSettings';
@@ -891,7 +891,8 @@ export default function App() {
       setInterim('dinliyorum… (bitirince mikrofona tekrar basın)');
       // Bilgisayarın kendi sesini kaydeden giriş (Stereo Karışımı vb.) seçiliyse Jarvis kullanıcıyı değil çalan sesi duyar
       const lbl = micInfo()?.label ?? '';
-      if (suspiciousMic(lbl)) flash(`Dikkat: "${lbl}" bir mikrofon değil, bilgisayarın sesini kaydediyor. Ayarlar → Mikrofon · test bölümünden mikrofonunuzu seçin.`);
+      if (lastMicSwitch) { flash(`🎙️ "${lastMicSwitch.eski}" bir mikrofon değildi; "${lastMicSwitch.yeni}" mikrofonuna geçildi.`); clearMicSwitch(); }
+      else if (suspiciousMic(lbl)) flash(`Dikkat: "${lbl}" bir mikrofon değil ve başka mikrofon bulunamadı. Mikrofonunuzun takılı olduğunu kontrol edin (Ayarlar → Mikrofon · test).`);
     } catch {
       // Mikrofon izni yok ya da kayıt başlamadı: Web Speech yedeğini dene.
       try { side?.stop(); } catch { /* yok */ }

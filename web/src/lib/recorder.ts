@@ -45,6 +45,7 @@ async function openMic(): Promise<MediaStream> {
     if (micDevice() && /Overconstrained|NotFound/i.test(String(e?.name))) s = await navigator.mediaDevices.getUserMedia({ audio: MIC });
     else throw e;
   }
+  s = await ensureRealMic(s);
   // Mikrofon elle seçilmediyse ve Windows varsayılanı bir Bluetooth Hands-Free girişiyse (Bluetooth hoparlör bağlanınca
   // Windows bunu yapıyor), kablolu / dahili bir mikrofon varsa o kullanılır.
   const label = s.getAudioTracks()[0]?.label ?? '';
@@ -61,6 +62,31 @@ async function openMic(): Promise<MediaStream> {
   }
   return s;
 }
+/** En son otomatik değiştirilen giriş (ekranda bilgi vermek için) */
+export let lastMicSwitch: { eski: string; yeni: string } | null = null;
+export const clearMicSwitch = () => { lastMicSwitch = null; };
+/**
+ * Açılan giriş bir mikrofon değilse (Windows'un "Stereo Karışımı" gibi bilgisayarın kendi sesini kaydeden girişi)
+ * gerçek bir mikrofona geçer ve onu seçili mikrofon olarak kaydeder. Kablolu/dahili mikrofon önce, Bluetooth en son.
+ */
+export async function ensureRealMic(s: MediaStream): Promise<MediaStream> {
+  const label = s.getAudioTracks()[0]?.label ?? '';
+  if (!suspiciousMic(label)) return s;
+  const all = await navigator.mediaDevices.enumerateDevices().catch(() => [] as MediaDeviceInfo[]);
+  const real = all.filter(d => d.kind === 'audioinput' && d.deviceId !== 'default' && d.deviceId !== 'communications' && d.label && !suspiciousMic(d.label))
+    .sort((a, b) => Number(isBluetoothMic(a.label)) - Number(isBluetoothMic(b.label)));
+  for (const d of real) {
+    try {
+      const w = await navigator.mediaDevices.getUserMedia({ audio: { ...MIC, deviceId: { exact: d.deviceId } } });
+      s.getTracks().forEach(t => t.stop());
+      try { localStorage.setItem(MIC_KEY, d.deviceId); } catch { /* yok */ }
+      lastMicSwitch = { eski: label, yeni: d.label };
+      return w;
+    } catch { /* sıradaki giriş */ }
+  }
+  return s;
+}
+
 export function setMicDevice(id: string) {
   try { id ? localStorage.setItem(MIC_KEY, id) : localStorage.removeItem(MIC_KEY); } catch { /* yok */ }
   if (warmUsers === 0) { warm?.getTracks().forEach(t => t.stop()); warm = null; }
