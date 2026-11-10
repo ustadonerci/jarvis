@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { deleteExpense, downloadExpensesCsv, finishLogin, getDaily, getExpenses, getKeys, openJarvisBrowser, saveKeys, showJarvisBrowser, runDaily, saveDaily, type DailyCfg, type DailyData, type DailyKind, type ExpensesData } from '../lib/api';
+import { deleteExpense, downloadExpensesCsv, finishLogin, getDaily, getExpenses, getKeys, openJarvisBrowser, saveKeys, showJarvisBrowser, runDaily, saveDaily, updateExpenses, type DailyCfg, type DailyData, type DailyKind, type ExpensesData } from '../lib/api';
 
 const ADI = { aksam: '📋 Günlük rapor', eposta: '📧 E-posta', github: '🐙 GitHub', harcama: '💳 Kart harcamaları', ay: '💳 Ay sonu gider tablosu' } as const;
 /** Rapordaki https linkleri tıklanabilir */
@@ -74,25 +74,31 @@ const monthName = (ay: string) => new Date(`${ay}-15T12:00:00`).toLocaleDateStri
 export function ExpenseSettings({ flash }: { flash(t: string): void }) {
   const [d, setD] = useState<ExpensesData | null>(null);
   const [busy, setBusy] = useState(false);
+  const [kirilim, setKirilim] = useState<'gun' | 'hafta' | 'kategori'>('gun');
   const load = (ay?: string) => getExpenses(ay).then(setD).catch(() => {});
   useEffect(() => { load(); }, []);
   if (!d) return null;
+  const gosterim: readonly (readonly [string, number])[] = kirilim === 'gun' ? d.gunler.map(([t, v]) => [t.split('-').reverse().join('.'), v] as const) : kirilim === 'hafta' ? d.haftalar.map(([t, v]) => [`${t.split('-').reverse().join('.')} haftası`, v] as const) : d.kategori;
   const update = () => {
     setBusy(true);
     flash('Banka e-postaları okunuyor; birkaç dakika sürebilir');
-    runDaily('harcama').then(() => load(d.ay)).then(() => flash('Gider tablosu güncellendi')).catch(e => flash(e.message)).finally(() => setBusy(false));
+    updateExpenses().then(r => load(d.ay).then(() => flash(`Gider tablosu güncellendi: ${r.eklenen} yeni işlem`))).catch(e => flash(e.message)).finally(() => setBusy(false));
   };
   return (
     <>
       <label>Kart harcamaları · gider tablosu</label>
-      <p className="muted small">Bankaların "kartınızla … TL harcama" e-postalarından çıkarılır. Her akşam günün tablosu, ay sonunda toplam gönderilir. Kart numarasının yalnız son 4 hanesi tutulur. Excel dosyası ayrıca Belgeler klasörüne yazılır: {d.klasor}</p>
+      <p className="muted small">Bankaların "kartınızla … TL harcama" e-postalarından ve aylık ekstre PDF'lerinden çıkarılır; ekstre işlemleri kesim gününde eklenir. Her akşam günün tablosu, ay sonunda toplam gönderilir. Kart numarasının yalnız son 4 hanesi tutulur. Excel dosyası ayrıca Belgeler klasörüne yazılır: {d.klasor}</p>
       <div className="seg">
         <select value={d.ay} onChange={e => load(e.target.value)}>{d.aylar.map(a => <option key={a} value={a}>{monthName(a)}</option>)}</select>
         <button disabled={busy} onClick={update}>{busy ? 'Okunuyor…' : '🔄 Şimdi güncelle'}</button>
         <button onClick={() => downloadExpensesCsv(d.ay).catch(e => flash(e.message))}>📥 Excel indir</button>
       </div>
+      <p className="small">Bugün <b>{tl(d.ozet.bugun.toplam)} TL</b> · Bu hafta <b>{tl(d.ozet.hafta.toplam)} TL</b> · Bu ay <b>{tl(d.ozet.ay.toplam)} TL</b></p>
       <p className="small"><b>{monthName(d.ay)} toplamı: {tl(d.toplam)} TL</b> · {d.harcamalar.length} işlem</p>
-      {d.kategori.length > 0 && <p className="small">{d.kategori.map(([k, v]) => `${k}: ${tl(v)} TL`).join(' · ')}</p>}
+      <div className="seg">
+        {([['gun', 'Günlük'], ['hafta', 'Haftalık'], ['kategori', 'Kategori']] as const).map(([k, ad]) => <button key={k} className={kirilim === k ? 'on' : ''} onClick={() => setKirilim(k)}>{ad}</button>)}
+      </div>
+      {gosterim.length > 0 && <p className="small">{gosterim.map(([k, v]) => `${k}: ${tl(v)} TL`).join(' · ')}</p>}
       {d.harcamalar.length > 0 && (
         <div style={{ overflowX: 'auto' }}>
           <table className="small" style={{ width: '100%', borderCollapse: 'collapse' }}>

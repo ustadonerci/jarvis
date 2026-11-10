@@ -185,7 +185,7 @@ export interface AlarmView { id: string; sembol: string; kosul: 'ust' | 'alt'; f
 export interface RecentMsg { id: string; platform: 'whatsapp' | 'telegram' | 'telefon'; kisi: string; metin: string; at: string; grup: boolean; okundu: boolean; arama: boolean }
 export const getRecentMessages = (adet = 8) => fetch(`/api/mesaj/son?adet=${adet}`, { headers: headers() }).then(r => json<{ mesajlar: RecentMsg[]; okunmamis: number }>(r));
 export interface MesaiKayit { id: string; tarih: string; saat: number; tutar: number; not?: string }
-export interface MesaiData { ay: string; ay_adi: string; toplam_saat: number; toplam_tutar: number; gun: number; kayitlar: MesaiKayit[]; saatlik: number; ayar: { maas: number; carpan: number; aylikSaat: number; aySonuGonder: boolean; saatUcreti?: number } }
+export interface MesaiData { ay: string; ay_adi: string; toplam_saat: number; toplam_tutar: number; gun: number; kayitlar: MesaiKayit[]; saatlik: number; ayar: { maas: number; carpan: number; aylikSaat: number; aySonuGonder: boolean; saatUcreti?: number }; bugun_saat: number; hafta_saat: number; haftalar: { hafta: string; saat: number }[] }
 const mesaiApi = (p: string, method = 'GET', body?: object) => fetch(`/api/mesai${p}`, { method, headers: headers(), body: body ? JSON.stringify(body) : undefined }).then(r => json<MesaiData>(r));
 export const getMesai = () => mesaiApi('');
 export const addMesaiEntry = (saat: number, tarih?: string) => mesaiApi('', 'POST', { saat, tarih });
@@ -357,8 +357,9 @@ export const saveDaily = (patch: Partial<DailyCfg>) => fetch('/api/gunluk/ayar',
 export const runDaily = (is: DailyKind) => fetch('/api/gunluk/simdi', { method: 'POST', headers: headers(), body: JSON.stringify({ is }) }).then(r => json<DailyData>(r));
 
 export interface ExpenseView { id: string; tarih: string; saat: string; isyeri: string; kategori: string; tutar: number; para: string; kart: string; banka: string; tur: 'harcama' | 'iade' }
-export interface ExpensesData { ay: string; aylar: string[]; harcamalar: ExpenseView[]; toplam: number; kategori: [string, number][]; kart: [string, number][]; klasor: string }
+export interface ExpensesData { ay: string; aylar: string[]; harcamalar: ExpenseView[]; toplam: number; kategori: [string, number][]; kart: [string, number][]; klasor: string; ozet: Record<'bugun' | 'hafta' | 'ay', { toplam: number; adet: number }>; gunler: [string, number][]; haftalar: [string, number][] }
 export const getExpenses = (ay?: string) => fetch(`/api/harcamalar${ay ? `?ay=${ay}` : ''}`, { headers: headers() }).then(r => json<ExpensesData>(r));
+export const updateExpenses = () => fetch('/api/harcamalar/guncelle', { method: 'POST', headers: headers() }).then(r => json<{ eklenen: number; okunan: number; kaynak: string }>(r));
 export const deleteExpense = (id: string) => fetch(`/api/harcamalar/${encodeURIComponent(id)}`, { method: 'DELETE', headers: headers() }).then(r => json<{ ok: boolean }>(r));
 export const downloadExpensesCsv = (ay: string) => fetch(`/api/harcamalar/csv?ay=${ay}`, { headers: headers() }).then(async r => {
   if (!r.ok) throw new Error('Tablo indirilemedi');

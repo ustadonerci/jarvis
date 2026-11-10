@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express, { type Router } from 'express';
-import { logActivity } from './activity.js';
+import { logActivity, weekStart } from './activity.js';
 import { adminOnly } from './keys.js';
 import { notifyOwner } from './messaging.js';
 
@@ -73,9 +73,14 @@ export function addMesai(saat: number, tarih?: unknown, not?: string): Mesai {
 
 export function monthSummary(ay = localDate().slice(0, 7)) {
   const list = store.kayitlar.filter(k => k.tarih.startsWith(ay));
+  const bugun = localDate();
+  const hafta = weekStart(bugun);
+  const hours = (l: Mesai[]) => r2(l.reduce((t, k) => t + k.saat, 0));
   return {
     ay, ay_adi: ayAdi(ay), toplam_saat: r2(list.reduce((t, k) => t + k.saat, 0)), toplam_tutar: r2(list.reduce((t, k) => t + k.tutar, 0)),
     gun: new Set(list.map(k => k.tarih)).size, kayitlar: list.slice().reverse(), saatlik: saatlikMesai(), ayar: store.ayar,
+    bugun_saat: hours(store.kayitlar.filter(k => k.tarih === bugun)), hafta_saat: hours(store.kayitlar.filter(k => k.tarih >= hafta && k.tarih <= bugun)),
+    haftalar: [...new Set(list.map(k => weekStart(k.tarih)))].sort().reverse().map(h => ({ hafta: h, saat: hours(list.filter(k => weekStart(k.tarih) === h)) })),
   };
 }
 
@@ -137,7 +142,7 @@ export const MESAI_TOOLS = [
     type: 'function',
     function: {
       name: 'mesai',
-      description: "Fazla mesai takibi. ekle: 'bugün 2 saat mesai yaptım', 'dün 3 saat mesaim var', '5 Kasım 1,5 saat mesai' (saat; tarih: bugün/dün/'5 Kasım'/'05.11'; not isteğe bağlı) → tutarı maaşa göre hesaplayıp ekler. ozet: bu ayın (ya da ay: 'YYYY-MM') toplam saati ve tutarı. sil: id ya da tarih ile kayıt siler. ayar: saat_ucreti (sabit mesai saat ücreti TL; 0 verilirse maaştan hesaplanır), maas (aylık TL), carpan (varsayılan 1.5), aylik_saat (varsayılan 225). sifirla: bütün kayıtları siler (yedeklenir; yalnız kullanıcı açıkça isterse). gonder: ay özetini şimdi WhatsApp ve Telegram'dan gönderir.",
+      description: "Fazla mesai takibi. ekle: 'bugün 2 saat mesai yaptım', 'dün 3 saat mesaim var', '5 Kasım 1,5 saat mesai' (saat; tarih: bugün/dün/'5 Kasım'/'05.11'; not isteğe bağlı) → tutarı maaşa göre hesaplayıp ekler. ozet: bugünün (bugun_saat), bu haftanın (hafta_saat; 'bu hafta kaç saat çalıştım') ve bu ayın (ya da ay: 'YYYY-MM') toplam saati ve tutarı. sil: id ya da tarih ile kayıt siler. ayar: saat_ucreti (sabit mesai saat ücreti TL; 0 verilirse maaştan hesaplanır), maas (aylık TL), carpan (varsayılan 1.5), aylik_saat (varsayılan 225). sifirla: bütün kayıtları siler (yedeklenir; yalnız kullanıcı açıkça isterse). gonder: ay özetini şimdi WhatsApp ve Telegram'dan gönderir.",
       parameters: {
         type: 'object',
         properties: {

@@ -12,6 +12,7 @@ export function MesaiSettings({ flash }: { flash(t: string): void }) {
   return (
     <>
       <label>Fazla mesai · {m.ay_adi}: {m.toplam_saat} saat · ₺{m.toplam_tutar.toLocaleString('tr-TR')}</label>
+      <p className="small">Bugün <b>{m.bugun_saat} saat</b> · Bu hafta <b>{m.hafta_saat} saat</b> · Bu ay <b>{m.toplam_saat} saat</b>{m.haftalar.length > 0 ? <> · {m.haftalar.map(h => `${h.hafta.slice(8, 10)}.${h.hafta.slice(5, 7)} haftası: ${h.saat} saat`).join(' · ')}</> : null}</p>
       <p className="muted small">Jarvis'e "bugün 2 saat mesai yaptım" demeniz yeter. {m.ayar.saatUcreti ? <>Mesai saat ücreti sabit: <b>₺{m.saatlik.toLocaleString('tr-TR')}</b>.</> : <>Hesap: maaş ÷ {m.ayar.aylikSaat} saat × {m.ayar.carpan} = saati ₺{m.saatlik.toLocaleString('tr-TR')}.</>}</p>
       <div className="row">
         <input value={ucret} onChange={e => setUcret(e.target.value)} inputMode="decimal" placeholder="Mesai saat ücreti (TL) — boşsa maaştan hesaplanır" style={{ flex: 1 }} />

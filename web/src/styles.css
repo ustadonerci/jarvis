@@ -990,6 +990,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .ms-amt { color: #7cffd8; font-variant-numeric: tabular-nums; }
 .ms-add { display: flex; gap: 6px; margin-top: 8px; }
 .ms-add input { flex: 1; min-width: 0; height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid rgba(199, 125, 255, 0.35); background: rgba(8, 18, 28, 0.7); color: var(--text); font-size: 13px; outline: none; }
+.ms-add input[type='date'] { flex: 0 0 128px; }
 .ms-add button { height: 30px; padding: 0 12px; border-radius: 8px; border: 0; background: linear-gradient(135deg, #c77dff, #3dd6c8); color: #08121c; font-weight: 700; cursor: pointer; }
 .ms-chip b { color: #7cffd8; }
 .seg.wrap { flex-wrap: wrap; }

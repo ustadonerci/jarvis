@@ -9,7 +9,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express, { type Router } from 'express';
 import { simpleParser } from 'mailparser';
-import { logActivity, today } from './activity.js';
+import { extractText, getDocumentProxy } from 'unpdf';
+import { logActivity, today, weekStart } from './activity.js';
+import { parseStatement, sameTransaction } from './ekstre.js';
 import { emailReady, specialFolder, withClient } from './email.js';
 import { readSearch } from './gmailweb.js';
 import { adminOnly } from './keys.js';
@@ -19,7 +21,7 @@ const DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data'
 const FILE = path.join(DIR, 'harcamalar.json');
 const USER_DIR = path.join(os.homedir(), 'Documents', 'Jarvis Gider Tablosu');
 
-export const KATEGORILER = ['Market', 'Yemek / Restoran', 'Akaryakıt', 'Ulaşım', 'Giyim', 'Elektronik', 'Online alışveriş', 'Fatura / Abonelik', 'Sağlık', 'Eğlence', 'Eğitim', 'Ev / Yapı', 'Seyahat / Konaklama', 'Diğer'] as const;
+export const KATEGORILER = ['Market', 'Yemek / Restoran', 'Akaryakıt', 'Ulaşım', 'Giyim', 'Elektronik', 'Online alışveriş', 'Fatura / Abonelik', 'Sağlık', 'Eğlence', 'Eğitim', 'Ev / Yapı', 'Seyahat / Konaklama', 'Yatırım', 'Banka masrafı', 'Diğer'] as const;
 
 export interface Expense {
   id: string; tarih: string; saat: string; isyeri: string; kategori: string; tutar: number; para: string;
@@ -58,6 +60,7 @@ const MERCHANT_CAT: [RegExp, string][] = [
   [/sinema|cinema|biletix|passo|steam|playstation|oyun/i, 'Eğlence'],
   [/koçtaş|ikea|bauhaus|tekzen|mobilya/i, 'Ev / Yapı'],
   [/otel|hotel|booking|airbnb|tatil/i, 'Seyahat / Konaklama'],
+  [/altin|altın|gümüş|doviz|döviz/i, 'Yatırım'],
 ];
 export const guessCategory = (isyeri: string) => MERCHANT_CAT.find(([re]) => re.test(isyeri))?.[1] ?? 'Diğer';
 
@@ -80,7 +83,7 @@ export function regexExtract(m: RawMail): Omit<Expense, 'kaynak'> | null {
   };
 }
 
-const BANKS: [RegExp, string][] = [[/garanti/i, 'Garanti BBVA'], [/yapikredi|yapı kredi|ykb/i, 'Yapı Kredi'], [/isbank|işbank|maximum/i, 'İş Bankası'], [/akbank|axess/i, 'Akbank'], [/ziraat|bankkart/i, 'Ziraat'], [/halkbank|paraf/i, 'Halkbank'], [/vakif|vakıf|world/i, 'VakıfBank'], [/qnb|finansbank|cardfinans/i, 'QNB'], [/denizbank|bonus/i, 'DenizBank'], [/teb\b/i, 'TEB'], [/enpara/i, 'Enpara'], [/hsbc/i, 'HSBC'], [/ing\b/i, 'ING'], [/kuveyt/i, 'Kuveyt Türk'], [/papara/i, 'Papara']];
+const BANKS: [RegExp, string][] = [[/tombank/i, 'TOM Bank Hadi'], [/garanti/i, 'Garanti BBVA'], [/yapikredi|yapı kredi|ykb/i, 'Yapı Kredi'], [/isbank|işbank|maximum/i, 'İş Bankası'], [/akbank|axess/i, 'Akbank'], [/ziraat|bankkart/i, 'Ziraat'], [/halkbank|paraf/i, 'Halkbank'], [/vakif|vakıf|world/i, 'VakıfBank'], [/qnb|finansbank|cardfinans/i, 'QNB'], [/denizbank|bonus/i, 'DenizBank'], [/teb\b/i, 'TEB'], [/enpara/i, 'Enpara'], [/hsbc/i, 'HSBC'], [/ing\b/i, 'ING'], [/kuveyt/i, 'Kuveyt Türk'], [/papara/i, 'Papara']];
 const bankOf = (from: string) => BANKS.find(([re]) => re.test(from))?.[1] ?? from.replace(/<.*>/, '').trim().slice(0, 30);
 
 function toDate(s: string): string {
@@ -147,6 +150,46 @@ async function imapMails(gun: number, skip: Set<string>): Promise<RawMail[]> {
   });
 }
 
+/** TOM Bank ekstre e-postalarının PDF ekindeki işlemler. shortcut: yalnız IMAP; uygulama şifresi yoksa ekstreler okunmaz, anlık mailler okunur. */
+async function statementItems(skip: Set<string>): Promise<{ items: Expense[]; ids: string[] }> {
+  return withClient(async c => {
+    const lock = await c.getMailboxLock((await specialFolder(c, '\\All')) ?? 'INBOX');
+    try {
+      const uids: number[] = [];
+      for await (const m of c.fetch((await c.search({ from: 'tombank.com.tr' }, { uid: true })) || [], { uid: true, envelope: true }, { uid: true })) {
+        if (/ekstre/i.test(m.envelope?.subject ?? '') && !skip.has(`ek-${m.uid}`)) uids.push(m.uid);
+      }
+      const items: Expense[] = [];
+      const ids: string[] = [];
+      if (!uids.length) return { items, ids };
+      for await (const m of c.fetch(uids, { uid: true, source: true }, { uid: true })) {
+        const p = m.source ? await simpleParser(m.source).catch(() => null) : null;
+        const pdf = p?.attachments.find(a => /pdf$/i.test(a.filename ?? '') || a.contentType === 'application/pdf');
+        if (!pdf) continue;
+        try {
+          // mergePages satır sonlarını siler; ayrıştırıcı satır satır okur
+          const { text } = await extractText(await getDocumentProxy(new Uint8Array(pdf.content)), { mergePages: false });
+          const e = parseStatement(text.join('\n'));
+          if (!e.tutarli) console.warn('[harcama] ekstre toplamı okunan satırlarla tutmadı; bir sonraki taramada yeniden denenecek');
+          const seen = new Map<string, number>();
+          for (const s of e.satirlar) {
+            const key = `${s.tarih}-${s.aciklama}-${s.tutar}`;
+            const n = seen.get(key) ?? 0;
+            seen.set(key, n + 1);
+            items.push({ id: `ekstre-${e.kart}-${key}-${n}`, tarih: s.tarih, saat: '', isyeri: s.aciklama, kategori: s.masraf ? 'Banka masrafı' : guessCategory(s.aciklama), tutar: s.tutar, para: 'TRY', kart: e.kart, banka: 'TOM Bank Hadi', tur: s.tur, kaynak: 'Kart ekstresi' });
+          }
+          if (e.tutarli) ids.push(`ek-${m.uid}`);
+        } catch (err: any) { console.warn(`[harcama] ekstre PDF okunamadı: ${String(err?.message || err).slice(0, 120)}`); }
+      }
+      return { items, ids };
+    } finally {
+      lock.release();
+    }
+  });
+}
+
+const fromStatement = (e: Expense) => e.id.startsWith('ekstre-');
+
 /** Son N günün banka e-postalarını okur, yeni harcamaları tabloya ekler. Eklenen sayısı. */
 export async function collectExpenses(gun: number): Promise<{ eklenen: number; okunan: number; kaynak: string }> {
   const skip = new Set(store.islenen);
@@ -159,9 +202,23 @@ export async function collectExpenses(gun: number): Promise<{ eklenen: number; o
   const found = await extract(mails);
   const have = new Set(store.items.map(e => e.id));
   const yeni = found.filter(e => !have.has(e.id));
+  let ekstre: { items: Expense[]; ids: string[] } = { items: [], ids: [] };
+  if (emailReady()) { try { ekstre = await statementItems(skip); } catch (e: any) { console.warn(`[harcama] ekstreler okunamadı: ${String(e?.message || e).slice(0, 120)}`); } }
+  // Aynı işlem hem anlık mailden hem ekstreden gelirse tek sayılır; başlığı daha ayrıntılı olan mail kalır.
+  // shortcut: aynı tutarda ±3 gün içindeki iki ayrı işlem birleşebilir; sorun olursa işlem saati de karşılaştırılmalı.
+  for (const e of yeni) {
+    const twin = store.items.find(x => fromStatement(x) && sameTransaction(x, e));
+    if (twin) store.items = store.items.filter(x => x !== twin);
+  }
+  const used = new Set<string>();
+  for (const s of ekstre.items) {
+    if (have.has(s.id) || yeni.some(e => e.id === s.id)) continue;
+    const twin = [...store.items, ...yeni].find(x => !fromStatement(x) && !used.has(x.id) && sameTransaction(x, s));
+    if (twin) used.add(twin.id); else yeni.push(s);
+  }
   store.items.push(...yeni);
   store.items.sort((a, b) => `${a.tarih} ${a.saat}`.localeCompare(`${b.tarih} ${b.saat}`));
-  store.islenen = [...new Set([...store.islenen, ...mails.map(m => m.id)])].slice(-5000);
+  store.islenen = [...new Set([...store.islenen, ...mails.map(m => m.id), ...ekstre.ids])].slice(-5000);
   save();
   for (const ay of new Set(yeni.map(e => e.tarih.slice(0, 7)))) writeCsv(ay);
   if (yeni.length) logActivity('harcama', `${yeni.length} yeni kart harcaması tabloya eklendi (${kaynak})`);
@@ -196,6 +253,25 @@ export function dayText(t = today()): string {
     '',
     `📅 ${trMonth(ay)} toplamı (bugüne kadar): ${tl(m.toplam)}`,
     ...m.kategori.slice(0, 6).map(([k, v]) => `  • ${k}: ${tl(v)}`),
+  ].join('\n');
+}
+
+/** Bugün, bu hafta (pazartesiden) ve bu ayın toplamı */
+export function periodSummary(t = today()) {
+  const sum = (list: Expense[]) => ({ toplam: Math.round(totals(list).toplam * 100) / 100, adet: list.length });
+  const hafta = weekStart(t);
+  return { bugun: sum(store.items.filter(e => e.tarih === t)), hafta: sum(store.items.filter(e => e.tarih >= hafta && e.tarih <= t)), ay: sum(monthItems(t.slice(0, 7))) };
+}
+
+export function weekText(t = today()): string {
+  const bas = weekStart(t);
+  const list = store.items.filter(e => e.tarih >= bas && e.tarih <= t);
+  const m = totals(list);
+  return [
+    `🤖 💳 Bu hafta (${trDay(bas)} – ${trDay(t)}): ${tl(m.toplam)} · ${list.length} işlem`,
+    ...m.kategori.map(([k, v]) => `  • ${k}: ${tl(v)}`),
+    ...list.map(row),
+    '(Ekstreden gelen işlemler kesim gününde eklenir; son günler eksik görünebilir.)',
   ].join('\n');
 }
 
@@ -257,13 +333,17 @@ export function expensesRouter(): Router {
     const list = monthItems(ay);
     const t = totals(list);
     const aylar = [...new Set(store.items.map(e => e.tarih.slice(0, 7)))].sort().reverse();
-    res.json({ ay, aylar: aylar.includes(ay) ? aylar : [ay, ...aylar], harcamalar: list, toplam: t.toplam, kategori: t.kategori, kart: t.kart, klasor: USER_DIR });
+    const group = (key: (e: Expense) => string) => [...new Set(list.map(key))].sort().reverse().map(k => [k, Math.round(totals(list.filter(e => key(e) === k)).toplam * 100) / 100] as const);
+    res.json({ ay, aylar: aylar.includes(ay) ? aylar : [ay, ...aylar], harcamalar: list, toplam: t.toplam, kategori: t.kategori, kart: t.kart, klasor: USER_DIR, ozet: periodSummary(), gunler: group(e => e.tarih), haftalar: group(e => weekStart(e.tarih)) });
   });
   r.get('/api/harcamalar/csv', (req, res) => {
     const ay = /^\d{4}-\d{2}$/.test(String(req.query.ay)) ? String(req.query.ay) : today().slice(0, 7);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="gider-tablosu-${ay}.csv"`);
     res.send(csvOf(ay));
+  });
+  r.post('/api/harcamalar/guncelle', async (_req, res) => {
+    try { res.json(await collectExpenses(Math.max(2, new Date().getDate() + 1))); } catch (e: any) { res.status(500).json({ error: String(e?.message || e).slice(0, 250) }); }
   });
   r.delete('/api/harcamalar/:id', (req, res) => {
     store.items = store.items.filter(e => e.id !== req.params.id);
@@ -278,8 +358,8 @@ export const EXPENSE_TOOLS = [
     type: 'function',
     function: {
       name: 'harcamalar',
-      description: "Kredi kartı gider tablosu (banka harcama e-postalarından: tarih, saat, işyeri, kategori, tutar). islem: bugun (bugünün tablosu + ay toplamı), ay (ay: YYYY-MM; ay sonu dökümü: kategori, kart, işyeri), guncelle (e-postaları şimdi tarayıp yeni harcamaları ekler). 'Bugün ne harcadım', 'bu ay kartla ne kadar harcadım', 'gider tablosu', 'market harcamam' isteklerinde.",
-      parameters: { type: 'object', properties: { islem: { type: 'string', enum: ['bugun', 'ay', 'guncelle'] }, ay: { type: 'string' } }, required: ['islem'] },
+      description: "Kredi kartı gider tablosu (banka harcama e-postalarından: tarih, saat, işyeri, kategori, tutar). islem: bugun (bugünün tablosu + ay toplamı), hafta (bu haftanın toplamı ve dökümü), ay (ay: YYYY-MM; ay sonu dökümü: kategori, kart, işyeri), guncelle (e-postaları şimdi tarayıp yeni harcamaları ekler). 'Bugün ne harcadım', 'bu hafta ne kadar harcadım', 'bu ay ne kadar harcadım', 'bu ay kartla ne kadar harcadım', 'gider tablosu', 'market harcamam' isteklerinde.",
+      parameters: { type: 'object', properties: { islem: { type: 'string', enum: ['bugun', 'hafta', 'ay', 'guncelle'] }, ay: { type: 'string' } }, required: ['islem'] },
     },
   },
 ] as const;
@@ -292,6 +372,7 @@ export async function runExpenseTool(a: any, progress: (l: string) => void): Pro
       const r = await collectExpenses(Math.max(2, new Date().getDate() + 1));
       return JSON.stringify({ ...r, tablo: dayText(), not: 'Sayıları aynen söyle.' });
     }
+    if (a.islem === 'hafta') return JSON.stringify({ tablo: weekText(), ozet: periodSummary(), not: 'Sayıları aynen söyle.' });
     if (a.islem === 'ay') return JSON.stringify({ tablo: monthText(/^\d{4}-\d{2}$/.test(String(a.ay)) ? String(a.ay) : today().slice(0, 7)), not: 'Toplamı ve kategorileri söyle; tablonun tamamı Ayarlar → Kart harcamaları\'nda.' });
     return JSON.stringify({ tablo: dayText(), not: 'Sayıları aynen söyle.' });
   } catch (e: any) {

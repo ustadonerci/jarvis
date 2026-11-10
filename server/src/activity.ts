@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 export const GUNLUK = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data', 'gunluk');
 /** Yerel tarih (YYYY-MM-DD) */
 export const today = (d = new Date()) => d.toLocaleDateString('sv-SE');
+/** YYYY-MM-DD → o haftanın pazartesisi */
+export const weekStart = (t: string) => { const d = new Date(`${t}T12:00:00`); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return today(d); };
 
 export interface Activity { at: string; tur: string; metin: string }
 

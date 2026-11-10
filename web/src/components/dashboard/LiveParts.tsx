@@ -79,7 +79,7 @@ export function MessagesBox({ list, unread, limit = 5 }: { list: RecentMsg[] | n
 
 /** Telefonda: şeritteki 💼 / 💬 düğmesine dokununca alttan açılan sayfa */
 const SHEET_KEY = 'jarvis.sayfaYuksekligi';
-export function LiveSheet({ open, onClose, portfoy, mesajlar, okunmamis, mesai, onAddMesai, onAddHolding }: { open: '' | 'portfoy' | 'mesaj' | 'mesai'; onClose(): void; portfoy: PortfolioData | null; mesajlar: RecentMsg[] | null; okunmamis: number; mesai: MesaiData | null; onAddMesai(saat: number): void; onAddHolding?(sembol: string, adet: number, maliyet: number): void }) {
+export function LiveSheet({ open, onClose, portfoy, mesajlar, okunmamis, mesai, onAddMesai, onAddHolding }: { open: '' | 'portfoy' | 'mesaj' | 'mesai'; onClose(): void; portfoy: PortfolioData | null; mesajlar: RecentMsg[] | null; okunmamis: number; mesai: MesaiData | null; onAddMesai(saat: number, tarih?: string): void; onAddHolding?(sembol: string, adet: number, maliyet: number): void }) {
   // Üstteki tutamaç parmakla/fareyle sürüklenerek sayfa büyür/küçülür (aşağı çok çekilirse kapanır); yükseklik hatırlanır
   const [h, setH] = useState(() => { try { return Number(localStorage.getItem(SHEET_KEY)) || 60; } catch { return 60; } });
   const drag = useRef<{ y: number; h: number } | null>(null);
@@ -101,20 +101,20 @@ export function LiveSheet({ open, onClose, portfoy, mesajlar, okunmamis, mesai, 
 }
 
 /** Fazla mesai kartı (Piyasalar kartında portföyün altında; telefonda ⏱️ düğmesiyle) */
-export function MesaiBox({ m, onAdd, limit = 2 }: { m: MesaiData | null; onAdd?(saat: number): void; limit?: number }) {
+export function MesaiBox({ m, onAdd, limit = 2 }: { m: MesaiData | null; onAdd?(saat: number, tarih?: string): void; limit?: number }) {
   if (!m) return null;
   const add = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const inp = e.currentTarget.elements.namedItem('saat') as HTMLInputElement;
     const v = Number(inp.value.replace(',', '.'));
-    if (v > 0) { onAdd?.(v); inp.value = ''; }
+    if (v > 0) { onAdd?.(v, (e.currentTarget.elements.namedItem('tarih') as HTMLInputElement).value || undefined); inp.value = ''; }
   };
   return (
     <div className="ms-box">
       <div className="ms-head">
         <span className="ms-title">⏱️ Fazla mesai · {m.ay_adi}</span>
         <b className="ms-total">₺{fmt(m.toplam_tutar, 0)}</b>
-        <span className="ms-sub">{fmt(m.toplam_saat, 1)} saat · {m.gun} gün · saati ₺{fmt(m.saatlik, 0)}</span>
+        <span className="ms-sub">Bugün {fmt(m.bugun_saat, 1)} · Hafta {fmt(m.hafta_saat, 1)} · Ay {fmt(m.toplam_saat, 1)} saat · {m.gun} gün · saati ₺{fmt(m.saatlik, 0)}</span>
       </div>
       {m.kayitlar.length > 0 && (
         <ul className="ms-list">
@@ -125,7 +125,8 @@ export function MesaiBox({ m, onAdd, limit = 2 }: { m: MesaiData | null; onAdd?(
       )}
       {onAdd && (
         <form className="ms-add" onSubmit={add}>
-          <input name="saat" inputMode="decimal" placeholder="Bugün kaç saat?" aria-label="Mesai saati" />
+          <input name="tarih" type="date" defaultValue={new Date().toLocaleDateString('sv-SE')} aria-label="Mesai tarihi" />
+          <input name="saat" inputMode="decimal" placeholder="Kaç saat?" aria-label="Mesai saati" />
           <button type="submit">+ Ekle</button>
         </form>
       )}

@@ -42,7 +42,7 @@ export const MarketsPanel = memo(function MarketsPanel({
   onAddHolding?(sembol: string, adet: number, maliyet: number): void;
   portfoy?: PortfolioData | null;
   mesai?: MesaiData | null;
-  onAddMesai?(saat: number): void;
+  onAddMesai?(saat: number, tarih?: string): void;
   index: number;
   data: Markets | null;
   loading: boolean;

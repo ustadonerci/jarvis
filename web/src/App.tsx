@@ -201,7 +201,7 @@ export default function App() {
   const [sheet, setSheet] = useState<'' | 'portfoy' | 'mesaj' | 'mesai'>('');
   const [mesai, setMesai] = useState<MesaiData | null>(null);
   const loadMesai = useCallback(() => { getMesai().then(setMesai).catch(() => {}); }, []);
-  const addMesai = (saat: number) => addMesaiEntry(saat).then(m => { setMesai(m); flash(`Mesai eklendi: ${saat} saat`); }).catch(e => flash(e.message));
+  const addMesai = (saat: number, tarih?: string) => addMesaiEntry(saat, tarih).then(m => { setMesai(m); flash(`Mesai eklendi: ${saat} saat`); }).catch(e => flash(e.message));
   useEffect(() => { loadMesai(); }, [loadMesai]);
   // Gündem kartında görünecek mesajlar (Ayarlar → Ekran düzeni ya da Jarvis: "sadece WhatsApp mesajları görünsün")
   const shownMsgs = useMemo(() => {
