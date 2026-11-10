@@ -65,8 +65,36 @@ async function launch(): Promise<BrowserContext> {
       last = e;
     }
   }
+  // Jarvis'in profili kilitli olabilir: Jarvis güncellenip yeniden başlarken eski Chrome arka planda açık kalınca
+  // profil kilitli kalıyordu. YALNIZ bu profili kullanan Chrome/Edge süreçleri kapatılır (kullanıcının kendi Chrome'una
+  // dokunulmaz), kilit dosyaları silinir ve bir kez daha denenir.
+  if (!retried) {
+    retried = true;
+    const n = releaseProfile();
+    console.warn(`[tarayici] açılamadı, profil kilidi temizleniyor (${n} eski süreç kapatıldı) ve yeniden deneniyor`);
+    try { return await launch(); } finally { retried = false; }
+  }
   throw new Error(`Tarayıcı açılamadı (Chrome ya da Edge bulunamadı ya da Jarvis profili başka bir pencerede açık): ${String((last as any)?.message || last).split('\n')[0].slice(0, 200)}`);
 }
+let retried = false;
+
+/** Jarvis profilini kullanan artık tarayıcı süreçlerini kapatır ve kilit dosyalarını siler; kapatılan süreç sayısı */
+export function releaseProfile(): number {
+  let n = 0;
+  if (process.platform === 'win32') {
+    const prof = PROFILE.replace(/'/g, "''");
+    const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+      `$p = Get-CimInstance Win32_Process -Filter "Name='chrome.exe' OR Name='msedge.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine.Contains('${prof}') }; foreach ($x in $p) { Stop-Process -Id $x.ProcessId -Force -ErrorAction SilentlyContinue }; @($p).Count`],
+      { encoding: 'utf8', windowsHide: true, timeout: 20_000 });
+    n = Number(String(r.stdout).trim().split(/\s+/).pop()) || 0;
+    if (n) spawnSync('powershell.exe', ['-NoProfile', '-Command', 'Start-Sleep -Milliseconds 800'], { windowsHide: true });
+  }
+  for (const f of ['lockfile', 'SingletonLock', 'SingletonCookie', 'SingletonSocket']) { try { fs.rmSync(path.join(PROFILE, f), { force: true }); } catch { /* kullanımda */ } }
+  return n;
+}
+// Jarvis kapanırken (güncelleme, yeniden başlatma) tarayıcısı açık kalıp profili kilitlemesin
+for (const sig of ['SIGINT', 'SIGTERM'] as const) process.once(sig, () => { ctx?.close().catch(() => {}).finally(() => process.exit(0)); setTimeout(() => process.exit(0), 1500).unref(); });
+process.once('exit', () => { if (ctx && process.platform === 'win32') { try { releaseProfile(); } catch { /* */ } } });
 
 // ---------------------------------------------------------------- Giriş penceresi (kullanıcının kendisi)
 

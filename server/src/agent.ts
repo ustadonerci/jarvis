@@ -19,7 +19,7 @@ import { LOCALSCAN_TOOLS } from './localscan.js';
 import { SALES_TOOLS } from './sales.js';
 import { HAFIZA_TOOLS } from './hafiza.js';
 import { DESKTOP_TOOLS, quickDesktop } from './desktop.js';
-import { WEBACT_TOOLS, parseMusic, parseShop, playYouTube, shopSearch } from './webactions.js';
+import { WEBACT_TOOLS, parseMusic, parseShop, playYouTubeSafe, shopSearch } from './webactions.js';
 import { CHAT_MODEL, MOCK, RouteLLMError, type ChatMessage, type ContentPart } from './routellm.js';
 import { TOOLS, runTool, type ToolProgress } from './tools.js';
 import { EXT_TOOLS, extensionsForPrompt, mcpTools } from './extensions.js';
@@ -397,7 +397,7 @@ export async function runJarvis(opts: RunOptions): Promise<JarvisReply> {
   // Hızlı yol: "YouTube'dan Tarkan'ı aç" → doğrudan çalar; "Trendyol'dan kulaklık al" → arar ve listeler
   const muzik = !opts.image && !fal ? parseMusic(text) : null;
   if (muzik) {
-    const y: any = await playYouTube(muzik, log).catch((e: any) => ({ ok: false, not: `YouTube açılamadı: ${String(e?.message || e).slice(0, 120)}` }));
+    const y: any = await playYouTubeSafe(muzik, log).catch((e: any) => ({ ok: false, not: `YouTube açılamadı: ${String(e?.message || e).slice(0, 120)}` }));
     enqueue({ ses: y.ok ? `${y.baslik} açıldı efendim.` : (y.not ?? 'YouTube açılamadı.'), gorsel: { tip: 'yok' } });
     const r = await finish('');
     return { ...r, model: 'hızlı komut', router: 'hızlı komut' };

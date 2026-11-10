@@ -4,6 +4,7 @@
 // - Alışveriş (Trendyol, Hepsiburada, Amazon): ürün aranır, ilk sonuçlar fiyatlarıyla listelenir; seçilen ürün ONAY
 //   KARTIYLA sepete eklenir ve sepet sayfası açılır. Ödeme adımına (siparişi onayla / öde) Jarvis basmaz, kart
 //   bilgisi girmez: son adımı kullanıcı kendisi yapar. Para işlemi kartı uzaktan (telefondan) onaylanamaz.
+import { spawn } from 'node:child_process';
 import { propose } from './approvals.js';
 import { browserPage, showBrowser, MONEY_BUTTON } from './browser.js';
 import { logActivity } from './activity.js';
@@ -54,6 +55,15 @@ export async function playYouTube(q: string, progress: (l: string) => void = () 
   await p.evaluate("(() => { const v = document.querySelector('video'); if (v && v.paused) { v.play().catch(() => {}); } })()").catch(() => {});
   logActivity('youtube', `oynatıldı: ${baslik}`);
   return { ok: true, baslik, url };
+}
+
+/** Jarvis'in tarayıcısı açılamazsa YouTube araması bilgisayarın varsayılan tarayıcısında açılır (sessiz kalmasın) */
+export async function playYouTubeSafe(q: string, progress: (l: string) => void = () => {}) {
+  try { return await playYouTube(q, progress); } catch (e: any) {
+    const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
+    if (process.platform === 'win32') { spawn('explorer.exe', [url], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref(); return { ok: true, baslik: `${q} (YouTube araması varsayılan tarayıcıda açıldı)`, url, not: `Jarvis'in tarayıcısı açılamadı: ${String(e?.message || e).slice(0, 120)}` }; }
+    throw e;
+  }
 }
 
 // ---------------------------------------------------------------- Alışveriş
@@ -155,7 +165,7 @@ export const isWebActTool = (n: string) => n === 'youtube_cal' || n === 'alisver
 export async function runWebActTool(name: string, a: any, progress: (l: string) => void): Promise<string> {
   const j = (v: unknown) => JSON.stringify(v);
   try {
-    if (name === 'youtube_cal') return j({ ...(await playYouTube(String(a.sorgu ?? 'müzik'), progress)), not: 'Açılan şarkının adını kısaca söyle.' });
+    if (name === 'youtube_cal') return j({ ...(await playYouTubeSafe(String(a.sorgu ?? 'müzik'), progress)), not: 'Açılan şarkının adını kısaca söyle.' });
     if (a.islem === 'sepete_ekle') return proposeAddToCart(a.no ? Number(a.no) : undefined, a.url ? String(a.url) : undefined);
     return j(await shopSearch(String(a.site ?? 'trendyol'), String(a.urun ?? ''), progress));
   } catch (e: any) { return j({ hata: String(e?.message || e).slice(0, 300) }); }
