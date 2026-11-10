@@ -1,6 +1,7 @@
 // Canlı ses modu istemcisi: mikrofon → 16 kHz PCM16 → sunucu (/api/canli-ses) → Gemini Live; gelen 24 kHz PCM16 ses
 // kuyruğa alınıp kesintisiz çalınır. Kullanıcı konuşmaya başlayınca Gemini "kesildi" der: çalan ses hemen susturulur.
 import { token } from './api';
+import { micBoostOn, micConstraints } from './recorder';
 
 export type LiveEvent =
   | { type: 'durum'; metin: string } | { type: 'hazir'; model: string } | { type: 'kesildi' }
@@ -60,7 +61,9 @@ export class LiveVoice {
   }
 
   private async startMic() {
-    this.mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+    // Ayarlar'da seçilen mikrofon (kablolu vb.); yoksa varsayılan
+    try { this.mic = await navigator.mediaDevices.getUserMedia({ audio: { ...micConstraints(), channelCount: 1 } }); }
+    catch { this.mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } }); }
     this.inCtx = new AudioContext();
     const url = URL.createObjectURL(new Blob([WORKLET], { type: 'application/javascript' }));
     await this.inCtx.audioWorklet.addModule(url);
@@ -68,7 +71,13 @@ export class LiveVoice {
     const src = this.inCtx.createMediaStreamSource(this.mic);
     this.node = new AudioWorkletNode(this.inCtx, 'pcm16');
     this.node.port.onmessage = e => { if (this.ws?.readyState === 1) this.ws.send(e.data as ArrayBuffer); };
-    src.connect(this.node);
+    // Kısık mikrofon: sabit güçlendirme + sınırlayıcı (Gemini kısık sesi duymuyordu)
+    if (micBoostOn()) {
+      const g = this.inCtx.createGain(); g.gain.value = 5;
+      const lim = this.inCtx.createDynamicsCompressor();
+      lim.threshold.value = -10; lim.knee.value = 6; lim.ratio.value = 12; lim.attack.value = 0.003; lim.release.value = 0.25;
+      src.connect(g); g.connect(lim); lim.connect(this.node);
+    } else src.connect(this.node);
   }
 
   private play(ab: ArrayBuffer) {

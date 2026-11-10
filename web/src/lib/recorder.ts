@@ -3,6 +3,10 @@
 
 export interface Recording { stop(): void }
 
+/** Mikrofon güçlendirme (varsayılan açık; Ayarlar'dan kapatılabilir) */
+export function micBoostOn(): boolean { try { return localStorage.getItem('jarvis.micGuclendir') !== '0'; } catch { return true; } }
+export function setMicBoost(on: boolean) { try { localStorage.setItem('jarvis.micGuclendir', on ? '1' : '0'); } catch { /* */ } }
+
 export function recorderSupported() {
   return typeof MediaRecorder !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
 }
@@ -184,9 +188,6 @@ export async function startRecording(h: {
   const stream = h.stream ?? shared ?? (await openMic());
   if (shared) warmUsers++;
   const mime = pickMime();
-  const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
-  const chunks: Blob[] = [];
-  rec.ondataavailable = e => e.data.size && chunks.push(e.data);
 
   // Sessizlik algılama. Eşik sabit değil: ortamın gürültü tabanına göre (kısık masaüstü mikrofonunda da konuşma
   // seçilsin, gürültülü odada da kayıt bitebilsin). Ölçüm requestAnimationFrame yerine zamanlayıcıyla yapılır:
@@ -200,6 +201,24 @@ export async function startRecording(h: {
   source.connect(analyser);
   // Bağlam hâlâ askıdaysa seviye hep sıfır görünür: o durumda konuşma "duyulmuş" sayılır, kayıt süre sonunda gönderilir.
   const blind = ctx.state !== 'running';
+  // Kısık mikrofon: kayıt yazılımla güçlendirilir (otomatik kazanç, 1,5–15 kat) ve sınırlayıcıdan geçer (cızırtı olmasın).
+  // Seviye ölçümü ham sesten yapılır; ses tanımaya güçlendirilmiş ses gider. Bağlam askıdaysa ham ses kaydedilir.
+  let boost: GainNode | null = null;
+  let recStream = stream;
+  if (!blind && micBoostOn()) {
+    try {
+      boost = ctx.createGain();
+      boost.gain.value = 4;
+      const lim = ctx.createDynamicsCompressor();
+      lim.threshold.value = -10; lim.knee.value = 6; lim.ratio.value = 12; lim.attack.value = 0.003; lim.release.value = 0.25;
+      const dest = ctx.createMediaStreamDestination();
+      source.connect(boost); boost.connect(lim); lim.connect(dest);
+      recStream = dest.stream;
+    } catch { boost = null; recStream = stream; }
+  }
+  const rec = new MediaRecorder(recStream, mime ? { mimeType: mime } : undefined);
+  const chunks: Blob[] = [];
+  rec.ondataavailable = e => e.data.size && chunks.push(e.data);
   const buf = new Uint8Array(analyser.fftSize);
   const t0 = performance.now();
   let heard = blind;
@@ -245,6 +264,8 @@ export async function startRecording(h: {
     speech = Math.max(speech * 0.995, heard ? smooth : 0);
     const loud = smooth > thr && !(heard && smooth < speech * 0.33);
     if (!blind && now - t0 > 150 && loud && rms > thr) { if (!heard) speech = smooth; heard = true; lastVoice = now; }
+    // Otomatik kazanç: konuşma seviyesi ~0,12'ye çekilir (kısık mikrofonda çok, güçlüde az yükseltilir)
+    if (boost && speech > 0) boost.gain.setTargetAtTime(Math.min(15, Math.max(1.5, 0.12 / speech)), ctx.currentTime, 0.3);
     if (h.manual) return;
     if ((heard && !blind && now - lastVoice > silenceMs) || (!heard && now - t0 > noSpeechMs) || (blind && now - t0 > noSpeechMs)) finish();
   };

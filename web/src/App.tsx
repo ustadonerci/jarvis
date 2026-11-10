@@ -29,7 +29,7 @@ import { emitCamera, getCameras, getRole, isCameraEvent, onCamera, setRole, togg
 import { type ElevenUsage, clearConversation, cloneVoice, uploadFile, detectDevice, getDashboard, getHealth, getState, getVoices, metric, postAttention, postSleep, postWake, previewUrl, saveDevice, saveSettings, sendChat, setPhotoMode, stt, subscribe, token, clientId } from './lib/api';
 import { startClapListener, type ClapListener } from './lib/clap';
 import { shrinkImage } from './lib/image';
-import { findWorkingMic, micInfo, recorderSupported, startRecording, suspiciousMic, warmMic } from './lib/recorder';
+import { findWorkingMic, micBoostOn, micInfo, recorderSupported, setMicBoost, startRecording, suspiciousMic, warmMic } from './lib/recorder';
 import { MicTest, SpeakerSettings } from './components/MicTest';
 import { OfflineVoice } from './components/OfflineVoice';
 import { XttsSettings } from './components/XttsSettings';
@@ -143,6 +143,7 @@ export default function App() {
   const sceneIdxRef = useRef(-1);
   const recRef = useRef<{ stop(): void } | null>(null);
   // Canlı ses (Gemini Live): mikrofona basınca hızlı, söz kesilebilen sohbet. Açılamazsa normal mikrofona düşer.
+  const [micBoost, setMicBoostState] = useState(() => micBoostOn());
   const [canliMod, setCanliMod] = useState(() => { try { return localStorage.getItem('jarvis.canli') !== '0'; } catch { return true; } });
   const liveVoiceRef = useRef<LiveVoice | null>(null);
   const liveFailedRef = useRef(false);
@@ -1729,6 +1730,11 @@ export default function App() {
                     </div>
                   )}
                   <p className="muted small">Jarvis'in kendi 3 sesi. Sesle de değiştirebilirsiniz: "sesini echo yap", "daha hızlı oku".</p>
+                  <label>Mikrofon güçlendirme</label>
+                  <div className="seg">
+                    <button className={micBoost ? 'on' : ''} onClick={() => { const v = !micBoost; setMicBoostState(v); setMicBoost(v); flash(v ? '🎙️ Kısık mikrofon sesi otomatik güçlendirilecek' : 'Mikrofon güçlendirme kapalı'); }}>{micBoost ? '✅' : '⬜'} 🎙️ Kısık mikrofonu otomatik güçlendir</button>
+                  </div>
+                  <p className="muted small">Mikrofon sesi düşükse Jarvis kaydı yazılımla 15 kata kadar yükseltir (sınırlayıcıyla, cızırtısız). Sesiniz bozuk geliyorsa kapatın.</p>
                   <label>Hızlı canlı sohbet (Gemini Live)</label>
                   <div className="seg">
                     <button className={canliMod ? 'on' : ''} onClick={() => { const v = !canliMod; setCanliMod(v); liveFailedRef.current = false; try { localStorage.setItem('jarvis.canli', v ? '1' : '0'); } catch { /* */ } flash(v ? '⚡ Mikrofon artık canlı sohbet açar' : 'Mikrofon normal kayda döndü'); }}>{canliMod ? '✅' : '⬜'} ⚡ Mikrofona basınca canlı sohbet</button>
