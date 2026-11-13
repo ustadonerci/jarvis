@@ -38,7 +38,7 @@ import { ContactsSettings } from './components/Contacts';
 import { MesaiSettings } from './components/MesaiSettings';
 import { LiveSheet } from './components/dashboard/LiveParts';
 import { DashResizers, usePinch } from './components/dashboard/Resizers';
-import { addMesaiEntry, addPortfolio, getMesai, getPortfolio, getRecentMessages, type MesaiData, type PortfolioData, type RecentMsg } from './lib/api';
+import { addMesaiEntry, addPortfolio, defterIslem, getDefter, getMesai, getPortfolio, getRecentMessages, type MesaiData, type PortfolioData, type RecentMsg } from './lib/api';
 import { ScreenLayout } from './components/ScreenLayout';
 import { ExchangeSettings } from './components/Exchanges';
 import { ProviderSettings } from './components/Providers';
@@ -1171,6 +1171,26 @@ export default function App() {
       homeAct(e.id, { islem: d?.tur === 'isik' && d.acik ? 'kapat' : 'ac' });
     }
   };
+  // Yüz mimikleri (El Kontrolü kamerası): KAFA kılavuzundaki gibi
+  const mimikSoruRef = useRef(0);
+  const onMimic = (m: string) => {
+    if (m === 'gulumse') { const l = ['Gülümsemeniz güzel efendim.', 'Keyfiniz yerinde görünüyor efendim.', 'Bu enerjiyle bugün çok iş çıkar efendim.']; speakLine(l[Math.floor(Math.random() * l.length)]); }
+    else if (m === 'evet') {
+      if (Date.now() - mimikSoruRef.current < 8000) {
+        mimikSoruRef.current = 0;
+        defterIslem({ islem: 'gorev_bitti', no: 1 }).then(r => { if (r.bitti) { flash(`✓ Bitti: ${r.bitti}`); speakLine(`Tamamdır, ${r.bitti} bitti olarak işaretlendi.`); } else flash('Açık iş yok'); }).catch(() => {});
+      } else getDefter().then(d => {
+        const ilk = d?.gunun_3_isi?.[0];
+        if (!ilk) return flash('Bugün açık iş yok');
+        mimikSoruRef.current = Date.now();
+        speakLine(`${ilk.replace(/ \(gecikti\)$/, '')} bitti mi efendim? Bittiyse başınızı bir daha sallayın.`);
+      }).catch(() => {});
+    }
+    else if (m === 'hayir') { mimikSoruRef.current = 0; stopPlayback(); }
+    else if (m === 'kas') { if (core === 'idle') toggleMic(); }
+    else if (m === 'esne') speakLine('Kısa bir mola ister misiniz efendim?');
+    else if (m === 'uzak') stopPlayback();
+  };
   const toggleHands = () => { voice.unlock(); setHands(h => (h ? null : 'kamera')); };
 
   // Kamera / galeri: Jarvis'in "gözü"
@@ -1840,7 +1860,7 @@ export default function App() {
         <Suspense fallback={null}>
           <HandControl demo={hands === 'demo'} caption={caption} core={core} onAction={onHandAction} onClose={() => setHands(null)} userName={userName} onFaceLock={onFaceLock}
             kitaplik={KITAPLIK_DEMO} libraryKey={libKey} scanSignal={scanSig} onScanDone={onScanDone}
-            onBookRead={readBook} onBookOpen={k => { openBook.current = k; }} planetCmd={planetCmd} />
+            onBookRead={readBook} onBookOpen={k => { openBook.current = k; }} planetCmd={planetCmd} onMimic={onMimic} />
         </Suspense>
       )}
 

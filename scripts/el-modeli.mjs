@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 const MODELS = [
   ['https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task', 'hand_landmarker.task'],
   ['https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite', 'blaze_face_short_range.tflite'],
+  // Yüz mimikleri (gülümse, evet/hayır, göz kırp, kaş, esne): Face Landmarker, ~3,7 MB
+  ['https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task', 'face_landmarker.task'],
 ];
 const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'web', 'public', 'models');
 fs.mkdirSync(dir, { recursive: true });

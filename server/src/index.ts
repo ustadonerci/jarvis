@@ -50,7 +50,7 @@ import { onVoicePick, onVoiceReset, piperRouter, setPiperFirst } from './piper.j
 import { hafizaRouter, localAsk, ollamaStatus, remember } from './hafiza.js';
 import { attachLiveVoice, liveReady } from './livevoice.js';
 import { quickDesktop, runDesktopTool, warmDesktop } from './desktop.js';
-import { defterView, registerOwnSamples } from './defter.js';
+import { defterView, registerOwnSamples, runDefterTool } from './defter.js';
 import { setLocalAsk } from './routellm.js';
 import { XTTS_MODEL, initXtts, isXtts, xttsRouter, xttsVoices } from './xtts.js';
 import { indicatorsRouter } from './indicators.js';
@@ -534,6 +534,8 @@ app.use(hafizaRouter());
 setLocalAsk(localAsk);
 registerOwnSamples(ownSamples);
 app.get('/api/defter', (_req, res) => res.json(defterView()));
+// Panel / mimik: defter işlemi (ör. başını iki kez "evet" sallayınca ilk iş bitti)
+app.post('/api/defter/islem', (req, res) => { try { res.json(JSON.parse(runDefterTool(req.body ?? {}))); } catch (e: any) { res.status(400).json({ error: String(e?.message || e) }); } });
 warmDesktop();
 ollamaStatus().catch(() => {});
 app.use(providersRouter(id => { state.beyin = id; saveState(); }));

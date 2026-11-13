@@ -9,7 +9,8 @@ import { Sfx } from './sfx';
 import { demoBookHands, demoHands } from './synthetic';
 import { detect, listCameras, loadLandmarker, openCamera, type CameraInfo, type RawHand } from './tracker';
 import { FaceHud, demoFace, detectFaces, loadFaceDetector } from './face';
-import type { FaceDetector } from '@mediapipe/tasks-vision';
+import type { FaceDetector, FaceLandmarker } from '@mediapipe/tasks-vision';
+import { MIMIK_AD, MimicDetector, loadMimicModel, type Mimik } from './mimic';
 import { Library, loadCover, thumbOf } from './library';
 import LibraryEditor from './LibraryEditor';
 import { DEMO_TARGET, buildDemoShelf, demoStream } from './shelfDemo';
@@ -43,6 +44,8 @@ export interface HandControlProps {
   onBookOpen?(k: Kitap | null): void;
   /** "Jarvis, Mars yap": n her istekte artar */
   planetCmd?: { tur: GezegenTur; n: number } | null;
+  /** Yüz mimiği algılandı (gülümse, evet, hayır, kas, esne, uzak, geri; kırpma burada tıklamaya çevrilir) */
+  onMimic?(m: Mimik): void;
 }
 
 const LEGEND: [string, string][] = [
@@ -79,6 +82,10 @@ export default function HandControl(p: HandControlProps) {
   useEffect(() => { faceOn.current = face; ayarRef.current = ayar; }, [face, ayar]);
   const [status, setStatus] = useState<string>('kamera açılıyor…');
   const [err, setErr] = useState<string | null>(null);
+  const [mimikText, setMimikText] = useState('');
+  const [dim, setDim] = useState(false);
+  const onMimicRef = useRef(p.onMimic);
+  useEffect(() => { onMimicRef.current = p.onMimic; }, [p.onMimic]);
   const [hud, setHud] = useState(true);
   const [stats, setStats] = useState<{ fps: number; st: Status; delegate: string; step?: string }>({ fps: 0, st: { hands: [], mode: '—' }, delegate: '' });
   const muted = !ayar.ses;
@@ -135,7 +142,8 @@ export default function HandControl(p: HandControlProps) {
     size();
     window.addEventListener('resize', size);
 
-    let alive = true, raf = 0, stream: MediaStream | null = null, lm: HandLandmarker | null = null, fd: FaceDetector | null = null, faceTick = 0;
+    let alive = true, raf = 0, stream: MediaStream | null = null, lm: HandLandmarker | null = null, fd: FaceDetector | null = null, faceTick = 0, fl: FaceLandmarker | null = null, mimTick = 0;
+    const mim = new MimicDetector();
     let last = performance.now(), lastVideoT = -1, frames = 0, fpsAt = last, hands: RawHand[] = [], delegate = '';
     const demoStart = performance.now() - (Number(new URLSearchParams(location.search).get('elt')) || 0) * 1000;
     let step = '';
@@ -185,6 +193,24 @@ export default function HandControl(p: HandControlProps) {
         }
         hudFace.render(now);
       } else hudFace.clear();
+      // Yüz mimikleri: her 2. yeni karede (el takibine yer kalsın)
+      if (ayarRef.current.mimik && fl && !p.demo && video.readyState >= 2 && ++mimTick % 2 === 0) {
+        try {
+          for (const m of mim.update(fl.detectForVideo(video, now), now)) {
+            if (m === 'kirp') {
+              // Göz kırpma: işaret parmağının ucundaki düğmeye tıklar (el görünmüyorsa ekran ortası değil, hiçbir şey)
+              const tip = hands[0]?.pts?.[8];
+              const el = tip ? document.elementFromPoint(tip.x, tip.y) as HTMLElement | null : null;
+              el?.closest('button, a, [role=button]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            }
+            if (m === 'uzak') setDim(true);
+            if (m === 'geri') setDim(false);
+            setMimikText(MIMIK_AD[m]);
+            setTimeout(() => setMimikText(t => (t === MIMIK_AD[m] ? '' : t)), 1800);
+            onMimicRef.current?.(m);
+          }
+        } catch (e) { console.warn('[el] mimik', e); }
+      }
       ctl.ayar = ayarRef.current;
       const st = ctl.update(hands, now, dt);
       // Kitaplık ayardan kapatılınca dışarıdaki kitap ve raf katmanı temizlenir
@@ -222,6 +248,8 @@ export default function HandControl(p: HandControlProps) {
         setStatus('');
         // Yüz algılayıcı: yüklenemezse el kontrolü yine çalışır (yalnızca yüz HUD'u olmaz)
         loadFaceDetector().then(d => { if (alive) fd = d; else d.close(); }).catch(e => console.warn('[el] yüz algılayıcı yüklenemedi', e));
+        // Mimik modeli (~3,7 MB): yüklenemezse mimikler olmadan devam
+        loadMimicModel().then(m => { if (alive) fl = m; else m.close(); }).catch(e => console.warn('[el] mimik modeli yüklenemedi', e));
       } catch (e: any) {
         setErr(`El takip modeli yüklenemedi: ${e?.message || e}. İnternet bağlantısını kontrol edin ya da "npm run el-modeli" ile modeli indirin.`);
         return;
@@ -236,6 +264,7 @@ export default function HandControl(p: HandControlProps) {
       stream?.getTracks().forEach(t => t.stop());
       lm?.close();
       fd?.close();
+      fl?.close();
       sfx.setRoar(0);
       demoCam?.stop();
       lib.dispose();
@@ -355,6 +384,8 @@ export default function HandControl(p: HandControlProps) {
       <canvas ref={canvasRef} className="el-canvas" />
       <div ref={stageRef} className="lb-stage" />
       <canvas ref={faceRef} className="el-face" />
+      {dim && <div className="el-dim">Başka yere bakıyorsunuz · dönünce devam ediyorum</div>}
+      {mimikText && <div className="el-mimik">{mimikText}</div>}
 
       {hud && (
         <>
