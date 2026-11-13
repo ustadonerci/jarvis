@@ -26,7 +26,7 @@ import { CAMERA_ENABLED, VISION_MODEL, cameraRouter, initCameras, onClientClosed
 import { control, homeState, initHome, type DeviceId, type HomeAction } from './home.js';
 import { initLibrary, libraryRouter } from './library.js';
 import { extensionsRouter, initExtensions } from './extensions.js';
-import { initMessaging, messagingHooksRouter, messagingRouter, notifySelf } from './messaging.js';
+import { initMessaging, messagingHooksRouter, messagingRouter, notifySelf, ownSamples } from './messaging.js';
 import { registerReelsVoice } from './reels.js';
 import { initRobot } from './robot.js';
 import { contactCount, importContacts, initContacts, parseContacts } from './contacts.js';
@@ -50,6 +50,7 @@ import { onVoicePick, onVoiceReset, piperRouter, setPiperFirst } from './piper.j
 import { hafizaRouter, localAsk, ollamaStatus, remember } from './hafiza.js';
 import { attachLiveVoice, liveReady } from './livevoice.js';
 import { quickDesktop, runDesktopTool, warmDesktop } from './desktop.js';
+import { defterView, registerOwnSamples } from './defter.js';
 import { setLocalAsk } from './routellm.js';
 import { XTTS_MODEL, initXtts, isXtts, xttsRouter, xttsVoices } from './xtts.js';
 import { indicatorsRouter } from './indicators.js';
@@ -531,6 +532,8 @@ app.use(xttsRouter(voice => {
 initXtts();
 app.use(hafizaRouter());
 setLocalAsk(localAsk);
+registerOwnSamples(ownSamples);
+app.get('/api/defter', (_req, res) => res.json(defterView()));
 warmDesktop();
 ollamaStatus().catch(() => {});
 app.use(providersRouter(id => { state.beyin = id; saveState(); }));

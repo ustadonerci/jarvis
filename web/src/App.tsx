@@ -13,6 +13,7 @@ import { SystemPanel } from './components/dashboard/SystemPanel';
 import { WeatherPanel } from './components/dashboard/WeatherPanel';
 import { SleepLayer, WakeChecks, WakeSettings, calibBus } from './components/Wake';
 import { ProfileSettings } from './components/Profile';
+import { DefterSettings } from './components/Defter';
 import { LibrarySettings } from './components/LibrarySettings';
 import { ErrorLog, ExtensionSettings, KeySettings, TakipSettings } from './components/Extensions';
 import { MessagingSettings } from './components/Messaging';
@@ -1697,6 +1698,7 @@ export default function App() {
                   <TakipSettings flash={flash} />
                   <ErrorLog flash={flash} />
                   <ProfileSettings flash={flash} />
+                  <DefterSettings />
                   <LibrarySettings flash={flash} version={libKey} />
                   <label>Bu cihazın rolü</label>
                   <div className="seg">

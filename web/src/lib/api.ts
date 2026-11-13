@@ -117,6 +117,7 @@ export const getHafiza = () => fetch('/api/hafiza', { headers: headers() }).then
 export const deleteHafiza = (id: string) => fetch(`/api/hafiza/${encodeURIComponent(id)}`, { method: 'DELETE', headers: headers() }).then(r => json<{ silinen: number; sayi: number }>(r));
 export const setHafizaAcik = (acik: boolean) => fetch('/api/hafiza/ayar', { method: 'POST', headers: headers(), body: JSON.stringify({ acik }) }).then(r => json<{ acik: boolean }>(r));
 export const installOllama = () => fetch('/api/hafiza/ollama-kur', { method: 'POST', headers: headers() }).then(r => json<any>(r));
+export const getDefter = () => fetch('/api/defter', { headers: headers() }).then(r => json<any>(r));
 export const deleteMemory = (id: string) => fetch(`/api/memory/${encodeURIComponent(id)}`, { method: 'DELETE', headers: headers() }).then(r => json<{ memory: MemoryItem[] }>(r));
 
 // ---------- Ayarlar → API anahtarları ve Yetenekler ----------

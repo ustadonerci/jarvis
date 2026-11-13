@@ -19,6 +19,7 @@ import { adminOnly } from './keys.js';
 import { autoMailRoutine, type MailRoutineResult } from './mailclean.js';
 import { collectExpenses, dayText, monthText } from './expenses.js';
 import { notifyOwner } from './messaging.js';
+import { gunaydin } from './defter.js';
 import { askText } from './routellm.js';
 import type { StoredMessage } from './types.js';
 
@@ -198,6 +199,13 @@ async function tick() {
     if (cfg.harcamaOto && cfg.harcamaIlkYapildi && cfg.sonAyRaporu && cfg.sonAyRaporu < prevMonth()) await job('ay', () => runMonth(prevMonth()));
     if (cfg.epostaOto) await job('eposta', () => runMail());
     await job('github', () => runGithub());
+    // Defterde iş varsa sabah "Günaydın" özeti (günün 3 işi, dönülecekler, alışkanlıklar)
+    try {
+      const g = gunaydin();
+      if (cfg.gonder && (g.gunun_3_isi.length || g.donulecekler.length || g.aliskanliklar.length)) {
+        await notifyOwner([`☀️ Günaydın · ${g.tarih}`, g.gunun_3_isi.length ? `Bugünün işleri:\n${g.gunun_3_isi.map((x, i) => `${i + 1}. ${x}`).join('\n')}` : '', g.donulecekler.length ? `Dönülecekler:\n• ${g.donulecekler.join('\n• ')}` : '', g.aliskanliklar.length ? `Alışkanlıklar: ${g.aliskanliklar.join(' · ')}` : ''].filter(Boolean).join('\n\n')).catch(() => []);
+      }
+    } catch { /* defter boş */ }
   }
   if (h >= cfg.raporSaati && cfg.sonAksam !== t) {
     cfg.sonAksam = t;

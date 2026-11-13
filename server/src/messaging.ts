@@ -783,6 +783,11 @@ export function messagingRouter(): Router {
 }
 
 /** Kullanıcıya bildirim: eşleşmiş Telegram sohbetine ve WhatsApp'ta kendine. Gönderilebilen kanalları döner. */
+/** "Benim gibi yaz" için: kullanıcının kendi elle gönderdiği son mesajlar (Jarvis'in 🤖 cevapları ve komutlar hariç) */
+export function ownSamples(n = 30): string[] {
+  return msgs.filter(m => !m.gelen && !m.otomatik && !/^\s*(🤖|#|jarvis)/i.test(m.metin) && m.metin.trim().length > 3 && !/şifre|parola|kod:?\s*\d{4,}/i.test(m.metin)).slice(-n).map(m => m.metin.slice(0, 300));
+}
+
 export async function notifyOwner(text: string, platform: 'telegram' | 'whatsapp' | 'hepsi' = 'hepsi'): Promise<string[]> {
   const out: string[] = [];
   const owner = cfg.telegramSahip || (process.env.TELEGRAM_SAHIP_ID || '').trim();

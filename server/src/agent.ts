@@ -19,6 +19,7 @@ import { LOCALSCAN_TOOLS } from './localscan.js';
 import { SALES_TOOLS } from './sales.js';
 import { HAFIZA_TOOLS } from './hafiza.js';
 import { DESKTOP_TOOLS, quickDesktop } from './desktop.js';
+import { DEFTER_TOOLS } from './defter.js';
 import { WEBACT_TOOLS, parseMusic, parseShop, playYouTubeSafe, shopSearch } from './webactions.js';
 import { CHAT_MODEL, MOCK, RouteLLMError, type ChatMessage, type ContentPart } from './routellm.js';
 import { TOOLS, runTool, type ToolProgress } from './tools.js';
@@ -104,7 +105,7 @@ export function contextVars(device: Device, prevDevice: Device | null) {
 export function toolsFor(groups: Set<Group>, isBrief = false): any[] {
   const pick = (g: Group, t: readonly any[]) => (groups.has(g) ? t : []);
   return [
-    ...(isBrief ? TOOLS : TOOLS.filter(t => t.function.name !== 'get_news')), ...SEARCH_TOOLS, ...ERROR_TOOLS, ...APPROVAL_TOOLS, ...DAILY_TOOLS, ...BRAIN_TOOLS, ...BROWSER_TOOLS, ...EXPENSE_TOOLS, ...TGCHANNEL_TOOLS, ...TGWEB_TOOLS, ...LINKREAD_TOOLS, ...OWNERMSG_TOOLS, ...CONTACT_TOOLS, ...SCREEN_TOOLS, ...MESAI_TOOLS, ...PIPER_TOOLS, ...XTTS_TOOLS, ...LOCALSCAN_TOOLS, ...HAFIZA_TOOLS, ...DESKTOP_TOOLS, ...WEBACT_TOOLS,
+    ...(isBrief ? TOOLS : TOOLS.filter(t => t.function.name !== 'get_news')), ...SEARCH_TOOLS, ...ERROR_TOOLS, ...APPROVAL_TOOLS, ...DAILY_TOOLS, ...BRAIN_TOOLS, ...BROWSER_TOOLS, ...EXPENSE_TOOLS, ...TGCHANNEL_TOOLS, ...TGWEB_TOOLS, ...LINKREAD_TOOLS, ...OWNERMSG_TOOLS, ...CONTACT_TOOLS, ...SCREEN_TOOLS, ...MESAI_TOOLS, ...PIPER_TOOLS, ...XTTS_TOOLS, ...LOCALSCAN_TOOLS, ...HAFIZA_TOOLS, ...DESKTOP_TOOLS, ...WEBACT_TOOLS, ...DEFTER_TOOLS,
     ...pick('finans', FINANCE_TOOLS), ...pick('mesaj', MSG_TOOLS), ...pick('mesaj', WATIDY_TOOLS), ...pick('mesaj', SALES_TOOLS), ...pick('eposta', EMAIL_TOOLS), ...pick('github', GITHUB_TOOLS),
     ...pick('ajan', agentTools()), ...pick('sistem', SYSTEM_TOOLS), ...pick('otomasyon', AUTOMATION_TOOLS), ...pick('otomasyon', SABLON_TOOLS), ...pick('otomasyon', URUN_TOOLS), ...pick('mesaj', URUN_TOOLS), ...pick('mesaj', SABLON_TOOLS), ...pick('telefon', PHONE_TOOLS),
     ...pick('sms', SMS_TOOLS), ...pick('sosyal', SOCIAL_TOOLS), ...pick('android', ANDROID_TOOLS), ...pick('site', SITE_TOOLS), ...pick('medya', MEDIA_TOOLS), ...pick('ses', VOICESTUDIO_TOOLS), ...pick('satin', HOSTINGER_TOOLS), ...pick('finans', ROBOT_TOOLS), ...pick('finans', DISROBOT_TOOLS), ...pick('finans', EXCHANGE_TOOLS), ...pick('finans', INDICATOR_TOOLS), ...pick('medya', REELS_TOOLS), ...pick('medya', PAYLASIM_TOOLS), ...pick('marka', BRAND24_TOOLS), ...pick('eposta', MAILCLEAN_TOOLS), ...pick('sistem', MICDIAG_TOOLS), ...pick('medya', SYSTEM_TOOLS.filter(t => t.function.name === 'dosya_listele' || t.function.name === 'uygulama_yonet' || t.function.name === 'uygulama_ara')),
