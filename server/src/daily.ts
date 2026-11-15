@@ -19,6 +19,7 @@ import { adminOnly } from './keys.js';
 import { autoMailRoutine, type MailRoutineResult } from './mailclean.js';
 import { collectExpenses, dayText, monthText } from './expenses.js';
 import { notifyOwner } from './messaging.js';
+import { butceRaporu, butceTablosu } from './butce.js';
 import { gunaydin } from './defter.js';
 import { askText } from './routellm.js';
 import type { StoredMessage } from './types.js';
@@ -152,11 +153,12 @@ export function eveningText(t = today()): string {
     ...sec('📧 E-posta:', by('eposta').map(a => a.metin)),
     ...sec('🐙 GitHub:', by('github').map(a => a.metin)),
     ...sec('🧩 Kurulan yetenekler:', by('yetenek').map(a => a.metin)),
-    ...sec('📝 Diğer:', acts.filter(a => !['islem', 'eposta', 'github', 'yetenek', 'tarayici'].includes(a.tur)).map(a => a.metin)),
+    ...sec('📝 Diğer:', acts.filter(a => !['islem', 'eposta', 'github', 'yetenek', 'tarayici', 'butce'].includes(a.tur)).map(a => a.metin)),
     `🧩 Yetenekler: ${mcp.beceri} beceri açık · MCP ${mcp.bagli}/${mcp.toplam} bağlı${mcp.hata.length ? ` · ${mcp.hata.length} hatalı (${short(mcp.hata.join(', '), 120)}; Ayarlar → Yetenekler → "Bozukları sil")` : ''}`,
     errs.length ? `⚠️ Bugün ${errs.length} çeşit hata oldu: ${short(errs.slice(-4).map(e => e.kaynak).join(', '), 160)} (sohbette "hatalara bak" deyin)` : '✅ Bugün hata kaydı yok.',
     !rep.eposta && cfg.epostaOto ? '📧 Bugünkü e-posta düzenlemesi henüz yapılmadı.' : '',
     ...sec('🌐 Tarayıcıda:', by('tarayici').slice(-8).map(a => a.metin)),
+    ...butceRaporu(),
   ].filter(l => l !== '').join('\n');
 }
 
@@ -183,7 +185,7 @@ export async function runExpenses(send = true): Promise<string> {
 export async function runMonth(ay: string, send = true): Promise<string> {
   cfg.sonAyRaporu = ay;
   saveCfg();
-  return (await store('ay', monthText(ay), send)).ay!;
+  return (await store('ay', `${monthText(ay)}\n\n${butceTablosu(ay)}`, send)).ay!;
 }
 const lastDayOfMonth = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate() === d.getDate(); };
 const prevMonth = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth() - 1, 15).toLocaleDateString('sv-SE').slice(0, 7); };

@@ -84,12 +84,21 @@ export function regexExtract(m: RawMail): Omit<Expense, 'kaynak'> | null {
 }
 
 const BANKS: [RegExp, string][] = [[/tombank/i, 'TOM Bank Hadi'], [/garanti/i, 'Garanti BBVA'], [/yapikredi|yapı kredi|ykb/i, 'Yapı Kredi'], [/isbank|işbank|maximum/i, 'İş Bankası'], [/akbank|axess/i, 'Akbank'], [/ziraat|bankkart/i, 'Ziraat'], [/halkbank|paraf/i, 'Halkbank'], [/vakif|vakıf|world/i, 'VakıfBank'], [/qnb|finansbank|cardfinans/i, 'QNB'], [/denizbank|bonus/i, 'DenizBank'], [/teb\b/i, 'TEB'], [/enpara/i, 'Enpara'], [/hsbc/i, 'HSBC'], [/ing\b/i, 'ING'], [/kuveyt/i, 'Kuveyt Türk'], [/papara/i, 'Papara']];
+/** Bildirim bankanın kendi adresinden mi (adres kısmına bakılır) */
+export const isBankSender = (kimden: string) => { const adr = /<([^>]*)>/.exec(kimden)?.[1] || kimden; return BANKS.some(([re]) => re.test(adr)); };
 const bankOf = (from: string) => BANKS.find(([re]) => re.test(from))?.[1] ?? from.replace(/<.*>/, '').trim().slice(0, 30);
 
 function toDate(s: string): string {
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? today() : d.toLocaleDateString('sv-SE');
 }
+
+/** Harcama olduğu belli ama tutarı okunamayan bildirimler (Bütçe Bekçisi Patron'a iletir) */
+const unreadable: { konu: string; metin: string }[] = [];
+export const drainUnreadable = () => unreadable.splice(0);
+const listeners: ((yeni: Expense[]) => void)[] = [];
+/** Tabloya yeni harcama eklenince çağrılır */
+export const onNewExpenses = (f: (yeni: Expense[]) => void) => { listeners.push(f); };
 
 /** Yapay zekâyla ayıklama (kampanya/şifre e-postalarını eler, iadeyi ayırır); olmazsa kalıplarla */
 async function extract(mails: RawMail[]): Promise<Expense[]> {
@@ -108,6 +117,7 @@ async function extract(mails: RawMail[]): Promise<Expense[]> {
     for (const x of arr) {
       const m = part.find(p => p.id === x?.id);
       const tutar = Number(x?.tutar);
+      if (m && x.tur === 'harcama' && isBankSender(m.kimden) && !(tutar > 0 && tutar < 10_000_000)) unreadable.push({ konu: m.konu, metin: m.metin.slice(0, 400) });
       if (!m || (x.tur !== 'harcama' && x.tur !== 'iade') || !(tutar > 0 && tutar < 10_000_000)) continue;
       const tarih = /^\d{4}-\d{2}-\d{2}$/.test(String(x.tarih)) ? String(x.tarih) : toDate(m.tarih);
       out.push({
@@ -191,7 +201,13 @@ async function statementItems(skip: Set<string>): Promise<{ items: Expense[]; id
 const fromStatement = (e: Expense) => e.id.startsWith('ekstre-');
 
 /** Son N günün banka e-postalarını okur, yeni harcamaları tabloya ekler. Eklenen sayısı. */
-export async function collectExpenses(gun: number): Promise<{ eklenen: number; okunan: number; kaynak: string }> {
+let inflight: Promise<{ eklenen: number; okunan: number; kaynak: string }> | null = null;
+/** Aynı anda iki tarama çalışmaz (aynı harcama iki kez eklenmesin): süren varsa onun sonucu döner */
+export function collectExpenses(gun: number): Promise<{ eklenen: number; okunan: number; kaynak: string }> {
+  return (inflight ??= collectOnce(gun).finally(() => { inflight = null; }));
+}
+
+async function collectOnce(gun: number): Promise<{ eklenen: number; okunan: number; kaynak: string }> {
   const skip = new Set(store.islenen);
   let kaynak = 'tarayıcıdaki Gmail';
   let mails: RawMail[] | null = null;
@@ -222,6 +238,7 @@ export async function collectExpenses(gun: number): Promise<{ eklenen: number; o
   save();
   for (const ay of new Set(yeni.map(e => e.tarih.slice(0, 7)))) writeCsv(ay);
   if (yeni.length) logActivity('harcama', `${yeni.length} yeni kart harcaması tabloya eklendi (${kaynak})`);
+  if (yeni.length) for (const f of listeners) { try { f(yeni); } catch { /* dinleyici hatası taramayı bozmaz */ } }
   console.log(`[harcama] ${mails.length} e-posta okundu, ${yeni.length} yeni harcama`);
   return { eklenen: yeni.length, okunan: mails.length, kaynak };
 }

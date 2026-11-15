@@ -50,6 +50,7 @@ import { onVoicePick, onVoiceReset, piperRouter, setPiperFirst } from './piper.j
 import { hafizaRouter, localAsk, ollamaStatus, remember } from './hafiza.js';
 import { attachLiveVoice, liveReady } from './livevoice.js';
 import { quickDesktop, runDesktopTool, warmDesktop } from './desktop.js';
+import { initButce } from './butce.js';
 import { defterView, registerOwnSamples, runDefterTool } from './defter.js';
 import { setLocalAsk } from './routellm.js';
 import { XTTS_MODEL, initXtts, isXtts, xttsRouter, xttsVoices } from './xtts.js';
@@ -255,6 +256,7 @@ initDaily({ messages: () => state.messages, broadcast });
 initTgChannels(broadcast);
 initDisRobot(broadcast);
 initOwnerMsg();
+initButce();
 initMesai(broadcast);
 initVoiceStudio();
 

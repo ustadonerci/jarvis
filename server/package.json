@@ -10,7 +10,8 @@
     "voices": "tsx src/voices.ts",
     "eleven": "tsx src/eleven-cli.ts",
     "test:kitaplik": "tsx src/kitaplik-test.ts",
-    "test:ekstre": "tsx src/ekstre-test.ts"
+    "test:ekstre": "tsx src/ekstre-test.ts",
+    "test:butce": "tsx src/butce-test.ts"
   },
   "keywords": [],
   "author": "",

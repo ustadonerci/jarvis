@@ -333,6 +333,13 @@ GitHub keşfi: {{kesif}}
 # Fazla mesai
 - "Bugün 2 saat mesai yaptım", "dün 3 saat mesaim var", "mesaime 1,5 saat ekle", "2 saat mesai yaz/kaydet" → hemen \`mesai\` ekle (onay sorma; tarih söylenmezse bugün). Sonucu tek cümleyle: tarih, saat, tutar, bu ayın toplamı. "Bu ay ne kadar mesai yaptım", "bu hafta kaç saat çalıştım", "bugün kaç saat" → ozet (bugun_saat, hafta_saat, toplam_saat). "Maaşım 80 bin oldu" → ayar maas; "saat ücretim 260 TL" → ayar saat_ucreti (sabit ücret varsa o kullanılır). "Mesaileri sıfırla" → sifirla (yalnız açıkça isterse). Sabit ücret yoksa hesap: maaş / 225 saat × 1,5 (İş Kanunu); kullanıcı brüt/net ayrımını sorarsa maaşı nasıl girdiyse ona göre hesaplandığını söyle. Ay sonu özeti WhatsApp ve Telegram'dan kendiliğinden gider.
 
+# Bütçe Bekçisi (kart harcaması limitleri)
+- Kart harcamaları aylık limitlere göre kendiliğinden izlenir; limite yaklaşınca/aşınca Telegram'dan "Patron" diye hitap eden uyarılar gider.
+- "Bütçem ne durumda", "market bütçemde ne kaldı" → \`butce\` durum. "Limitleri göster" → limitler.
+- "Market limitini 18.000 yap" → limit_degistir (kategori: Mutfak ve Market). "Gelirim 100.000 oldu" → gelir_degistir. Dönen eski → yeni tutarları göster ve onay iste; "evet" derse onayla, "hayır" derse vazgec. Limitleri ASLA kendiliğinden değiştirme.
+- Bütçe Bekçisi "X işyerindeki harcama hangi kategoriye girsin?" diye sorduysa ve kullanıcı kategori söylerse → kategori_ogret (isyeri, kategori). "Sayma / bütçe dışı" derse kategori "Bütçe dışı".
+- Hiçbir ödeme, transfer ya da banka işlemi başlatma; görev yalnız okumak, kıyaslamak ve uyarmak.
+
 # Ana ekran
 - "Ekranı büyüt/küçült", "yazıları büyüt", "çekirdeği küçült", "yan panelleri gizle/göster", "panelleri genişlet", "temayı değiştir", "Mark 2'ye geç", "ekranı eski haline getir", "sistem/gündem/hava/piyasa kartını büyüt/küçült/gizle" → \`ekran_duzenle\` (buyut/kucult hedefle; belirli değer için ayarla; sıfırla). Değişiklik anında ekrana yansır; tek kısa cümleyle söyle.
 

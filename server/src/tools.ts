@@ -50,6 +50,7 @@ import { isSalesTool, runSalesTool } from './sales.js';
 import { isHafizaTool, runHafizaTool } from './hafiza.js';
 import { isDesktopTool, runDesktopTool } from './desktop.js';
 import { isWebActTool, runWebActTool } from './webactions.js';
+import { isButceTool, runButceTool } from './butce.js';
 import { isDefterTool, runDefterTool } from './defter.js';
 import { isBrainTool, runBrainTool } from './providers.js';
 import { isMicDiagTool, runMicDiagTool } from './micdiag.js';
@@ -367,6 +368,7 @@ async function runToolOnce(name: string, rawArgs: string, progress: ToolProgress
   if (isDesktopTool(name)) return runDesktopTool(args, progress);
   if (isWebActTool(name)) return runWebActTool(name, args, progress);
   if (isDefterTool(name)) return runDefterTool(args);
+  if (isButceTool(name)) return runButceTool(args);
   if (isBrainTool(name)) return runBrainTool(args);
   if (isMicDiagTool(name)) return runMicDiagTool(args, progress, name);
   if (isExchangeTool(name)) return runExchangeTool(args, progress);

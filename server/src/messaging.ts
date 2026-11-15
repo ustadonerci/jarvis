@@ -811,6 +811,20 @@ export async function notifyOwner(text: string, platform: 'telegram' | 'whatsapp
   return out;
 }
 
+/** Kullanıcının Telegram sohbetine sesli mesaj (mp3/ogg sesli not, wav ses dosyası olarak). Gönderildiyse true. */
+export async function sendOwnerVoice(buf: Buffer, mime: string): Promise<boolean> {
+  const owner = cfg.telegramSahip || (process.env.TELEGRAM_SAHIP_ID || '').trim();
+  if (!TG() || !owner) return false;
+  const wav = mime === 'audio/wav';
+  const fd = new FormData();
+  fd.append('chat_id', owner);
+  fd.append(wav ? 'audio' : 'voice', new Blob([new Uint8Array(buf)], { type: mime }), wav ? 'jarvis.wav' : 'jarvis.mp3');
+  const r = await fetch(`https://api.telegram.org/bot${TG()}/${wav ? 'sendAudio' : 'sendVoice'}`, { method: 'POST', body: fd, signal: AbortSignal.timeout(60_000) });
+  const j: any = await r.json().catch(() => ({}));
+  if (!j.ok) throw new Error(j.description || `Telegram ${r.status}`);
+  return true;
+}
+
 /** Kullanıcıya mesaj kanalları hazır mı (neden hazır değilse açıklamasıyla) */
 export function ownerChannels(): { telegram: string | true; whatsapp: string | true } {
   const owner = cfg.telegramSahip || (process.env.TELEGRAM_SAHIP_ID || '').trim();
