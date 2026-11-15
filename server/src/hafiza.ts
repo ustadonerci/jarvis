@@ -47,7 +47,7 @@ export async function ollamaStatus(force = false) {
 const has = (m: string) => ollama.modeller.some(x => x === m || x.startsWith(`${m}:`) || x.split(':')[0] === m.split(':')[0]);
 export const localReady = () => ollama.up && has(LOCAL_MODEL);
 
-async function embed(text: string): Promise<number[] | undefined> {
+export async function embed(text: string): Promise<number[] | undefined> {
   if (!ollama.up || !has(EMBED_MODEL)) return undefined;
   try {
     const r = await fetch(`${OLLAMA}/api/embed`, { method: 'POST', body: JSON.stringify({ model: EMBED_MODEL, input: text.slice(0, 2000) }), signal: AbortSignal.timeout(15_000) });

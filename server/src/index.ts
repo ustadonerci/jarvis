@@ -51,6 +51,8 @@ import { hafizaRouter, localAsk, ollamaStatus, remember } from './hafiza.js';
 import { attachLiveVoice, liveReady } from './livevoice.js';
 import { quickDesktop, runDesktopTool, warmDesktop } from './desktop.js';
 import { initButce } from './butce.js';
+import { initDersler } from './dersler.js';
+import { initOtomasyon } from './otomasyon.js';
 import { defterView, registerOwnSamples, runDefterTool } from './defter.js';
 import { setLocalAsk } from './routellm.js';
 import { XTTS_MODEL, initXtts, isXtts, xttsRouter, xttsVoices } from './xtts.js';
@@ -257,6 +259,8 @@ initTgChannels(broadcast);
 initDisRobot(broadcast);
 initOwnerMsg();
 initButce();
+initOtomasyon();
+initDersler();
 initMesai(broadcast);
 initVoiceStudio();
 

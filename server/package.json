@@ -11,7 +11,8 @@
     "eleven": "tsx src/eleven-cli.ts",
     "test:kitaplik": "tsx src/kitaplik-test.ts",
     "test:ekstre": "tsx src/ekstre-test.ts",
-    "test:butce": "tsx src/butce-test.ts"
+    "test:butce": "tsx src/butce-test.ts",
+    "test:orkas": "tsx src/orkas-test.ts"
   },
   "keywords": [],
   "author": "",

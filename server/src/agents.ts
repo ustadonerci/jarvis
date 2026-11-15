@@ -19,12 +19,13 @@ import { EMAIL_TOOLS } from './email.js';
 import { mcpTools } from './extensions.js';
 import { ERROR_TOOLS } from './errors.js';
 import { SOCIAL_TOOLS } from './social.js';
+import { SEO_TOOLS } from './seo.js';
 
 const MAX_ROUNDS = 6;
 const MAX_REPORT = 6000;
 
 type Tool = { type: string; function: { name: string; description: string; parameters: unknown } };
-const all = (): Tool[] => [...TOOLS, ...SEARCH_TOOLS, ...FINANCE_TOOLS, ...GITHUB_TOOLS, ...MSG_TOOLS, ...EMAIL_TOOLS, ...ERROR_TOOLS, ...SOCIAL_TOOLS, ...mcpTools()] as Tool[];
+const all = (): Tool[] => [...TOOLS, ...SEARCH_TOOLS, ...FINANCE_TOOLS, ...GITHUB_TOOLS, ...MSG_TOOLS, ...EMAIL_TOOLS, ...ERROR_TOOLS, ...SOCIAL_TOOLS, ...SEO_TOOLS, ...mcpTools()] as Tool[];
 const pick = (names: string[], mcp = false) => () => all().filter(t => names.includes(t.function.name) || (mcp && t.function.name.startsWith('mcp_')));
 
 interface Expert { ad: string; rol: string; araclar: () => Tool[] }
@@ -52,8 +53,13 @@ const EXPERTS: Record<string, Expert> = {
   },
   tasarim: {
     ad: 'Tasarım uzmanı',
-    rol: 'UI/UX ve gösterge paneli (dashboard) tasarımcısı. İstenen ekran ya da panel için yerleşim, bileşenler, renk ve tipografi önerisi, gösterilecek metrikler ve bunların grafik türlerini net bir tasarım şartnamesi olarak yaz; gerekiyorsa örnek tasarımlar için internette ara.',
+    rol: 'UI/UX ve gösterge paneli (dashboard) tasarımcısı. İstenen ekran ya da panel için yerleşim, bileşenler, renk ve tipografi önerisi, gösterilecek metrikler ve bunların grafik türlerini net bir tasarım şartnamesi olarak yaz; gerekiyorsa örnek tasarımlar için internette ara. Kullanıcı ekranın kendisini (taslak, prototip, HTML) isterse şartnameden sonra tek dosyalık, dış bağlantısız, mobil uyumlu, gerçekçi içerikli tam bir HTML sayfası da ver (```html bloğunda); Jarvis bunu ofis_dosyasi tur=sayfa ile dosyaya kaydeder.',
     araclar: pick(['internette_ara', 'sayfa_oku']),
+  },
+  seo: {
+    ad: 'SEO ve yapay zekâ görünürlüğü uzmanı',
+    rol: "SEO ve GEO (yapay zekâ cevaplarında görünürlük) denetçisi. Verilen sitenin ana sayfasını ve önemli sayfalarını seo_tara ile ölç; içeriği sayfa_oku ile oku. Sitenin konusu için insanların arayacağı 5-8 soru/anahtar kelime çıkar, internette_ara ile ara: site çıkıyor mu, rakipler kimler, rakipler neyi daha iyi yapıyor. Raporda: 1) teknik sorunlar (önem sırasıyla, her birine somut düzeltme), 2) içerik ve anahtar kelime fırsatları, 3) yapay zekâ cevaplarında alıntılanma için öneriler (net cevap veren SSS bölümleri, schema.org, yazar/kaynak bilgisi, güncel tarih), 4) ilk hafta yapılacak 5 iş. Ölçmediğin metriği (trafik, sıralama) uydurma.",
+    araclar: pick(['seo_tara', 'sayfa_oku', 'internette_ara']),
   },
   sistem: {
     ad: 'Sistem ve yazılım uzmanı',
@@ -71,7 +77,7 @@ const readJson = <T,>(f: string, d: T): T => { try { return JSON.parse(fs.readFi
 const writeJson = (f: string, v: unknown) => { fs.mkdirSync(DATA, { recursive: true }); fs.writeFileSync(f, JSON.stringify(v, null, 2)); };
 
 /** Yeni uzmanlara verilebilecek araçlar: yalnızca okuyanlar */
-const SAFE_TOOLS = ['internette_ara', 'sayfa_oku', 'wiki_lookup', 'get_news', 'get_markets', 'get_weather', 'piyasa_analiz', 'portfoy_rapor', 'youtube_ara', 'kanal_son_video', 'github_trend', 'github_incele', 'hata_gunlugu', 'sosyal_ac', 'eposta_listele', 'eposta_oku'];
+const SAFE_TOOLS = ['internette_ara', 'sayfa_oku', 'seo_tara', 'wiki_lookup', 'get_news', 'get_markets', 'get_weather', 'piyasa_analiz', 'portfoy_rapor', 'youtube_ara', 'kanal_son_video', 'github_trend', 'github_incele', 'hata_gunlugu', 'sosyal_ac', 'eposta_listele', 'eposta_oku'];
 interface CustomExpert { ad: string; rol: string; araclar: string[]; at: string }
 
 function experts(): Record<string, Expert> {

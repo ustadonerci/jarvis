@@ -12,7 +12,8 @@ import { propose } from './approvals.js';
 
 const FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data', 'defter.json');
 
-interface Gorev { id: string; metin: string; tarih?: string; bitti?: string; at: string }
+/** ajan: Jarvis kendi yapar (otomasyon.ts); rapor: yaptığı iş, Patron'un incelemesini bekler */
+interface Gorev { id: string; metin: string; tarih?: string; bitti?: string; at: string; ajan?: boolean; rapor?: string }
 interface Para { id: string; tur: 'gider' | 'gelir' | 'borc_verdim' | 'borc_aldim' | 'tahsil' | 'odedim'; tutar: number; kisi?: string; aciklama?: string; tarih: string }
 interface Takip { id: string; kisi: string; konu: string; tarih?: string; bitti?: string; at: string }
 interface Aliskanlik { id: string; ad: string; gunler: string[]; at: string }
@@ -123,15 +124,22 @@ export const DEFTER_TOOLS = [
     type: 'function',
     function: {
       name: 'defter',
-      description: "Kişisel defter. Görevler: gorev_ekle (metin, tarih: 'cuma'/'yarın'/YYYY-MM-DD), gorev_bitti (no ya da metin), gorevler ('ne kaldı'), gorev_sil. Para defteri: para_ekle (tur: gider|gelir|borc_verdim|borc_aldim|tahsil|odedim, tutar, kisi?, aciklama?) — '300 TL un aldım'=gider, 'Zeynep hanım 1.200 ödedi'=tahsil ya da gelir, 'Ahmet 2.000 borçlu'=borc_verdim; para_ozet ('bu ay ne harcadım', 'kim bana borçlu'). Takip: takip_ekle (kisi, konu, tarih), takip_bitti, takipler ('kime dönmem lazım'). Alışkanlık: aliskanlik_ekle (ad), aliskanlik_yaptim (ad: 'yürüdüm'), aliskanliklar. Kararlar: karar_ekle (metin), kararlar. Hedef: hedef_ekle (ad, adimlar: dizi — büyük hedefi 4-8 somut adıma sen böl), hedef_adim_bitti (hedef, no), hedefler. gunaydin: günün 3 işi + bekleyenler; gunu_kapat: biten/kalan/yarın ilk iş. uslup: kullanıcının kendi mesaj örnekleri ('benim gibi yaz' — taslak yaz, GÖNDERME). sifirla: defteri temizler (onay kartı).",
+      description: "Kişisel defter. Görevler: gorev_ekle (metin, tarih: 'cuma'/'yarın'/YYYY-MM-DD; ajana_ver: true → Jarvis işi kendisi sırayla yapar, sonucu incelemen için Telegram'dan gönderir: 'bunu sen hallet', 'Jarvis yapsın'), gorev_bitti (no ya da metin), gorevler ('ne kaldı'), gorev_sil. Para defteri: para_ekle (tur: gider|gelir|borc_verdim|borc_aldim|tahsil|odedim, tutar, kisi?, aciklama?) — '300 TL un aldım'=gider, 'Zeynep hanım 1.200 ödedi'=tahsil ya da gelir, 'Ahmet 2.000 borçlu'=borc_verdim; para_ozet ('bu ay ne harcadım', 'kim bana borçlu'). Takip: takip_ekle (kisi, konu, tarih), takip_bitti, takipler ('kime dönmem lazım'). Alışkanlık: aliskanlik_ekle (ad), aliskanlik_yaptim (ad: 'yürüdüm'), aliskanliklar. Kararlar: karar_ekle (metin), kararlar. Hedef: hedef_ekle (ad, adimlar: dizi — büyük hedefi 4-8 somut adıma sen böl), hedef_adim_bitti (hedef, no), hedefler. gunaydin: günün 3 işi + bekleyenler; gunu_kapat: biten/kalan/yarın ilk iş. uslup: kullanıcının kendi mesaj örnekleri ('benim gibi yaz' — taslak yaz, GÖNDERME). sifirla: defteri temizler (onay kartı).",
       parameters: { type: 'object', properties: {
         islem: { type: 'string', enum: ['gorev_ekle', 'gorev_bitti', 'gorevler', 'gorev_sil', 'para_ekle', 'para_ozet', 'takip_ekle', 'takip_bitti', 'takipler', 'aliskanlik_ekle', 'aliskanlik_yaptim', 'aliskanliklar', 'karar_ekle', 'kararlar', 'hedef_ekle', 'hedef_adim_bitti', 'hedefler', 'gunaydin', 'gunu_kapat', 'uslup', 'sifirla'] },
-        metin: { type: 'string' }, tarih: { type: 'string' }, no: { type: 'number' }, tur: { type: 'string' }, tutar: { type: 'number' }, kisi: { type: 'string' }, aciklama: { type: 'string' }, konu: { type: 'string' }, ad: { type: 'string' }, hedef: { type: 'string' }, adimlar: { type: 'array', items: { type: 'string' } }, ay: { type: 'string' },
+        metin: { type: 'string' }, tarih: { type: 'string' }, no: { type: 'number' }, tur: { type: 'string' }, tutar: { type: 'number' }, kisi: { type: 'string' }, aciklama: { type: 'string' }, konu: { type: 'string' }, ad: { type: 'string' }, hedef: { type: 'string' }, adimlar: { type: 'array', items: { type: 'string' } }, ay: { type: 'string' }, ajana_ver: { type: 'boolean' },
       }, required: ['islem'] },
     },
   },
 ] as const;
 export const isDefterTool = (n: string) => n === 'defter';
+
+/** Jarvis'e verilmiş, henüz yapılmamış ilk iş (tarihi gelmemişler beklenir) */
+export const siradakiAjanIsi = () => acikGorevler().find(g => g.ajan && !g.rapor && (!g.tarih || g.tarih <= today()));
+export function ajanRaporu(gid: string, rapor: string) {
+  const g = d.gorevler.find(x => x.id === gid);
+  if (g) { g.rapor = rapor.slice(0, 4000); save(); }
+}
 
 export function runDefterTool(a: any): string {
   const j = (v: unknown) => JSON.stringify(v);
@@ -140,9 +148,9 @@ export function runDefterTool(a: any): string {
   switch (a.islem) {
     case 'gorev_ekle': {
       if (!metin) return j({ hata: 'Görev metni boş' });
-      const g = { id: id(), metin, tarih: parseDate(a.tarih) ?? parseDate(metin), at: new Date().toISOString() };
+      const g: Gorev = { id: id(), metin, tarih: parseDate(a.tarih) ?? parseDate(metin), at: new Date().toISOString(), ...(a.ajana_ver === true ? { ajan: true } : {}) };
       d.gorevler.push(g); save();
-      return j({ ok: true, eklendi: g.metin, tarih: fmt(g.tarih) || 'tarihsiz', acik: acikGorevler().length });
+      return j({ ok: true, eklendi: g.metin, tarih: fmt(g.tarih) || 'tarihsiz', acik: acikGorevler().length, ajan: g.ajan ? 'Jarvis bu işi sırayla kendisi yapacak; sonucu incelemen için Telegram üzerinden gelecek.' : undefined });
     }
     case 'gorev_bitti': case 'gorev_sil': {
       const list = acikGorevler();
@@ -152,7 +160,7 @@ export function runDefterTool(a: any): string {
       save();
       return j({ ok: true, [a.islem === 'gorev_sil' ? 'silindi' : 'bitti']: g.metin, kalan: acikGorevler().length });
     }
-    case 'gorevler': return j({ acik: acikGorevler().map((g, i) => `${i + 1}. ${g.metin}${g.tarih ? ` · ${fmt(g.tarih)}${g.tarih < today() ? ' (gecikti)' : ''}` : ''}`), bugun_biten: d.gorevler.filter(g => g.bitti?.startsWith(today())).map(g => g.metin) });
+    case 'gorevler': return j({ acik: acikGorevler().map((g, i) => `${i + 1}. ${g.metin}${g.tarih ? ` · ${fmt(g.tarih)}${g.tarih < today() ? ' (gecikti)' : ''}` : ''}${g.rapor ? ' (Jarvis yaptı, incelemeni bekliyor)' : g.ajan ? ' (Jarvis yapacak)' : ''}`), bugun_biten: d.gorevler.filter(g => g.bitti?.startsWith(today())).map(g => g.metin) });
     case 'para_ekle': {
       const tutar = Number(a.tutar);
       const tur = ['gider', 'gelir', 'borc_verdim', 'borc_aldim', 'tahsil', 'odedim'].includes(a.tur) ? a.tur : 'gider';
