@@ -5,7 +5,7 @@
 import { actionList, decideAction } from './approvals.js';
 
 export type Kanal = 'whatsapp' | 'telegram';
-type Ask = (text: string, kanal: Kanal) => Promise<string>;
+type Ask = (text: string, kanal: Kanal, image?: string) => Promise<string>;
 let ask: Ask | null = null;
 export const setRemoteAsk = (fn: Ask) => { ask = fn; };
 
@@ -20,14 +20,14 @@ export const HELP = [
   '• Jarvis\'e gitmesini istemediğiniz notların başına # koyun.',
 ].join('\n');
 
-/** Bir uzaktan mesajı işler ve cevabı send ile gönderir */
-export async function handleRemote(kanal: Kanal, text: string, send: (t: string) => Promise<unknown>) {
+/** Bir uzaktan mesajı işler ve cevabı send ile gönderir. image: gönderilen resim (data URL), yapay zekâ görür. */
+export async function handleRemote(kanal: Kanal, text: string, send: (t: string) => Promise<unknown>, image?: string) {
   const t = fold(text);
   try {
     if (/^(\/?yardim|\/help|\/start|komutlar)$/.test(t)) { await send(`🤖 ${HELP}`); return; }
     const waiting = (pending.get(kanal) ?? []).map(id => actionList().find(a => a.id === id)).filter(a => a && a.durum === 'bekliyor');
     const yes = /^(evet )?(onayla|onayliyorum|onay|calistir|tamam onayla)$/.test(t), no = /^(reddet|iptal|vazgec|hayir)$/.test(t);
-    if ((yes || no) && waiting.length) {
+    if (!image && (yes || no) && waiting.length) {
       const out: string[] = [];
       for (const a of waiting) {
         if (yes && MONEY.has(a!.tur)) { out.push(`⛔ "${a!.baslik}" para içerdiği için yalnızca Jarvis ekranından onaylanabilir.`); continue; }
@@ -40,7 +40,8 @@ export async function handleRemote(kanal: Kanal, text: string, send: (t: string)
     }
     if (!ask) { await send('🤖 Jarvis henüz hazır değil, birazdan tekrar deneyin.'); return; }
     const before = new Set(actionList().map(a => a.id));
-    const reply = (await ask(text.slice(0, 2000), kanal)).trim();
+    // Dosyadan çıkan yazı uzun olabilir (en çok ~30 bin karakter); düz mesaj 2000 karakterle sınırlı
+    const reply = (await ask(text.slice(0, text.includes('\n<<<\n') ? 32_000 : 2000), kanal, image)).trim();
     const fresh = actionList().filter(a => !before.has(a.id) && a.durum === 'bekliyor');
     pending.set(kanal, fresh.map(a => a.id));
     const cards = fresh.map(a => `⏳ Onay bekliyor: ${a.baslik}\n${a.ayrinti.slice(0, 600)}\n${MONEY.has(a.tur) ? '(Para içeren işlem: yalnızca Jarvis ekranından onaylanır.)' : '→ "onayla" ya da "reddet" yazın.'}`);

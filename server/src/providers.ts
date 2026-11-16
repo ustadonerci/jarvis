@@ -297,6 +297,10 @@ async function anthropicStream(p: Provider, body: any, onContent?: (d: string, f
   };
 }
 
+/** Varsayılan modeliyle resim görebilen sağlayıcılar */
+const VISION = new Set(['gemini', 'openai', 'anthropic', 'openrouter', 'xai', 'routellm']);
+export const hasImage = (body: any) => Array.isArray(body?.messages) && body.messages.some((m: any) => Array.isArray(m?.content) && m.content.some((p: any) => p?.type === 'image_url'));
+
 /** Ana sohbet akışı: seçili sağlayıcı, yoksa (ya da hata verirse) RouteLLM */
 /** Hata veren sağlayıcı bir süre atlanır (her mesajda aynı bozuk anahtar denenmesin) */
 const cooldown = new Map<string, { until: number; why: string }>();
@@ -341,6 +345,8 @@ export async function brainStream(body: any, onContent?: (d: string, full: strin
   const pin = (id: string) => (id === brain ? 0 : id === brain2 ? 1 : 2);
   const list = [...order.filter(o => !resting(o.id)).sort((a, b) => pin(a.id) - pin(b.id) || score(a.id) - score(b.id)), ...retry];
   if (!list.length && order.length) list.push(...order); // hepsi dinlenmede ve yakın zamanda denendiyse yine de dene
+  // Resimli istek: resim okuyamayan modeller (Llama, DeepSeek…) önce hata verip zaman yiyordu; görebilenler öne alınır
+  if (hasImage(body)) list.sort((a, b) => Number(!VISION.has(a.id)) - Number(!VISION.has(b.id)));
   const t0 = Date.now();
   if (!list.length) throw new Error('Hiçbir yapay zekâ anahtarı girilmemiş. Ayarlar → Yapay zeka sağlayıcıları\'ndan ücretsiz bir anahtar ekleyin (Google Gemini, Groq ya da NVIDIA).');
   const errs: string[] = [];

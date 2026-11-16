@@ -763,7 +763,7 @@ app.post('/api/chat', async (req, res) => {
 
 // ---------- Uzaktan komut (WhatsApp'ta kendine mesaj / eşleştirilmiş Telegram) ----------
 // Ana sohbetle aynı yol: geçmişe yazılır, ekranlarda görünür; ses üretilmez, cevabın metni mesajla döner.
-async function askRemote(text: string, kanal: Kanal | 'canli'): Promise<string> {
+async function askRemote(text: string, kanal: Kanal | 'canli', image?: string): Promise<string> {
   for (let i = 0; busy && i < 120; i++) await new Promise(r => setTimeout(r, 1000)); // ekrandaki cevap bitsin
   if (busy) throw new Error('Jarvis şu an meşgul, birazdan tekrar deneyin');
   busy = true;
@@ -771,14 +771,14 @@ async function askRemote(text: string, kanal: Kanal | 'canli'): Promise<string> 
   const replyId = randomUUID();
   const voice = { ...currentVoice() };
   try {
-    const userMsg: StoredMessage = { role: 'user', text: `${kanal === 'whatsapp' ? '💬' : kanal === 'canli' ? '⚡' : '✈️'} ${text}`, device: kanal === 'canli' ? (state.lastDevice ?? 'masaustu') : 'telefon', at: new Date().toISOString() };
+    const userMsg: StoredMessage = { role: 'user', text: `${kanal === 'whatsapp' ? '💬' : kanal === 'canli' ? '⚡' : '✈️'} ${image ? '📷 ' : ''}${text.length > 4000 ? `${text.slice(0, 4000)}…` : text}`, device: kanal === 'canli' ? (state.lastDevice ?? 'masaustu') : 'telefon', at: new Date().toISOString() };
     const history = state.messages.slice();
     state.messages.push(userMsg);
     broadcast({ type: 'user', message: userMsg, origin });
     let cancelled = false;
     let lastStep = 'düşünüyor';
     const reply = await withDeadline(runJarvis({
-      text, device: 'telefon', prevDevice: state.lastDevice ?? null, history, photoMode: state.photoMode,
+      text, device: 'telefon', prevDevice: state.lastDevice ?? null, history, photoMode: state.photoMode, image,
       progress: line => { lastStep = line; if (!cancelled) broadcast({ type: 'progress', line, origin }); },
       onScene: (index, sahne) => { if (!cancelled) broadcast({ type: 'scene', replyId, index, sahne, voice, origin }); },
       onScenesDone: count => { if (!cancelled) broadcast({ type: 'scene_end', replyId, count, origin }); },

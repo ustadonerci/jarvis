@@ -12,7 +12,8 @@
     "test:kitaplik": "tsx src/kitaplik-test.ts",
     "test:ekstre": "tsx src/ekstre-test.ts",
     "test:butce": "tsx src/butce-test.ts",
-    "test:orkas": "tsx src/orkas-test.ts"
+    "test:orkas": "tsx src/orkas-test.ts",
+    "test:dosya": "tsx src/dosyaoku-test.ts"
   },
   "keywords": [],
   "author": "",

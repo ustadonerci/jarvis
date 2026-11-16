@@ -17,6 +17,7 @@ import { adminOnly, isLocalRequest } from './keys.js';
 import { phoneStatus, setPublicUrl } from './phone.js';
 import { propose } from './approvals.js';
 import { HELP, handleRemote } from './remote.js';
+import { dosyaIstegi, dosyaOku } from './dosyaoku.js';
 import { createHash, randomInt } from 'node:crypto';
 
 const DATA = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
@@ -180,7 +181,32 @@ const tgPairs = new Map<string, { code: string; until: number }>();
 // Kullanıcının (Ramazan) Telegram kimliği: ham hâli repoda yazmasın diye özetiyle tanınır; ilk mesajında sohbet eşleşir
 const OWNER_HASHES = new Set(['295ecabf30edc3616ebc2e6cf03fed7de2b7699bbb2499527e661251ffe7f83f']);
 const ownerHash = (id: string) => createHash('sha256').update(`jarvis-tg:${id}`).digest('hex');
-async function tgOwnerFlow(chat: string, text: string, date: number, fromId: string): Promise<boolean> {
+/** Telegram'da gönderilen dosya: fotoğraf (en büyük boyutu), belge, GIF animasyonu, çıkartma */
+interface TgMedya { file_id: string; ad: string; mime: string }
+const tgMedya = (m: any): TgMedya | undefined =>
+  m.animation ? { file_id: m.animation.file_id, ad: m.animation.file_name ?? 'animasyon.mp4', mime: m.animation.mime_type ?? 'video/mp4' }
+    : m.photo?.length ? { file_id: m.photo[m.photo.length - 1].file_id, ad: 'fotoğraf.jpg', mime: 'image/jpeg' }
+    : m.document ? { file_id: m.document.file_id, ad: m.document.file_name ?? 'belge', mime: m.document.mime_type ?? '' }
+    : m.sticker && !m.sticker.is_animated && !m.sticker.is_video ? { file_id: m.sticker.file_id, ad: 'çıkartma.webp', mime: 'image/webp' }
+    : undefined;
+
+/** Kullanıcının Telegram'dan gönderdiği dosyayı indirir, okur ve Jarvis'e verir (resimse görerek, yazıysa metniyle) */
+async function tgDosya(chat: string, md: TgMedya, not: string) {
+  try {
+    const f: any = await tgCall('getFile', { file_id: md.file_id });
+    const r = await fetch(`https://api.telegram.org/file/bot${TG()}/${f.file_path}`, { signal: AbortSignal.timeout(120_000) });
+    if (!r.ok) throw new Error(`dosya indirilemedi (${r.status})`);
+    const istek = dosyaIstegi(await dosyaOku(Buffer.from(await r.arrayBuffer()), md.ad, md.mime), md.ad, not);
+    console.log(`[mesaj] Telegram dosyası okundu: ${md.ad} · ${istek.resim ? 'resim' : 'yazı'}`);
+    await handleRemote('telegram', istek.metin, t => tgSend(chat, t), istek.resim);
+  } catch (e: any) {
+    const msg = String(e?.message || e);
+    console.warn(`[mesaj] Telegram dosyası alınamadı: ${msg.slice(0, 160)}`);
+    await tgSend(chat, `🤖 Dosyayı alamadım: ${/too big/i.test(msg) ? 'Telegram botları en fazla 20 MB dosya indirebiliyor; dosyayı küçültüp ya da Jarvis ekranından gönderin.' : msg.slice(0, 200)}`).catch(() => {});
+  }
+}
+
+async function tgOwnerFlow(chat: string, text: string, date: number, fromId: string, medya?: TgMedya): Promise<boolean> {
   if (Date.now() / 1000 - date > 300) return false; // Jarvis kapalıyken birikmiş eski mesajlar komut sayılmaz
   const envOwner = (process.env.TELEGRAM_SAHIP_ID || '').trim();
   let isOwner = cfg.telegramSahip === chat || (!!envOwner && (fromId === envOwner || chat === envOwner));
@@ -194,6 +220,12 @@ async function tgOwnerFlow(chat: string, text: string, date: number, fromId: str
   if (isOwner) {
     if (/^\/ayril$/i.test(text)) { delete cfg.telegramSahip; saveCfg(); await tgSend(chat, '🤖 Bu sohbetin Jarvis bağlantısı kaldırıldı.'); return true; }
     tgCall('sendChatAction', { chat_id: chat, action: 'typing' }).catch(() => {});
+    if (medya) {
+      console.log(`[mesaj] Telegram dosyası geldi: ${medya.ad}`);
+      tgSend(chat, '🤖 Dosyayı aldım, okuyorum…').catch(() => {});
+      tgDosya(chat, medya, text);
+      return true;
+    }
     console.log(`[mesaj] Telegram komutu: "${text.slice(0, 60)}"`);
     handleRemote('telegram', text, t => tgSend(chat, t).then(() => { tg.sonCevap = `${new Date().toLocaleString('tr-TR')} · gönderildi`; }, e => { tg.sonCevap = `gönderilemedi: ${String(e?.message || e).slice(0, 120)}`; throw e; }));
     return true;
@@ -257,16 +289,17 @@ async function tgLoop() {
       for (const u of ups) {
         tg.offset = u.update_id + 1;
         const m = u.message;
-        if (!m?.text && !m?.caption) continue;
+        const medya = m ? tgMedya(m) : undefined;
+        if (!m?.text && !m?.caption && !medya) continue;
         const chat = String(m.chat.id);
         const grup = m.chat.type !== 'private';
         if (!grup) { console.log(`[mesaj] Telegram mesajı geldi (kimlik ${m.from?.id})`); tg.sonMesaj = `${new Date().toLocaleString('tr-TR')} · kimlik ${m.from?.id}`; }
-        if (!grup && m.text && await tgOwnerFlow(chat, String(m.text).trim(), m.date, String(m.from?.id ?? ''))) continue;
+        if (!grup && (m.text || medya) && await tgOwnerFlow(chat, String(m.text ?? m.caption ?? '').trim(), m.date, String(m.from?.id ?? ''), medya)) continue;
         const kisi = [m.from?.first_name, m.from?.last_name].filter(Boolean).join(' ') || m.from?.username || 'Bilinmeyen';
         const saved = record({
           id: `tg-${chat}-${m.message_id}`, platform: 'telegram', chat, grup,
           kisi: grup ? `${kisi} (${m.chat.title})` : kisi,
-          metin: m.text || `[medya] ${m.caption}`, gelen: true, at: new Date(m.date * 1000).toISOString(),
+          metin: m.text || `[medya]${m.caption ? ` ${m.caption}` : ''}`, gelen: true, at: new Date(m.date * 1000).toISOString(),
         });
         if (saved && !grup && cfg.telegramOto && m.text !== '/start') autoReply('telegram', chat, t => tgSend(chat, t));
       }
@@ -347,8 +380,25 @@ export const waForget = (jid: string) => { waChats.delete(jid); saveWaChats(); }
 
 function waText(m: any): string {
   const x = m.message ?? {};
-  return x.conversation || x.extendedTextMessage?.text || x.imageMessage?.caption || x.videoMessage?.caption
-    || (x.imageMessage ? '[fotoğraf]' : x.audioMessage ? '[sesli mesaj]' : x.videoMessage ? '[video]' : x.documentMessage ? '[belge]' : x.stickerMessage ? '[çıkartma]' : '');
+  return x.conversation || x.extendedTextMessage?.text || x.imageMessage?.caption || x.videoMessage?.caption || x.documentWithCaptionMessage?.message?.documentMessage?.caption
+    || (x.imageMessage ? '[fotoğraf]' : x.audioMessage ? '[sesli mesaj]' : x.videoMessage ? '[video]' : x.documentMessage || x.documentWithCaptionMessage ? '[belge]' : x.stickerMessage ? '[çıkartma]' : '');
+}
+
+/** "Kendime mesaj"a gönderilen dosya (fotoğraf, belge, çıkartma): indirilir, okunur, Jarvis'e verilir */
+async function waDosya(m: any, jid: string) {
+  const x = m.message ?? {};
+  const d = x.imageMessage ?? x.documentMessage ?? x.documentWithCaptionMessage?.message?.documentMessage ?? x.stickerMessage;
+  const ad = d?.fileName ?? (x.imageMessage ? 'fotoğraf.jpg' : x.stickerMessage ? 'çıkartma.webp' : 'belge');
+  try {
+    const { downloadMediaMessage } = await import('baileys');
+    const buf = await downloadMediaMessage(m, 'buffer', {});
+    const istek = dosyaIstegi(await dosyaOku(buf as Buffer, ad, d?.mimetype ?? ''), ad, d?.caption ?? '');
+    console.log(`[mesaj] WhatsApp dosyası okundu: ${ad} · ${istek.resim ? 'resim' : 'yazı'}`);
+    await handleRemote('whatsapp', istek.metin, t => waSend(jid, t), istek.resim);
+  } catch (e: any) {
+    console.warn(`[mesaj] WhatsApp dosyası alınamadı: ${String(e?.message || e).slice(0, 160)}`);
+    await waSend(jid, `🤖 Dosyayı alamadım: ${String(e?.message || e).slice(0, 200)}`).catch(() => {});
+  }
 }
 
 // ---------------------------------------------------------------- WhatsApp Business (resmî Cloud API)
@@ -482,6 +532,12 @@ async function waConnect(fresh = false) {
         seenCmd.add(m.key.id);
         if (seenCmd.size > 500) seenCmd.delete(seenCmd.values().next().value!);
         sock.sendPresenceUpdate?.('composing', jid).catch?.(() => {});
+        const x = m.message ?? {};
+        if (x.imageMessage || x.documentMessage || x.documentWithCaptionMessage || (x.stickerMessage && !x.stickerMessage.isAnimated)) {
+          waSend(jid, '🤖 Dosyayı aldım, okuyorum…').catch(() => {});
+          waDosya(m, jid);
+          continue;
+        }
         handleRemote('whatsapp', metin, t => waSend(jid, t));
         continue;
       }

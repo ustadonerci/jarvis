@@ -1256,7 +1256,8 @@ export default function App() {
   const onPhoto = async (f: File | undefined) => {
     if (!f) return;
     try {
-      const img = await shrinkImage(f);
+      // Belge fotoğraflarındaki küçük yazılar okunabilsin diye 2048 piksel (kitaplık fotoğraflarıyla aynı düzey)
+      const img = await shrinkImage(f, 2048, 0.88);
       submit(input.trim() || 'Bu ne?', img);
     } catch (e: any) {
       flash(e.message);
