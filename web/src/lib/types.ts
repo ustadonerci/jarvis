@@ -80,6 +80,8 @@ export type ServerEvent =
   | { type: 'restarting' }
   | { type: 'mesaj'; platform: 'telegram' | 'whatsapp' | 'telefon'; kisi: string; metin: string; arama?: boolean }
   | { type: 'whatsapp' }
+  /** Sesli rapor (ör. Kapso işletme WhatsApp'ına gelen mesaj): masaüstünde okunur, diğer cihazlarda yazı olarak görünür */
+  | { type: 'duyuru'; metin: string; voice: VoiceSel }
   /** Kullanıcının dokunacağı link (ör. Google Play'de aç) */
   | { type: 'link'; baslik: string; aciklama?: string; url: string; dugme?: string }
   /** Arka plandaki uzman ajan işini bitirdi */

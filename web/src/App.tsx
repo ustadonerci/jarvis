@@ -665,6 +665,18 @@ export default function App() {
         case 'alarm': flash(`🔔 ${e.ad}: ${e.fiyat.toLocaleString('tr-TR')} · hedef ${e.kosul === 'ust' ? '≥' : '≤'} ${e.hedef.toLocaleString('tr-TR')}`); break;
         case 'mesai': loadMesai(); break;
         case 'mesaj': loadMsgs(); flash(`${{ whatsapp: 'WhatsApp', telegram: 'Telegram', telefon: '📞 Telefon' }[e.platform]} · ${e.arama ? `${e.kisi} ${e.platform === 'telefon' ? e.metin : 'aradı'}` : `${e.kisi}: ${e.metin}`}`); break;
+        case 'duyuru': {
+          flash(`📣 ${e.metin}`);
+          if (device !== 'masaustu') break; // aynı rapor üç cihazda birden okunmasın
+          // Jarvis o an konuşuyorsa sözünü kesme: bitmesini bekle (en çok ~1 dk)
+          const say = (kalan: number) => {
+            if (voice.isPlaying() && kalan > 0) { setTimeout(() => say(kalan - 1), 3000); return; }
+            voice.rate = e.voice.speed;
+            void voice.speak(e.metin, e.voice);
+          };
+          say(20);
+          break;
+        }
       }
     }, setConnected);
   }, [device, play, playOpening, runPlayer, mock]);

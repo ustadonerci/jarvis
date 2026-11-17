@@ -24,6 +24,8 @@ export const KEY_FIELDS: KeyField[] = [
   { name: 'WHATSAPP_PHONE_ID', label: 'WhatsApp Business telefon numarası kimliği', hint: 'API Setup sayfasındaki "Phone number ID"', secret: false },
   { name: 'WHATSAPP_VERIFY_TOKEN', label: 'WhatsApp webhook doğrulama anahtarı', hint: 'Kendiniz uydurun (uzun, rastgele); Meta webhook ayarına da aynısını yazın', secret: true },
   { name: 'WHATSAPP_APP_SECRET', label: 'Meta uygulama gizli anahtarı', hint: 'App settings → Basic → App secret. Gelen mesajların gerçekten Meta\'dan geldiğini doğrular', secret: true },
+  { name: 'KAPSO_API_KEY', label: 'Kapso API anahtarı (işletme WhatsApp sesli raporu)', hint: 'app.kapso.ai → projeniz → API keys. Girilirse işletme numaranıza gelen her mesaj masaüstünde sesli okunur', secret: true },
+  { name: 'KAPSO_PHONE_ID', label: 'Kapso telefon numarası kimliği', hint: 'Kapso → Phone numbers → numaranın "Phone number ID" değeri (Sandbox için de geçerli)', secret: false },
   { name: 'HOSTINGER_API_TOKEN', label: 'Hostinger API anahtarı', hint: 'İsteğe bağlı: Jarvis Hostinger\'dan satın alma/abonelik yapsın (her işlem onay kartıyla). hPanel → Hesap → API', secret: true },
   { name: 'BINANCE_API_KEY', label: 'API Key', hint: 'Binance → API Yönetimi: yalnız "Spot Trading" (ve okuma) açık, ÇEKİM izni KAPALI anahtar oluşturun (çekim izni açık anahtar robotta reddedilir)', secret: true, borsa: 'binance' },
   { name: 'BINANCE_API_SECRET', label: 'Secret Key', hint: 'Anahtarla birlikte bir kez gösterilen gizli anahtar', secret: true, borsa: 'binance' },

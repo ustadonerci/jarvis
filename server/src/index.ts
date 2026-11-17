@@ -27,6 +27,7 @@ import { control, homeState, initHome, type DeviceId, type HomeAction } from './
 import { initLibrary, libraryRouter } from './library.js';
 import { extensionsRouter, initExtensions } from './extensions.js';
 import { initMessaging, messagingHooksRouter, messagingRouter, notifySelf, ownSamples } from './messaging.js';
+import { initKapso } from './kapso.js';
 import { registerReelsVoice } from './reels.js';
 import { initRobot } from './robot.js';
 import { contactCount, importContacts, initContacts, parseContacts } from './contacts.js';
@@ -214,6 +215,7 @@ initFinance(broadcast);
 initErrors();
 initApprovals(broadcast);
 initPhone({ broadcast, voice: () => currentVoice() });
+initKapso({ broadcast, voice: () => currentVoice() });
 registerReelsVoice(() => currentVoice());
 initRobot({ broadcast, notify: notifySelf });
 initContacts(broadcast);
