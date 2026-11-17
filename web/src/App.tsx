@@ -217,7 +217,9 @@ export default function App() {
   const pinch = usePinch(ekran, ekranLocal, ekranCommit);
   const addHolding = (sembol: string, adet: number, maliyet: number) => addPortfolio(sembol, adet, maliyet)
     .then(() => getPortfolio()).then(p => { setPortfoy(p); flash(`${sembol.toUpperCase()} portföye eklendi`); }).catch(e => flash(e.message));
-  const loadMsgs = useCallback(() => { getRecentMessages(15).then(r => { setMesajlar(r.mesajlar); setOkunmamis(r.okunmamis); }).catch(() => {}); }, []);
+  // Kişi filtresi sunucuda uygulanır: son 15 mesaj seçilen kişilerin son 15 mesajı olsun (aksi hâlde başkalarının mesajları sığdırmazdı)
+  const kisiKey = (ekran.mesajlar?.kisiler ?? []).join(',');
+  const loadMsgs = useCallback(() => { getRecentMessages(15, kisiKey ? kisiKey.split(',') : []).then(r => { setMesajlar(r.mesajlar); setOkunmamis(r.okunmamis); }).catch(() => {}); }, [kisiKey]);
   useEffect(() => {
     const pf = () => getPortfolio().then(p => setPortfoy(p.hata ? null : p)).catch(() => {});
     pf(); loadMsgs();

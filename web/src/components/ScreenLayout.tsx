@@ -1,7 +1,7 @@
 import type { Ekran, Kart, MesajFiltre } from '../lib/types';
 
 const MF: MesajFiltre = { goster: true, whatsapp: true, telegram: true, arama: true, grup: true, sadeceOkunmamis: false };
-const MF_AD: [keyof MesajFiltre, string][] = [['goster', 'Mesajları göster'], ['whatsapp', '🟢 WhatsApp'], ['telegram', '🔵 Telegram'], ['arama', '📞 Aramalar'], ['grup', '👥 Gruplar'], ['sadeceOkunmamis', 'Yalnız okunmamışlar']];
+const MF_AD: [Exclude<keyof MesajFiltre, 'kisiler'>, string][] = [['goster', 'Mesajları göster'], ['whatsapp', '🟢 WhatsApp'], ['telegram', '🔵 Telegram'], ['arama', '📞 Aramalar'], ['grup', '👥 Gruplar'], ['sadeceOkunmamis', 'Yalnız okunmamışlar']];
 
 const KARTLAR: [Kart, string][] = [['hava', 'Hava kartı'], ['sistem', 'Sistem kartı'], ['piyasa', 'Piyasalar kartı'], ['gundem', 'Gündem kartı']];
 
@@ -45,6 +45,10 @@ export function ScreenLayout({ ekran, onChange }: { ekran: Ekran; onChange(p: Pa
           return <button key={k} className={f[k] ? 'on' : ''} onClick={() => onChange({ mesajlar: { ...f, [k]: !f[k] } })}>{f[k] ? '✅' : '⬜'} {ad}</button>;
         })}
       </div>
+      <p className="muted small">Yalnız şu kişilerin mesajları görünsün (virgülle ayırın; boş bırakırsanız herkes):</p>
+      <input defaultValue={(ekran.mesajlar?.kisiler ?? []).join(', ')} placeholder="ör. Ramazan3 Tarhan, Kapso, Hatun, Ebrar"
+        onBlur={e => { const kisiler = e.target.value.split(',').map(x => x.trim()).filter(Boolean); onChange({ mesajlar: { ...MF, ...ekran.mesajlar, kisiler } }); }}
+        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
       <button onClick={() => onChange({ genel: 1, cekirdek: 1, yazi: 1, panel: 1, paneller: 'hepsi', kartlar: { hava: 1, sistem: 1, piyasa: 1, gundem: 1 }, mesajlar: MF })}>↺ Varsayılana dön</button>
     </>
   );

@@ -798,7 +798,9 @@ export function messagingRouter(): Router {
   // Ana ekrandaki Gündem kartı için son gelen mesajlar (kısaltılmış)
   r.get('/api/mesaj/son', (req, res) => {
     const n = Math.min(20, Math.max(1, Number(req.query.adet) || 8));
-    const list = msgs.filter(m => m.gelen && !m.otomatik).slice(-n).reverse()
+    // Kişi filtresi (ana ekran: "yalnız şu kişilerden gelenler"): ad parçası, harf farkı gözetilmez
+    const kisiler = String(req.query.kisiler ?? '').split(',').map(norm).filter(Boolean);
+    const list = msgs.filter(m => m.gelen && !m.otomatik && (!kisiler.length || kisiler.some(k => norm(m.kisi).includes(k)))).slice(-n).reverse()
       .map(m => ({ id: m.id, platform: m.platform, kisi: m.kisi, metin: m.metin.slice(0, 140), at: m.at, grup: !!m.grup, okundu: !!m.okundu, arama: !!m.arama }));
     res.json({ mesajlar: list, okunmamis: msgs.filter(m => m.gelen && !m.okundu).length });
   });

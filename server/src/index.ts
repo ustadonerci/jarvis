@@ -251,6 +251,14 @@ if (!state.gecis?.includes('okuma-hizi')) {
   if (v.speed < 1.18) state.voice = { ...v, speed: 1.18 };
   saveState();
 }
+// Kullanıcının isteği (Kasım 2026): ana ekrandaki mesajlarda yalnız bu kişilerden gelenler görünsün (bir kez;
+// sonra Ayarlar → Ekran düzeni'nden ya da sesle değiştirilebilir)
+if (!state.gecis?.includes('mesaj-kisiler')) {
+  state.gecis = [...(state.gecis ?? []), 'mesaj-kisiler'];
+  const cur = mergeEkran(state.ekran ?? EKRAN_VARSAYILAN, {});
+  state.ekran = mergeEkran(cur, { mesajlar: { ...cur.mesajlar, kisiler: ['Ramazan3 Tarhan', 'Kapso', 'Hatun', 'Ebrar'] } });
+  saveState();
+}
 setBrainProvider(initialBrain(state.beyin));
 initBrain();
 initSocial(broadcast);

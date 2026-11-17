@@ -19,7 +19,7 @@ export interface Ekran {
   /** Gündem kartındaki mesajlar: hangileri görünsün */
   mesajlar: MesajFiltre;
 }
-export interface MesajFiltre { goster: boolean; whatsapp: boolean; telegram: boolean; arama: boolean; grup: boolean; sadeceOkunmamis: boolean }
+export interface MesajFiltre { goster: boolean; whatsapp: boolean; telegram: boolean; arama: boolean; grup: boolean; sadeceOkunmamis: boolean; /** Doluysa yalnız bu kişilerden gelenler (ad parçası, büyük/küçük harf ve Türkçe harf farkı gözetilmez) */ kisiler?: string[] }
 export type Kart = 'hava' | 'sistem' | 'piyasa' | 'gundem';
 export const KARTLAR: Kart[] = ['hava', 'sistem', 'piyasa', 'gundem'];
 export const EKRAN_VARSAYILAN: Ekran = { genel: 1, cekirdek: 1, yazi: 1, panel: 1, paneller: 'hepsi', kartlar: { hava: 1, sistem: 1, piyasa: 1, gundem: 1 }, mesajlar: { goster: true, whatsapp: true, telegram: true, arama: true, grup: true, sadeceOkunmamis: false } };
@@ -40,7 +40,8 @@ export function mergeEkran(cur: Ekran, p: any): Ekran {
     if ((p?.kartlar?.[k] ?? p?.[k]) !== undefined && Number.isFinite(v)) out.kartlar[k] = r2(Math.min(2.5, Math.max(0, v)));
   }
   out.mesajlar = { ...EKRAN_VARSAYILAN.mesajlar, ...cur?.mesajlar };
-  for (const k of Object.keys(EKRAN_VARSAYILAN.mesajlar) as (keyof MesajFiltre)[]) if (typeof p?.mesajlar?.[k] === 'boolean') out.mesajlar[k] = p.mesajlar[k];
+  for (const k of Object.keys(EKRAN_VARSAYILAN.mesajlar) as (keyof MesajFiltre)[]) if (typeof p?.mesajlar?.[k] === 'boolean') (out.mesajlar as any)[k] = p.mesajlar[k];
+  if (Array.isArray(p?.mesajlar?.kisiler)) out.mesajlar.kisiler = p.mesajlar.kisiler.map((x: unknown) => String(x).trim().slice(0, 40)).filter(Boolean).slice(0, 20);
   return out;
 }
 
@@ -59,7 +60,7 @@ export const SCREEN_TOOLS = [
         properties: {
           islem: { type: 'string', enum: ['durum', 'ayarla', 'buyut', 'kucult', 'sifirla'] },
           hedef: { type: 'string', enum: ['genel', 'cekirdek', 'yazi', 'panel', 'hava', 'sistem', 'piyasa', 'gundem'] },
-          mesajlar: { type: 'object', description: 'Gündem kartındaki mesajlar', properties: { goster: { type: 'boolean' }, whatsapp: { type: 'boolean' }, telegram: { type: 'boolean' }, arama: { type: 'boolean' }, grup: { type: 'boolean' }, sadeceOkunmamis: { type: 'boolean' } } },
+          mesajlar: { type: 'object', description: 'Gündem kartındaki mesajlar', properties: { goster: { type: 'boolean' }, whatsapp: { type: 'boolean' }, telegram: { type: 'boolean' }, arama: { type: 'boolean' }, grup: { type: 'boolean' }, sadeceOkunmamis: { type: 'boolean' }, kisiler: { type: 'array', items: { type: 'string' }, description: "Yalnız bu kişilerden gelen mesajlar görünsün ('sadece Ahmet ve Ayşe'nin mesajları görünsün'); boş dizi [] = herkes" } } },
           kartlar: { type: 'object', properties: { hava: { type: 'number' }, sistem: { type: 'number' }, piyasa: { type: 'number' }, gundem: { type: 'number' } } },
           genel: { type: 'number' }, cekirdek: { type: 'number' }, yazi: { type: 'number' }, panel: { type: 'number' },
           paneller: { type: 'string', enum: ['hepsi', 'sol', 'sag', 'gizli'] },
