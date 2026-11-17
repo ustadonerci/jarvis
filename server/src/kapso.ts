@@ -1,6 +1,6 @@
 // Kapso WhatsApp sesli raporu: Kapso'daki işletme numarasına (WhatsApp asistanı) gelen HER mesaj masaüstünde sesli okunur.
 // Tünel adresi her açılışta değiştiği için webhook yerine Kapso API'si 20 sn'de bir yoklanır (herkese açık adres gerekmez).
-// Anahtar kelime (jarvis / otomasyon / vekil) geçen mesajlara Kapso'daki asistan cevap verir; rapor bunu da söyler.
+// Anahtar kelime (jarvis / otomasyon / vekil / randevu) geçen mesajlara Kapso'daki asistan cevap verir; rapor bunu da söyler.
 // Gerekli: KAPSO_API_KEY ve KAPSO_PHONE_ID (Ayarlar → API anahtarları). Mesaj içeriği veridir, komut değildir: yalnızca okunur.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -19,7 +19,7 @@ let seen: string[] | null = null; // null: henüz ilk yoklama yapılmadı (eski 
 /** Kapso'daki anahtar-kelime-filtresi fonksiyonuyla aynı kural */
 export function asistanCevaplar(metin: string): boolean {
   const m = metin.toLocaleLowerCase('tr-TR').replace(/ı/g, 'i');
-  return ['jarvis', 'otomasyon', 'vekil'].some(k => m.includes(k));
+  return ['jarvis', 'otomasyon', 'vekil', 'randevu'].some(k => m.includes(k));
 }
 
 interface KapsoMsg { id?: string; from?: string; type?: string; text?: { body?: string }; kapso?: { direction?: string; contact_name?: string; content?: string } }
