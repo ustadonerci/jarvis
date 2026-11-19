@@ -12,7 +12,9 @@ export const NewsStatsPanel = memo(function NewsStatsPanel({
   demo,
   mesajlar = null,
   okunmamis = 0,
+  onFilterMsgs,
 }: {
+  onFilterMsgs?(): void;
   mesajlar?: RecentMsg[] | null;
   okunmamis?: number;
   index: number;
@@ -51,7 +53,7 @@ export const NewsStatsPanel = memo(function NewsStatsPanel({
           </ul>
         </>
       )}
-      <MessagesBox list={mesajlar} unread={okunmamis} />
+      <MessagesBox list={mesajlar} unread={okunmamis} onFilter={onFilterMsgs} />
     </DashPanel>
   );
 });

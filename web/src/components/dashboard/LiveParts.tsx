@@ -57,11 +57,11 @@ export function PortfolioBox({ p, limit = 3, onAdd }: { p: PortfolioData | null;
 const ICON: Record<RecentMsg['platform'], string> = { whatsapp: '🟢', telegram: '🔵', telefon: '📞' };
 
 /** Son gelen mesajlar (Gündem kartının içinde ve telefondaki sayfada) */
-export function MessagesBox({ list, unread, limit = 5 }: { list: RecentMsg[] | null; unread: number; limit?: number }) {
+export function MessagesBox({ list, unread, limit = 5, onFilter }: { list: RecentMsg[] | null; unread: number; limit?: number; /** Başlığa tıklayınca kişi/grup seçme penceresi */ onFilter?(): void }) {
   if (!list) return null;
   return (
     <div className="msg-box">
-      <div className="msg-head"><span>💬 Mesajlar</span>{unread > 0 && <b className="msg-badge">{unread} yeni</b>}</div>
+      <div className="msg-head">{onFilter ? <button className="msg-filter" onClick={onFilter} title="Kimin mesajları görünsün?">💬 Mesajlar ⚙</button> : <span>💬 Mesajlar</span>}{unread > 0 && <b className="msg-badge">{unread} yeni</b>}</div>
       {list.length === 0 ? <div className="msg-empty">Yeni mesaj yok</div> : (
         <ul className="msg-list">
           {list.slice(0, limit).map(m => (
@@ -79,7 +79,7 @@ export function MessagesBox({ list, unread, limit = 5 }: { list: RecentMsg[] | n
 
 /** Telefonda: şeritteki 💼 / 💬 düğmesine dokununca alttan açılan sayfa */
 const SHEET_KEY = 'jarvis.sayfaYuksekligi';
-export function LiveSheet({ open, onClose, portfoy, mesajlar, okunmamis, mesai, onAddMesai, onAddHolding }: { open: '' | 'portfoy' | 'mesaj' | 'mesai'; onClose(): void; portfoy: PortfolioData | null; mesajlar: RecentMsg[] | null; okunmamis: number; mesai: MesaiData | null; onAddMesai(saat: number, tarih?: string): void; onAddHolding?(sembol: string, adet: number, maliyet: number): void }) {
+export function LiveSheet({ open, onClose, portfoy, mesajlar, okunmamis, mesai, onAddMesai, onAddHolding, onFilterMsgs }: { open: '' | 'portfoy' | 'mesaj' | 'mesai'; onClose(): void; onFilterMsgs?(): void; portfoy: PortfolioData | null; mesajlar: RecentMsg[] | null; okunmamis: number; mesai: MesaiData | null; onAddMesai(saat: number, tarih?: string): void; onAddHolding?(sembol: string, adet: number, maliyet: number): void }) {
   // Üstteki tutamaç parmakla/fareyle sürüklenerek sayfa büyür/küçülür (aşağı çok çekilirse kapanır); yükseklik hatırlanır
   const [h, setH] = useState(() => { try { return Number(localStorage.getItem(SHEET_KEY)) || 60; } catch { return 60; } });
   const drag = useRef<{ y: number; h: number } | null>(null);
@@ -94,7 +94,7 @@ export function LiveSheet({ open, onClose, portfoy, mesajlar, okunmamis, mesai, 
           onPointerUp={() => { drag.current = null; if (h <= 22) onClose(); try { localStorage.setItem(SHEET_KEY, String(Math.max(30, Math.round(h)))); } catch { /* yok */ } }}
           onPointerCancel={() => { drag.current = null; }}><i /></div>
         <button className="live-sheet-x" onClick={onClose} aria-label="Kapat">✕</button>
-        {open === 'portfoy' ? <PortfolioBox p={portfoy} limit={12} onAdd={onAddHolding} /> : open === 'mesai' ? <MesaiBox m={mesai} onAdd={onAddMesai} limit={31} /> : <MessagesBox list={mesajlar} unread={okunmamis} limit={15} />}
+        {open === 'portfoy' ? <PortfolioBox p={portfoy} limit={12} onAdd={onAddHolding} /> : open === 'mesai' ? <MesaiBox m={mesai} onAdd={onAddMesai} limit={31} /> : <MessagesBox list={mesajlar} unread={okunmamis} limit={15} onFilter={onFilterMsgs} />}
       </div>
     </div>
   );

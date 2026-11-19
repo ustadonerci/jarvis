@@ -1017,3 +1017,15 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .live-sheet { max-height: none; padding-top: 26px; }
 .live-sheet-grip { position: absolute; top: 0; left: 0; right: 0; height: 24px; display: flex; justify-content: center; align-items: center; cursor: row-resize; touch-action: none; }
 .live-sheet-grip i { width: 46px; height: 5px; border-radius: 5px; background: var(--muted); opacity: 0.6; }
+
+/* Mesaj kişi/grup seçme penceresi */
+.msg-filter { background: none; border: 0; color: inherit; font: inherit; padding: 0; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.msgf { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(520px, calc(100vw - 32px)); max-height: 82dvh; display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: 16px; background: var(--panel, #0d1726); border: 1px solid rgba(90, 200, 255, .35); box-shadow: 0 20px 60px rgba(0, 0, 0, .5); z-index: 60; }
+.msgf-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.msgf-head .live-sheet-x { position: static; }
+.msgf-search { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(90, 200, 255, .3); background: rgba(255, 255, 255, .04); color: inherit; font: inherit; }
+.msgf-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; min-height: 120px; }
+.msgf-list li { display: flex; align-items: center; gap: 10px; padding: 10px 8px; border-radius: 10px; cursor: pointer; }
+.msgf-list li:hover { background: rgba(90, 200, 255, .08); }
+.msgf-list li.on { background: rgba(90, 200, 255, .14); }
+.msgf-ad { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

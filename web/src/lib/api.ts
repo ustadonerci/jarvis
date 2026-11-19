@@ -185,6 +185,8 @@ export interface HoldingView { id: string; sembol: string; ad?: string; adet: nu
 export interface PortfolioData { bos?: boolean; toplam_deger_tl?: number; toplam_kar_tl?: number; toplam_kar_yuzde?: number; risk?: { yillik_oynaklik: number | null; en_buyuk_dusus_1y: number | null }; varliklar?: HoldingView[]; hata?: string }
 export interface AlarmView { id: string; sembol: string; kosul: 'ust' | 'alt'; fiyat: number; tetiklendi?: string }
 export interface RecentMsg { id: string; platform: 'whatsapp' | 'telegram' | 'telefon'; kisi: string; metin: string; at: string; grup: boolean; okundu: boolean; arama: boolean }
+export interface MsgSender { ad: string; platform: 'whatsapp' | 'telegram'; grup: boolean; adet: number; son: string }
+export const getMsgSenders = () => fetch('/api/mesaj/kisiler', { headers: headers() }).then(r => json<{ kisiler: MsgSender[] }>(r));
 export const getRecentMessages = (adet = 8, kisiler: string[] = []) => fetch(`/api/mesaj/son?adet=${adet}${kisiler.length ? `&kisiler=${encodeURIComponent(kisiler.join(','))}` : ''}`, { headers: headers() }).then(r => json<{ mesajlar: RecentMsg[]; okunmamis: number }>(r));
 export interface MesaiKayit { id: string; tarih: string; saat: number; tutar: number; not?: string }
 export interface MesaiData { ay: string; ay_adi: string; toplam_saat: number; toplam_tutar: number; gun: number; kayitlar: MesaiKayit[]; saatlik: number; ayar: { maas: number; carpan: number; aylikSaat: number; aySonuGonder: boolean; saatUcreti?: number }; bugun_saat: number; hafta_saat: number; haftalar: { hafta: string; saat: number }[] }

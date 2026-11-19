@@ -376,6 +376,8 @@ function trackWaChat(jid: string, o: { ad?: string; m?: any }) {
 /** Bağlıysa WhatsApp soketi (düzenleme modülü için) */
 export const waSocket = (): any => (wa.sock && wa.durum === 'bağlı' ? wa.sock : null);
 export const waChatList = (): WaChat[] => [...waChats.values()];
+/** Mesajın sohbet adı: grupta grubun adı (bilinmiyorsa "Grup"), birebirde kişinin adı */
+const chatTitle = (m: Msg) => (m.grup ? waChats.get(m.chat)?.ad ?? 'Grup' : m.kisi);
 export const waForget = (jid: string) => { waChats.delete(jid); saveWaChats(); };
 
 function waText(m: any): string {
@@ -800,9 +802,23 @@ export function messagingRouter(): Router {
     const n = Math.min(20, Math.max(1, Number(req.query.adet) || 8));
     // Kişi filtresi (ana ekran: "yalnız şu kişilerden gelenler"): ad parçası, harf farkı gözetilmez
     const kisiler = String(req.query.kisiler ?? '').split(',').map(norm).filter(Boolean);
-    const list = msgs.filter(m => m.gelen && !m.otomatik && (!kisiler.length || kisiler.some(k => norm(m.kisi).includes(k)))).slice(-n).reverse()
+    const list = msgs.filter(m => m.gelen && !m.otomatik && (!kisiler.length || kisiler.some(k => norm(m.kisi).includes(k) || norm(chatTitle(m)).includes(k)))).slice(-n).reverse()
       .map(m => ({ id: m.id, platform: m.platform, kisi: m.kisi, metin: m.metin.slice(0, 140), at: m.at, grup: !!m.grup, okundu: !!m.okundu, arama: !!m.arama }));
     res.json({ mesajlar: list, okunmamis: msgs.filter(m => m.gelen && !m.okundu).length });
+  });
+  // Ana ekrandaki mesaj seçme penceresi: son 60 günde yazan kişiler ve gruplar (en yeni önce)
+  r.get('/api/mesaj/kisiler', (_req, res) => {
+    const since = Date.now() - 60 * 86400_000;
+    const by = new Map<string, { ad: string; platform: Platform; grup: boolean; adet: number; son: string }>();
+    for (const m of msgs) {
+      if (!m.gelen || m.otomatik || Date.parse(m.at) < since) continue;
+      const ad = chatTitle(m);
+      const k = `${m.platform}:${m.grup ? m.chat : norm(ad)}`;
+      const c = by.get(k) ?? { ad, platform: m.platform, grup: !!m.grup, adet: 0, son: m.at };
+      c.adet++; if (m.at > c.son) c.son = m.at;
+      by.set(k, c);
+    }
+    res.json({ kisiler: [...by.values()].sort((a, b) => b.son.localeCompare(a.son)).slice(0, 200) });
   });
   r.post('/api/mesaj/ayar', (req, res) => {
     const b = req.body ?? {};

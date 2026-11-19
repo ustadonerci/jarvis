@@ -14,6 +14,7 @@ import { WeatherPanel } from './components/dashboard/WeatherPanel';
 import { SleepLayer, WakeChecks, WakeSettings, calibBus } from './components/Wake';
 import { ProfileSettings } from './components/Profile';
 import { DefterSettings } from './components/Defter';
+import { MessageFilter } from './components/MessageFilter';
 import { LibrarySettings } from './components/LibrarySettings';
 import { ErrorLog, ExtensionSettings, KeySettings, TakipSettings } from './components/Extensions';
 import { MessagingSettings } from './components/Messaging';
@@ -219,6 +220,7 @@ export default function App() {
     .then(() => getPortfolio()).then(p => { setPortfoy(p); flash(`${sembol.toUpperCase()} portföye eklendi`); }).catch(e => flash(e.message));
   // Kişi filtresi sunucuda uygulanır: son 15 mesaj seçilen kişilerin son 15 mesajı olsun (aksi hâlde başkalarının mesajları sığdırmazdı)
   const kisiKey = (ekran.mesajlar?.kisiler ?? []).join(',');
+  const [msgFilterOpen, setMsgFilterOpen] = useState(false);
   const loadMsgs = useCallback(() => { getRecentMessages(15, kisiKey ? kisiKey.split(',') : []).then(r => { setMesajlar(r.mesajlar); setOkunmamis(r.okunmamis); }).catch(() => {}); }, [kisiKey]);
   useEffect(() => {
     const pf = () => getPortfolio().then(p => setPortfoy(p.hata ? null : p)).catch(() => {});
@@ -1535,7 +1537,8 @@ export default function App() {
 
         <TopBar me={device} online={online} model={model} connected={connected} mock={mock} />
         <CompactStrip data={dash} portfoy={portfoy} okunmamis={okunmamis} mesai={mesai} onOpen={setSheet} />
-        <LiveSheet open={sheet} onClose={() => setSheet('')} portfoy={portfoy} mesajlar={shownMsgs} okunmamis={okunmamis} mesai={mesai} onAddMesai={addMesai} onAddHolding={addHolding} />
+        <LiveSheet open={sheet} onClose={() => setSheet('')} portfoy={portfoy} mesajlar={shownMsgs} okunmamis={okunmamis} mesai={mesai} onAddMesai={addMesai} onAddHolding={addHolding} onFilterMsgs={() => setMsgFilterOpen(true)} />
+        {msgFilterOpen && <MessageFilter filtre={ekran.mesajlar} onClose={() => setMsgFilterOpen(false)} onSave={kisiler => { const m = { goster: true, whatsapp: true, telegram: true, arama: true, grup: true, sadeceOkunmamis: false, ...ekran.mesajlar, kisiler }; ekranCommit({ mesajlar: m }); flash(kisiler.length ? `Ekranda ${kisiler.length} kişi/grubun mesajları görünecek` : 'Ekranda herkesin mesajları görünecek'); }} />}
 
         <main className="stage">
           <DashResizers ekran={ekran} setLocal={ekranLocal} commit={ekranCommit} />
@@ -1599,7 +1602,7 @@ export default function App() {
               {showAgenda ? (
                 <AgendaPanel key={'agenda-' + reply!.id} reply={reply!} items={agenda} sceneIdx={sceneIdx} />
               ) : (
-                <NewsStatsPanel key="news" index={3} data={dash?.news ?? null} loading={dashLoading} demo={demo} mesajlar={ekran.mesajlar?.goster === false ? null : shownMsgs} okunmamis={okunmamis} />
+                <NewsStatsPanel key="news" index={3} data={dash?.news ?? null} loading={dashLoading} demo={demo} mesajlar={ekran.mesajlar?.goster === false ? null : shownMsgs} okunmamis={okunmamis} onFilterMsgs={() => setMsgFilterOpen(true)} />
               )}
             </AnimatePresence>
           </aside>
