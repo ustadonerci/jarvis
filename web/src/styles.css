@@ -1020,7 +1020,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 /* Mesaj kişi/grup seçme penceresi */
 .msg-filter { background: none; border: 0; color: inherit; font: inherit; padding: 0; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
-.msgf { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(520px, calc(100vw - 32px)); max-height: 82dvh; display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: 16px; background: var(--panel, #0d1726); border: 1px solid rgba(90, 200, 255, .35); box-shadow: 0 20px 60px rgba(0, 0, 0, .5); z-index: 60; }
+.msgf { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(520px, calc(100vw - 32px)); max-height: 82dvh; display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: 16px; background: #0a1420; backdrop-filter: blur(6px); border: 1px solid rgba(90, 200, 255, .35); box-shadow: 0 20px 60px rgba(0, 0, 0, .5); z-index: 60; }
 .msgf-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .msgf-head .live-sheet-x { position: static; }
 .msgf-search { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(90, 200, 255, .3); background: rgba(255, 255, 255, .04); color: inherit; font: inherit; }
@@ -1029,3 +1029,30 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .msgf-list li:hover { background: rgba(90, 200, 255, .08); }
 .msgf-list li.on { background: rgba(90, 200, 255, .14); }
 .msgf-ad { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Mesaja tıklayınca açılan sohbet penceresi */
+.msg-list li.msg-click { cursor: pointer; }
+.msg-list li.msg-click:hover { background: rgba(90, 200, 255, .08); }
+.msgc { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(560px, calc(100vw - 32px)); height: min(640px, 86dvh); display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: 16px; background: #0a1420; backdrop-filter: blur(6px); border: 1px solid rgba(90, 200, 255, .35); box-shadow: 0 20px 60px rgba(0, 0, 0, .5); z-index: 60; }
+.msgc-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 4px; }
+.msgc-b { max-width: 82%; padding: 8px 10px; border-radius: 12px; display: flex; flex-direction: column; gap: 2px; word-break: break-word; white-space: pre-wrap; }
+.msgc-b.in { align-self: flex-start; background: rgba(255, 255, 255, .07); border-top-left-radius: 4px; }
+.msgc-b.out { align-self: flex-end; background: rgba(40, 170, 110, .25); border-top-right-radius: 4px; }
+.msgc-who { font-size: .78em; opacity: .75; font-style: normal; font-weight: 600; }
+.msgc-at { font-size: .72em; opacity: .55; align-self: flex-end; }
+.msgc-send { display: flex; gap: 8px; align-items: stretch; }
+.msgc-send textarea { flex: 1; resize: none; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(90, 200, 255, .3); background: rgba(255, 255, 255, .04); color: inherit; font: inherit; }
+.msgc-send button { padding: 0 16px; border-radius: 10px; border: 1px solid rgba(90, 200, 255, .5); background: rgba(90, 200, 255, .15); color: inherit; font: inherit; cursor: pointer; }
+.msgc-send button:disabled { opacity: .5; cursor: default; }
+.msgc-note { font-size: .85em; opacity: .8; }
+/* Yeni mesaj bildirimi: sağ üstte, 20 sn durur, tıklanınca sohbet açılır */
+.msg-notify { position: fixed; top: 72px; right: 20px; z-index: 70; width: min(380px, calc(100vw - 32px)); display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 14px; background: #0a1420; backdrop-filter: blur(6px); border: 1px solid rgba(40, 200, 120, .6); box-shadow: 0 10px 40px rgba(0, 0, 0, .55), 0 0 0 3px rgba(40, 200, 120, .15); cursor: pointer; animation: msgNotifyIn .35s ease-out, msgNotifyPulse 1.6s ease-in-out 3; }
+.msg-notify.msg-telegram { border-color: rgba(60, 150, 255, .6); }
+.msg-notify-ic { font-size: 1.4em; line-height: 1; }
+.msg-notify-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.msg-notify-body span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.msg-notify-body i { font-size: .75em; opacity: .6; font-style: normal; }
+.msg-notify-x { background: none; border: 0; color: inherit; opacity: .6; cursor: pointer; font-size: 1em; }
+@keyframes msgNotifyIn { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: none; } }
+@keyframes msgNotifyPulse { 50% { box-shadow: 0 10px 40px rgba(0, 0, 0, .55), 0 0 0 8px rgba(40, 200, 120, .25); } }
+@media (prefers-reduced-motion: reduce) { .msg-notify { animation: none; } }

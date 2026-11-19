@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { useEffect, useMemo, useState } from 'react';
 import { getMsgSenders, type MsgSender } from '../lib/api';
 import type { MesajFiltre } from '../lib/types';
@@ -22,7 +23,7 @@ export function MessageFilter({ filtre, onSave, onClose }: { filtre?: MesajFiltr
   const extra = useMemo(() => secili.filter(k => !(list ?? []).some(x => fold(x.ad).includes(fold(k)))), [secili, list]);
   const shown = (list ?? []).filter(x => !q || fold(x.ad).includes(fold(q)));
 
-  return (
+  return createPortal(
     <div className="live-sheet-bg" onClick={onClose}>
       <div className="msgf" onClick={e => e.stopPropagation()}>
         <div className="msgf-head">
@@ -58,5 +59,5 @@ export function MessageFilter({ filtre, onSave, onClose }: { filtre?: MesajFiltr
         </div>
       </div>
     </div>
-  );
+  , document.body);
 }

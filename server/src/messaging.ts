@@ -88,7 +88,7 @@ function record(m: Omit<Msg, 'at'> & { at?: string }) {
   msgs.push(full);
   if (msgs.length > MAX_MSGS * 1.2) msgs = msgs.slice(-MAX_MSGS);
   saveMsgs();
-  if (full.gelen) broadcast({ type: 'mesaj', platform: full.platform, kisi: full.kisi, metin: full.metin.slice(0, 120), arama: full.arama });
+  if (full.gelen) broadcast({ type: 'mesaj', id: full.id, platform: full.platform, kisi: full.kisi, sohbet: chatTitle(full), grup: !!full.grup, otomatik: !!full.otomatik, metin: full.metin.slice(0, 120), arama: full.arama });
   return full;
 }
 
@@ -819,6 +819,33 @@ export function messagingRouter(): Router {
       by.set(k, c);
     }
     res.json({ kisiler: [...by.values()].sort((a, b) => b.son.localeCompare(a.son)).slice(0, 200) });
+  });
+  // Ana ekranda bir mesaja tıklanınca: o sohbetin son mesajları (gelen + giden); gelenler okundu sayılır
+  r.get('/api/mesaj/sohbet', (req, res) => {
+    const hedef = msgs.find(m => m.id === String(req.query.id ?? ''));
+    if (!hedef) { res.status(404).json({ hata: 'Mesaj bulunamadı' }); return; }
+    const list = msgs.filter(m => m.platform === hedef.platform && m.chat === hedef.chat).slice(-40);
+    let degisti = false;
+    for (const m of list) if (m.gelen && !m.okundu) { m.okundu = true; degisti = true; }
+    if (degisti) { saveMsgs(); broadcast({ type: 'mesaj_okundu' }); }
+    const bagli = hedef.platform === 'whatsapp' ? wa.durum === 'bağlı' || waCloud() : hedef.platform === 'telegram' ? tg.durum === 'bağlı' : false;
+    res.json({
+      ad: chatTitle(hedef), platform: hedef.platform, grup: !!hedef.grup, cevaplanabilir: bagli,
+      mesajlar: list.map(m => ({ id: m.id, kisi: m.kisi, metin: m.metin, at: m.at, gelen: m.gelen, arama: !!m.arama, otomatik: !!m.otomatik })),
+      okunmamis: msgs.filter(m => m.gelen && !m.okundu).length,
+    });
+  });
+  // Açılan sohbet penceresinden kullanıcının kendi yazdığı cevap (kendisi yazıp "Gönder"e basar)
+  r.post('/api/mesaj/cevap', async (req, res) => {
+    const hedef = msgs.find(m => m.id === String(req.body?.id ?? ''));
+    const metin = String(req.body?.metin ?? '').trim().slice(0, 4000);
+    if (!hedef || !metin) { res.status(400).json({ hata: hedef ? 'Mesaj boş' : 'Sohbet bulunamadı' }); return; }
+    try {
+      if (hedef.platform === 'whatsapp') await waSend(hedef.chat, metin);
+      else if (hedef.platform === 'telegram') await tgSend(hedef.chat, metin);
+      else throw new Error('Bu sohbete buradan cevap yazılamıyor');
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ hata: e?.message ?? 'Gönderilemedi' }); }
   });
   r.post('/api/mesaj/ayar', (req, res) => {
     const b = req.body ?? {};

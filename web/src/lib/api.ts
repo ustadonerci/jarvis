@@ -187,6 +187,17 @@ export interface AlarmView { id: string; sembol: string; kosul: 'ust' | 'alt'; f
 export interface RecentMsg { id: string; platform: 'whatsapp' | 'telegram' | 'telefon'; kisi: string; metin: string; at: string; grup: boolean; okundu: boolean; arama: boolean }
 export interface MsgSender { ad: string; platform: 'whatsapp' | 'telegram'; grup: boolean; adet: number; son: string }
 export const getMsgSenders = () => fetch('/api/mesaj/kisiler', { headers: headers() }).then(r => json<{ kisiler: MsgSender[] }>(r));
+export interface ChatMsg { id: string; kisi: string; metin: string; at: string; gelen: boolean; arama: boolean; otomatik: boolean }
+export interface ChatData { ad: string; platform: RecentMsg['platform']; grup: boolean; cevaplanabilir: boolean; mesajlar: ChatMsg[]; okunmamis: number }
+async function jsonHata<T>(r: Response): Promise<T> {
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.hata || j.error || `Hata ${r.status}`);
+  return j as T;
+}
+/** Bir mesajın sohbetini getirir (gelenler okundu sayılır) */
+export const getChat = (id: string) => fetch(`/api/mesaj/sohbet?id=${encodeURIComponent(id)}`, { headers: headers() }).then(r => jsonHata<ChatData>(r));
+/** Kullanıcının sohbet penceresinden yazdığı cevap */
+export const sendChatReply = (id: string, metin: string) => fetch('/api/mesaj/cevap', { method: 'POST', headers: headers(), body: JSON.stringify({ id, metin }) }).then(r => jsonHata<{ ok: boolean }>(r));
 export const getRecentMessages = (adet = 8, kisiler: string[] = []) => fetch(`/api/mesaj/son?adet=${adet}${kisiler.length ? `&kisiler=${encodeURIComponent(kisiler.join(','))}` : ''}`, { headers: headers() }).then(r => json<{ mesajlar: RecentMsg[]; okunmamis: number }>(r));
 export interface MesaiKayit { id: string; tarih: string; saat: number; tutar: number; not?: string }
 export interface MesaiData { ay: string; ay_adi: string; toplam_saat: number; toplam_tutar: number; gun: number; kayitlar: MesaiKayit[]; saatlik: number; ayar: { maas: number; carpan: number; aylikSaat: number; aySonuGonder: boolean; saatUcreti?: number }; bugun_saat: number; hafta_saat: number; haftalar: { hafta: string; saat: number }[] }

@@ -78,7 +78,8 @@ export type ServerEvent =
   | { type: 'kitaplik' }
   | { type: 'extensions' }
   | { type: 'restarting' }
-  | { type: 'mesaj'; platform: 'telegram' | 'whatsapp' | 'telefon'; kisi: string; metin: string; arama?: boolean }
+  | { type: 'mesaj'; id?: string; platform: 'telegram' | 'whatsapp' | 'telefon'; kisi: string; sohbet?: string; grup?: boolean; otomatik?: boolean; metin: string; arama?: boolean }
+  | { type: 'mesaj_okundu' }
   | { type: 'whatsapp' }
   /** Sesli rapor (ör. Kapso işletme WhatsApp'ına gelen mesaj): masaüstünde okunur, diğer cihazlarda yazı olarak görünür */
   | { type: 'duyuru'; metin: string; voice: VoiceSel }

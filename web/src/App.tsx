@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
+import { createPortal } from 'react-dom';
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Core } from './components/Core';
 import { Handoff, TopBar, Telemetry } from './components/Chrome';
@@ -15,6 +16,24 @@ import { SleepLayer, WakeChecks, WakeSettings, calibBus } from './components/Wak
 import { ProfileSettings } from './components/Profile';
 import { DefterSettings } from './components/Defter';
 import { MessageFilter } from './components/MessageFilter';
+import { MessageChat } from './components/MessageChat';
+
+/** Türkçe harf ve büyük/küçük farkı gözetmeden karşılaştırma için */
+const foldTr = (s: string) => s.toLocaleLowerCase('tr').normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+/** Yeni mesaj sesi: kısa, yumuşak iki nota (ses dosyası gerekmez) */
+function chime() {
+  try {
+    const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const ctx = new AC();
+    [880, 1320].forEach((f, i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime + i * 0.16;
+      o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.18, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+      o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + 0.32);
+    });
+    setTimeout(() => ctx.close().catch(() => {}), 1000);
+  } catch { /* ses çalınamadı */ }
+}
 import { LibrarySettings } from './components/LibrarySettings';
 import { ErrorLog, ExtensionSettings, KeySettings, TakipSettings } from './components/Extensions';
 import { MessagingSettings } from './components/Messaging';
@@ -221,7 +240,17 @@ export default function App() {
   // Kişi filtresi sunucuda uygulanır: son 15 mesaj seçilen kişilerin son 15 mesajı olsun (aksi hâlde başkalarının mesajları sığdırmazdı)
   const kisiKey = (ekran.mesajlar?.kisiler ?? []).join(',');
   const [msgFilterOpen, setMsgFilterOpen] = useState(false);
+  // Açık sohbet penceresi (mesaja ya da yeni mesaj bildirimine tıklayınca) ve ekranda duran yeni mesaj bildirimi
+  const [chatId, setChatId] = useState<string | null>(null);
+  const [bildirim, setBildirim] = useState<{ id?: string; ad: string; metin: string; platform: string; grup: boolean } | null>(null);
+  const bildirimT = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openMsg = useCallback((m: { id: string }) => { setChatId(m.id); setBildirim(null); }, []);
+  // Olay dinleyicisi bir kez kurulur: güncel filtreyi ve yükleyiciyi ref'ten okur
+  const msgKisiRef = useRef<string[]>([]);
+  msgKisiRef.current = ekran.mesajlar?.kisiler ?? [];
   const loadMsgs = useCallback(() => { getRecentMessages(15, kisiKey ? kisiKey.split(',') : []).then(r => { setMesajlar(r.mesajlar); setOkunmamis(r.okunmamis); }).catch(() => {}); }, [kisiKey]);
+  const loadMsgsRef = useRef(loadMsgs);
+  loadMsgsRef.current = loadMsgs;
   useEffect(() => {
     const pf = () => getPortfolio().then(p => setPortfoy(p.hata ? null : p)).catch(() => {});
     pf(); loadMsgs();
@@ -668,7 +697,23 @@ export default function App() {
         case 'robot': flash(`🤖 ${e.metin}`); break;
         case 'alarm': flash(`🔔 ${e.ad}: ${e.fiyat.toLocaleString('tr-TR')} · hedef ${e.kosul === 'ust' ? '≥' : '≤'} ${e.hedef.toLocaleString('tr-TR')}`); break;
         case 'mesai': loadMesai(); break;
-        case 'mesaj': loadMsgs(); flash(`${{ whatsapp: 'WhatsApp', telegram: 'Telegram', telefon: '📞 Telefon' }[e.platform]} · ${e.arama ? `${e.kisi} ${e.platform === 'telefon' ? e.metin : 'aradı'}` : `${e.kisi}: ${e.metin}`}`); break;
+        case 'mesaj': {
+          loadMsgsRef.current();
+          const kim = `${e.kisi} ${e.sohbet ?? ''}`;
+          const secili = msgKisiRef.current;
+          const ilgili = !secili.length || secili.some(k => foldTr(kim).includes(foldTr(k)));
+          const ozet = e.arama ? `${e.platform === 'telefon' ? e.metin : 'aradı'}` : e.metin;
+          if (ilgili && !e.otomatik) {
+            // Seçili kişilerden gelen mesaj: ekranda 20 sn duran, tıklanınca sohbeti açan bildirim + kısa ses
+            setBildirim({ id: e.id, ad: e.grup && e.sohbet ? `${e.sohbet} · ${e.kisi}` : e.kisi, metin: ozet, platform: e.platform, grup: !!e.grup });
+            if (bildirimT.current) clearTimeout(bildirimT.current);
+            bildirimT.current = setTimeout(() => setBildirim(null), 20_000);
+            chime();
+            try { if (document.hidden && 'Notification' in window && Notification.permission === 'granted') new Notification(`💬 ${e.kisi}`, { body: ozet.slice(0, 120), tag: 'jarvis-mesaj' }); } catch { /* yok */ }
+          } else if (!secili.length) flash(`${{ whatsapp: 'WhatsApp', telegram: 'Telegram', telefon: '📞 Telefon' }[e.platform]} · ${e.kisi}: ${ozet}`);
+          break;
+        }
+        case 'mesaj_okundu': loadMsgsRef.current(); break;
         case 'duyuru': {
           flash(`📣 ${e.metin}`);
           if (device !== 'masaustu') break; // aynı rapor üç cihazda birden okunmasın
@@ -1537,7 +1582,8 @@ export default function App() {
 
         <TopBar me={device} online={online} model={model} connected={connected} mock={mock} />
         <CompactStrip data={dash} portfoy={portfoy} okunmamis={okunmamis} mesai={mesai} onOpen={setSheet} />
-        <LiveSheet open={sheet} onClose={() => setSheet('')} portfoy={portfoy} mesajlar={shownMsgs} okunmamis={okunmamis} mesai={mesai} onAddMesai={addMesai} onAddHolding={addHolding} onFilterMsgs={() => setMsgFilterOpen(true)} />
+        <LiveSheet open={sheet} onClose={() => setSheet('')} portfoy={portfoy} mesajlar={shownMsgs} okunmamis={okunmamis} mesai={mesai} onAddMesai={addMesai} onAddHolding={addHolding} onFilterMsgs={() => setMsgFilterOpen(true)} onOpenMsg={openMsg} />
+        {chatId && <MessageChat id={chatId} onClose={() => setChatId(null)} onChanged={() => loadMsgsRef.current()} />}
         {msgFilterOpen && <MessageFilter filtre={ekran.mesajlar} onClose={() => setMsgFilterOpen(false)} onSave={kisiler => { const m = { goster: true, whatsapp: true, telegram: true, arama: true, grup: true, sadeceOkunmamis: false, ...ekran.mesajlar, kisiler }; ekranCommit({ mesajlar: m }); flash(kisiler.length ? `Ekranda ${kisiler.length} kişi/grubun mesajları görünecek` : 'Ekranda herkesin mesajları görünecek'); }} />}
 
         <main className="stage">
@@ -1602,7 +1648,7 @@ export default function App() {
               {showAgenda ? (
                 <AgendaPanel key={'agenda-' + reply!.id} reply={reply!} items={agenda} sceneIdx={sceneIdx} />
               ) : (
-                <NewsStatsPanel key="news" index={3} data={dash?.news ?? null} loading={dashLoading} demo={demo} mesajlar={ekran.mesajlar?.goster === false ? null : shownMsgs} okunmamis={okunmamis} onFilterMsgs={() => setMsgFilterOpen(true)} />
+                <NewsStatsPanel key="news" index={3} data={dash?.news ?? null} loading={dashLoading} demo={demo} mesajlar={ekran.mesajlar?.goster === false ? null : shownMsgs} okunmamis={okunmamis} onFilterMsgs={() => setMsgFilterOpen(true)} onOpenMsg={openMsg} />
               )}
             </AnimatePresence>
           </aside>
@@ -1896,6 +1942,14 @@ export default function App() {
         />
       )}
 
+      {bildirim && createPortal(
+        <div className={`msg-notify msg-${bildirim.platform}`} role="button" tabIndex={0} title="Sohbeti aç"
+          onClick={() => bildirim.id ? openMsg({ id: bildirim.id }) : setBildirim(null)} onKeyDown={ev => { if (ev.key === 'Enter' && bildirim.id) openMsg({ id: bildirim.id }); }}>
+          <span className="msg-notify-ic">{bildirim.platform === 'whatsapp' ? '🟢' : bildirim.platform === 'telegram' ? '🔵' : '📞'}</span>
+          <span className="msg-notify-body"><b>{bildirim.grup ? '👥 ' : ''}{bildirim.ad}</b><span>{bildirim.metin}</span><i>Açmak için tıklayın</i></span>
+          <button className="msg-notify-x" aria-label="Kapat" onClick={ev => { ev.stopPropagation(); setBildirim(null); }}>✕</button>
+        </div>, document.body
+      )}
       <AnimatePresence>
         {toast && <motion.div className="toast" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>{toast}</motion.div>}
         {error && <motion.div className="toast err">{error}</motion.div>}

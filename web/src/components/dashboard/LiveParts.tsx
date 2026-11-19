@@ -57,7 +57,7 @@ export function PortfolioBox({ p, limit = 3, onAdd }: { p: PortfolioData | null;
 const ICON: Record<RecentMsg['platform'], string> = { whatsapp: '🟢', telegram: '🔵', telefon: '📞' };
 
 /** Son gelen mesajlar (Gündem kartının içinde ve telefondaki sayfada) */
-export function MessagesBox({ list, unread, limit = 5, onFilter }: { list: RecentMsg[] | null; unread: number; limit?: number; /** Başlığa tıklayınca kişi/grup seçme penceresi */ onFilter?(): void }) {
+export function MessagesBox({ list, unread, limit = 5, onFilter, onOpen }: { list: RecentMsg[] | null; unread: number; limit?: number; /** Başlığa tıklayınca kişi/grup seçme penceresi */ onFilter?(): void; /** Mesaja tıklayınca sohbet penceresi */ onOpen?(m: RecentMsg): void }) {
   if (!list) return null;
   return (
     <div className="msg-box">
@@ -65,7 +65,7 @@ export function MessagesBox({ list, unread, limit = 5, onFilter }: { list: Recen
       {list.length === 0 ? <div className="msg-empty">Yeni mesaj yok</div> : (
         <ul className="msg-list">
           {list.slice(0, limit).map(m => (
-            <li key={m.id} className={`msg-${m.platform}${m.okundu ? '' : ' unread'}`}>
+            <li key={m.id} className={`msg-${m.platform}${m.okundu ? '' : ' unread'}${onOpen ? ' msg-click' : ''}`} onClick={onOpen ? () => onOpen(m) : undefined} role={onOpen ? 'button' : undefined} tabIndex={onOpen ? 0 : undefined} onKeyDown={onOpen ? e => { if (e.key === 'Enter') onOpen(m); } : undefined} title={onOpen ? 'Sohbeti aç' : undefined}>
               <span className="msg-ic">{m.arama ? '📞' : ICON[m.platform]}</span>
               <span className="msg-body"><b>{m.grup ? '👥 ' : ''}{m.kisi}</b><span>{m.arama ? 'aradı' : m.metin}</span></span>
               <span className="msg-at">{ago(m.at)}</span>
@@ -79,7 +79,7 @@ export function MessagesBox({ list, unread, limit = 5, onFilter }: { list: Recen
 
 /** Telefonda: şeritteki 💼 / 💬 düğmesine dokununca alttan açılan sayfa */
 const SHEET_KEY = 'jarvis.sayfaYuksekligi';
-export function LiveSheet({ open, onClose, portfoy, mesajlar, okunmamis, mesai, onAddMesai, onAddHolding, onFilterMsgs }: { open: '' | 'portfoy' | 'mesaj' | 'mesai'; onClose(): void; onFilterMsgs?(): void; portfoy: PortfolioData | null; mesajlar: RecentMsg[] | null; okunmamis: number; mesai: MesaiData | null; onAddMesai(saat: number, tarih?: string): void; onAddHolding?(sembol: string, adet: number, maliyet: number): void }) {
+export function LiveSheet({ open, onClose, portfoy, mesajlar, okunmamis, mesai, onAddMesai, onAddHolding, onFilterMsgs, onOpenMsg }: { open: '' | 'portfoy' | 'mesaj' | 'mesai'; onClose(): void; onFilterMsgs?(): void; onOpenMsg?(m: RecentMsg): void; portfoy: PortfolioData | null; mesajlar: RecentMsg[] | null; okunmamis: number; mesai: MesaiData | null; onAddMesai(saat: number, tarih?: string): void; onAddHolding?(sembol: string, adet: number, maliyet: number): void }) {
   // Üstteki tutamaç parmakla/fareyle sürüklenerek sayfa büyür/küçülür (aşağı çok çekilirse kapanır); yükseklik hatırlanır
   const [h, setH] = useState(() => { try { return Number(localStorage.getItem(SHEET_KEY)) || 60; } catch { return 60; } });
   const drag = useRef<{ y: number; h: number } | null>(null);
@@ -94,7 +94,7 @@ export function LiveSheet({ open, onClose, portfoy, mesajlar, okunmamis, mesai, 
           onPointerUp={() => { drag.current = null; if (h <= 22) onClose(); try { localStorage.setItem(SHEET_KEY, String(Math.max(30, Math.round(h)))); } catch { /* yok */ } }}
           onPointerCancel={() => { drag.current = null; }}><i /></div>
         <button className="live-sheet-x" onClick={onClose} aria-label="Kapat">✕</button>
-        {open === 'portfoy' ? <PortfolioBox p={portfoy} limit={12} onAdd={onAddHolding} /> : open === 'mesai' ? <MesaiBox m={mesai} onAdd={onAddMesai} limit={31} /> : <MessagesBox list={mesajlar} unread={okunmamis} limit={15} onFilter={onFilterMsgs} />}
+        {open === 'portfoy' ? <PortfolioBox p={portfoy} limit={12} onAdd={onAddHolding} /> : open === 'mesai' ? <MesaiBox m={mesai} onAdd={onAddMesai} limit={31} /> : <MessagesBox list={mesajlar} unread={okunmamis} limit={15} onFilter={onFilterMsgs} onOpen={onOpenMsg} />}
       </div>
     </div>
   );
