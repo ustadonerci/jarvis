@@ -14,7 +14,7 @@ import { resetOpenAiTts } from './tts.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { RouteLLMError, onRouteDown, resetRouteDown, registerFallbacks, routeLlmDown, routellmStream, type ChatMessage, type ContentPart, type StreamResult } from './routellm.js';
+import { RouteLLMError, FIRST_TOKEN_MS, linkAbort, onRouteDown, resetRouteDown, registerFallbacks, routeLlmDown, routellmStream, type ChatMessage, type ContentPart, type StreamCtl, type StreamResult } from './routellm.js';
 
 /** tur: 'sohbet' = beyin olabilir (OpenAI uyumlu ya da Claude); 'medya' = yalnız anahtar kaydı (görsel/video/ses) */
 export interface Provider { id: string; ad: string; keyEnv: string; modelEnv: string; varsayilanModel: string; base?: string; anahtarUrl: string; anahtarSayfasi: string; not?: string; tur: 'sohbet' | 'medya' }
@@ -186,13 +186,24 @@ export function authFor(p: Provider): { key: string; headers: Record<string, str
   return { key: k, headers: p.id === 'openrouter' ? { 'X-Title': 'Jarvis' } : {} };
 }
 
-async function openaiStream(p: Provider, body: any, onContent?: (d: string, full: string) => void): Promise<StreamResult> {
+/** Cevaptan önce uzun "düşünen" (reasoning) modeller: sesli asistanda düşünme en aza indirilir */
+const REASONING = /gpt-oss|gpt-5|^o\d|\/o\d|deepseek-reasoner|grok-[34]-mini|magistral/i;
+function reasoningFor(p: Provider, model: string): Record<string, unknown> {
+  if (!REASONING.test(model)) return {};
+  // OpenAI gpt-5: "minimal" en hızlısı; diğerleri (Groq/Cerebras gpt-oss, o serisi) "low" kabul eder
+  if (p.id === 'openai' && /gpt-5/i.test(model)) return { reasoning_effort: 'minimal' };
+  if (['openai', 'groq', 'cerebras', 'openrouter', 'xai'].includes(p.id)) return { reasoning_effort: 'low' };
+  return {};
+}
+
+async function openaiStream(p: Provider, body: any, onContent?: (d: string, full: string) => void, ctl?: StreamCtl): Promise<StreamResult> {
   const a = authFor(p);
   // Gemini: OpenAI uyumlu uç yeni anahtarlarla "Missing or invalid Authorization header" veriyor → Google'ın kendi API'si
-  if (p.id === 'gemini') return geminiStream(a.headers['x-goog-api-key'], providerModel(p), body, onContent, p.ad);
+  if (p.id === 'gemini') return geminiStream(a.headers['x-goog-api-key'], providerModel(p), body, onContent, p.ad, ctl);
   // NVIDIA NIM ve bazı açık model sağlayıcılarında varsayılan çıktı sınırı kısa (1024): sahne JSON'u yarıda kesiliyordu
   const extra = body.max_tokens ? {} : ['nvidia', 'groq', 'cerebras', 'together', 'deepinfra', 'huggingface', 'sambanova', 'fireworks', 'novita', 'hyperbolic'].includes(p.id) ? { max_tokens: 4096 } : {};
-  return routellmStream({ ...body, ...extra, model: providerModel(p) }, onContent, { base: p.base!, key: a.key, extraHeaders: a.headers, ad: p.ad });
+  const model = providerModel(p);
+  return routellmStream({ ...body, ...extra, ...reasoningFor(p, model), model }, onContent, { base: p.base!, key: a.key, extraHeaders: a.headers, ad: p.ad }, ctl);
 }
 
 // ---------------------------------------------------------------- Anthropic (resmî SDK)
@@ -247,8 +258,14 @@ export function toClaude(messages: ChatMessage[]): { system: string; messages: A
   return { system, messages: out };
 }
 
-async function anthropicStream(p: Provider, body: any, onContent?: (d: string, full: string) => void): Promise<StreamResult> {
+async function anthropicStream(p: Provider, body: any, onContent?: (d: string, full: string) => void, ctl?: StreamCtl): Promise<StreamResult> {
   const t0 = performance.now();
+  // Takılırsa sonsuza kadar beklemesin: ilk parça FIRST_TOKEN_MS içinde gelmeli
+  const ac = new AbortController();
+  linkAbort(ac, ctl?.signal);
+  const idle = setTimeout(() => ac.abort(new Error(`Claude ${FIRST_TOKEN_MS / 1000} sn içinde yazmaya başlamadı`)), FIRST_TOKEN_MS);
+  let gotFirst = false;
+  const first = () => { if (!gotFirst) { gotFirst = true; clearTimeout(idle); ctl?.onFirst?.(); } };
   const { system, messages } = toClaude(body.messages ?? []);
   const tools: Anthropic.Beta.BetaToolUnion[] = (body.tools ?? []).map((t: any) => ({
     name: t.function.name, description: String(t.function.description ?? '').slice(0, 4000),
@@ -270,8 +287,11 @@ async function anthropicStream(p: Provider, body: any, onContent?: (d: string, f
     // Claude bir isteği reddederse sunucu uygun modelle yeniden dener
     betas: ['server-side-fallback-2026-07-01'],
     fallbacks: 'default',
-  });
+  }, { signal: ac.signal });
+  stream.on('contentBlock', () => first());
+  stream.on('streamEvent', ev => { if (ev.type === 'content_block_start') first(); });
   stream.on('text', delta => {
+    first();
     if (firstTokenMs === null) firstTokenMs = Math.round(performance.now() - t0);
     content += delta;
     onContent?.(delta, content);
@@ -280,9 +300,10 @@ async function anthropicStream(p: Provider, body: any, onContent?: (d: string, f
   try {
     msg = await stream.finalMessage();
   } catch (e) {
+    if (ac.signal.aborted) throw ac.signal.reason;
     if (e instanceof Anthropic.APIError) throw new RouteLLMError(e.status ?? 500, e.message, 'Anthropic (Claude)');
     throw e;
-  }
+  } finally { clearTimeout(idle); }
   if (msg.stop_reason === 'refusal' && !content) content = '{"sahneler":[{"ses":"Bu isteğe yardımcı olamıyorum efendim.","gorsel":{"tip":"yok"}}],"detay":""}';
   const toolUses = msg.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === 'tool_use');
   // Araç girdisi max_tokens'ta kesildiyse çalıştırılmaz
@@ -323,18 +344,21 @@ function rest(id: string, e: any) {
  * Biri hata verirse (anahtar geçersiz, kredi bitti, kota, ağ) bu tur sıradakiyle devam edilir; hatalı olan bir süre atlanır.
  * Cevap akmaya başladıktan sonra kesilirse geçiş yapılmaz (sahneler okunmaya başladı).
  */
+/** Ana beyin bu sürede yazmaya başlamazsa sıradaki sağlayıcı da aynı anda denenir (en çok HEDGE_MAX tanesi birden) */
+const HEDGE_MS = 6_000;
+const HEDGE_MAX = 3;
 export async function brainStream(body: any, onContent?: (d: string, full: string) => void): Promise<StreamResult> {
-  const order: { id: string; ad: string; run: (relay: (d: string, f: string) => void) => Promise<StreamResult> }[] = [];
+  const order: { id: string; ad: string; run: (b: any, relay: (d: string, f: string) => void, ctl: StreamCtl) => Promise<StreamResult> }[] = [];
   const seen = new Set<string>();
   for (const id of [brain, ...YEDEK_SIRA, 'anthropic', ...PROVIDERS.map(p => p.id)]) {
     if (seen.has(id) || id === 'routellm') continue;
     seen.add(id);
     const p = findProvider(id);
     if (!p || !providerReady(p) || (p.id !== 'anthropic' && !p.base)) continue;
-    order.push({ id: p.id, ad: p.ad, run: relay => (p.id === 'anthropic' ? anthropicStream(p, body, relay) : openaiStream(p, body, relay)) });
+    order.push({ id: p.id, ad: p.ad, run: (b, relay, ctl) => (p.id === 'anthropic' ? anthropicStream(p, b, relay, ctl) : openaiStream(p, b, relay, ctl)) });
   }
   // RouteLLM: beyin oysa başta, değilse sonda; anahtarı yoksa hiç
-  const route = { id: 'routellm', ad: 'RouteLLM (Abacus.AI)', run: (relay: (d: string, f: string) => void) => routellmStream(body, relay, { base: process.env.ROUTELLM_BASE_URL || 'https://routellm.abacus.ai/v1', key: process.env.ABACUS_API_KEY || '' }).catch(e => { throw e instanceof RouteLLMError ? new RouteLLMError(e.status, e.body) : e; }) };
+  const route = { id: 'routellm', ad: 'RouteLLM (Abacus.AI)', run: (b: any, relay: (d: string, f: string) => void, ctl: StreamCtl) => routellmStream(b, relay, { base: process.env.ROUTELLM_BASE_URL || 'https://routellm.abacus.ai/v1', key: process.env.ABACUS_API_KEY || '' }, ctl).catch(e => { throw e instanceof RouteLLMError ? new RouteLLMError(e.status, e.body) : e; }) };
   if (process.env.ABACUS_API_KEY) { if (brain === 'routellm') order.unshift(route); else order.push(route); }
   // Önce dinlenmede olmayanlar, sonra dinlenmedekiler (kredi yüklenmiş / anahtar düzelmiş olabilir): hiçbiri atlanmaz
   // Dinlenmedeki bir sağlayıcı en çok 3 dakikada bir yeniden denenir (kredi yüklenmiş / anahtar düzelmiş olabilir);
@@ -350,25 +374,24 @@ export async function brainStream(body: any, onContent?: (d: string, full: strin
   const t0 = Date.now();
   if (!list.length) throw new Error('Hiçbir yapay zekâ anahtarı girilmemiş. Ayarlar → Yapay zeka sağlayıcıları\'ndan ücretsiz bir anahtar ekleyin (Google Gemini, Groq ya da NVIDIA).');
   const errs: string[] = [];
-  for (const o of list) {
-    // Toplam süre sınırı: cevap 90 sn içinde hiçbir sağlayıcıdan gelmediyse daha fazla bekletilmez
-    if (errs.length && Date.now() - t0 > 90_000) { errs.push(`süre doldu (${list.length - errs.length} sağlayıcı denenmedi)`); break; }
+
+  /** Tek sağlayıcı denemesi: model düzeltme / tool_choice yeniden denemesi ve dinlenme kaydı burada; yarışı kaybedip iptal edilen ceza almaz */
+  const tryOne = async (o: typeof list[number], relay: (d: string, f: string) => void, ctl: StreamCtl, started: () => boolean): Promise<StreamResult> => {
     if (resting(o.id)) retriedAt.set(o.id, Date.now());
-    let started = false;
-    const relay = (d: string, full: string) => { started = true; onContent?.(d, full); };
+    const b = { ...body }; // aynı anda yarışan denemeler gövdeyi paylaşmasın
     try {
       const ts = Date.now();
-      const r = await o.run(relay);
+      const r = await o.run(b, relay, ctl);
       noteSpeed(o.id, Date.now() - ts);
       if (cooldown.has(o.id)) cooldown.delete(o.id);
-      if (o.id !== brain && errs.length) console.log(`[beyin] bu tur ${o.ad} cevap verdi`);
       return r;
     } catch (e: any) {
-      if (started) throw e;
+      if (ctl.signal?.aborted && (e === ctl.signal.reason || e?.name === 'AbortError' || /yarış/.test(String(e?.message)))) throw e;
+      if (started()) throw e;
       // 400: istek bu sağlayıcıya uymadı (zorunlu araç seçimi vb.); aynı sağlayıcı 'auto' ile bir kez daha denenir, dinlenmeye alınmaz
-      if (e?.status === 400 && body.tool_choice && body.tool_choice !== 'auto') {
-        body.tool_choice = 'auto';
-        try { return await o.run(relay); } catch { /* sıradakine */ }
+      if (e?.status === 400 && b.tool_choice && b.tool_choice !== 'auto') {
+        b.tool_choice = 'auto';
+        try { return await o.run(b, relay, ctl); } catch { /* sıradakine */ }
       }
       // Model bulunamadı / kaldırıldı / adı yanlış: sağlayıcının listesinden çalışan model seçilip bir kez daha denenir
       const prov = findProvider(o.id);
@@ -378,8 +401,8 @@ export async function brainStream(body: any, onContent?: (d: string, full: strin
           markBadModel(prov);
           const m = await healModel(prov).catch(() => null);
           if (!m) break;
-          try { const r = await o.run(relay); cooldown.delete(o.id); return r; } catch (e2: any) {
-            if (started) throw e2;
+          try { const r = await o.run(b, relay, ctl); cooldown.delete(o.id); return r; } catch (e2: any) {
+            if (started() || ctl.signal?.aborted) throw e2;
             e = e2;
             if (!(e?.status === 404 || e?.status === 410 || (e?.status === 400 && /model/i.test(String(e?.body ?? e?.message))))) break;
           }
@@ -390,9 +413,73 @@ export async function brainStream(body: any, onContent?: (d: string, full: strin
       if (e?.status !== 400 && e?.status !== 413) rest(o.id, e);
       errs.push(`${o.ad}: ${String(e?.message || e).slice(0, 90)}`);
       console.warn(`[beyin] ${o.ad} hata verdi, sıradakine geçiliyor: ${String(e?.message || e).slice(0, 160)}`);
+      throw e;
     }
-  }
-  throw new Error(`Yapay zekâ sağlayıcılarının hiçbiri cevap vermedi (${errs.length} denendi). ${errs.join(' · ')}. Ayarlar → Yapay zeka sağlayıcıları'nda anahtarları "Bağlantıyı test et" ile kontrol edin ya da ücretsiz bir anahtar ekleyin (Gemini, Groq, NVIDIA).`);
+  };
+
+  // Yarış: sıradaki sağlayıcı ancak öncekiler HEDGE_MS içinde yazmaya başlamazsa (ya da hata verirse) devreye girer.
+  // İlk yazmaya başlayan kazanır, diğerleri hemen iptal edilir. Böylece yavaş/takılan bir beyin "düşünüyor"da bekletmez.
+  return new Promise<StreamResult>((resolve, reject) => {
+    let idx = 0, active = 0, done = false;
+    let winner: string | null = null;
+    const ctrls = new Map<string, AbortController>();
+    let hedgeT: ReturnType<typeof setTimeout> | null = null;
+    const fail = () => {
+      done = true;
+      if (hedgeT) clearTimeout(hedgeT);
+      reject(new Error(`Yapay zekâ sağlayıcılarının hiçbiri cevap vermedi (${errs.length} denendi). ${errs.join(' · ')}. Ayarlar → Yapay zeka sağlayıcıları'nda anahtarları "Bağlantıyı test et" ile kontrol edin ya da ücretsiz bir anahtar ekleyin (Gemini, Groq, NVIDIA).`));
+    };
+    const armHedge = () => {
+      if (hedgeT) clearTimeout(hedgeT);
+      hedgeT = setTimeout(() => {
+        if (done || winner) return;
+        if (active < HEDGE_MAX && idx < list.length) { console.log(`[beyin] ${HEDGE_MS / 1000} sn içinde cevap başlamadı, yedek de deneniyor: ${list[idx].ad}`); startNext(); }
+        else armHedge();
+      }, HEDGE_MS);
+    };
+    const startNext = () => {
+      if (done || winner) return;
+      // Toplam süre sınırı: cevap 90 sn içinde hiçbir sağlayıcıdan gelmediyse daha fazla bekletilmez
+      if (idx >= list.length || (errs.length && Date.now() - t0 > 90_000)) {
+        if (idx < list.length) errs.push(`süre doldu (${list.length - idx} sağlayıcı denenmedi)`);
+        if (active === 0) fail();
+        return;
+      }
+      const o = list[idx++];
+      active++;
+      const ac = new AbortController();
+      ctrls.set(o.id, ac);
+      let relayed = false;
+      const claim = () => {
+        if (winner) return winner === o.id;
+        winner = o.id;
+        if (hedgeT) clearTimeout(hedgeT);
+        for (const [id, c] of ctrls) if (id !== o.id) c.abort(new Error('yarışı başka sağlayıcı kazandı'));
+        if (o.id !== list[0].id) console.log(`[beyin] bu tur ${o.ad} cevap verdi`);
+        return true;
+      };
+      const relay = (d: string, f: string) => { if (claim()) { relayed = true; onContent?.(d, f); } };
+      tryOne(o, relay, { signal: ac.signal, onFirst: () => { claim(); } }, () => relayed).then(r => {
+        active--; ctrls.delete(o.id);
+        if (done || !claim()) return;
+        done = true;
+        if (hedgeT) clearTimeout(hedgeT);
+        resolve(r);
+      }, e => {
+        active--; ctrls.delete(o.id);
+        if (done) return;
+        if (winner === o.id) {
+          // Yazmaya başlamış cevap yarıda kesildi: sesli çıktı karışmasın diye hata olarak döner (eski davranış)
+          if (relayed) { done = true; if (hedgeT) clearTimeout(hedgeT); reject(e); return; }
+          winner = null; // yalnız araç çağrısı başlamıştı: sıradakine geçilir
+        }
+        if (winner) return;
+        if (active === 0) startNext();
+      });
+      armHedge();
+    };
+    startNext();
+  });
 }
 
 /**

@@ -3,7 +3,7 @@
 // önerdiği x-goog-api-key başlığıyla gider. OpenAI biçimindeki mesajlar ve araçlar Gemini biçimine çevrilir, akıştaki
 // metin ve araç çağrıları Jarvis'in beklediği StreamResult'a dönüştürülür.
 import { randomUUID } from 'node:crypto';
-import { RouteLLMError, type ChatMessage, type ContentPart, type StreamResult } from './routellm.js';
+import { RouteLLMError, FIRST_TOKEN_MS, linkAbort, type ChatMessage, type ContentPart, type StreamCtl, type StreamResult } from './routellm.js';
 
 const BASE = 'https://generativelanguage.googleapis.com/v1beta';
 /** Gemini 2.5+ araç çağrılarındaki "thoughtSignature": aynı çağrı geri gönderilirken eklenir */
@@ -37,7 +37,19 @@ function parts(c: ChatMessage['content']): any[] {
 }
 
 /** OpenAI biçimi istek → Gemini isteği */
-export function toGemini(body: any) {
+/**
+ * Sesli asistan hızlı cevap vermeli: Gemini 2.5 Flash varsayılan olarak cevaptan önce uzun "düşünüyor"du.
+ * Flash'ta düşünme kapatılır, Pro'da en aza (128) indirilir, Gemini 3'te düşük seviyeye alınır.
+ */
+function thinkingFor(model: string): { thinkingConfig?: Record<string, unknown> } {
+  const m = model.toLowerCase();
+  if (/gemini-3/.test(m)) return { thinkingConfig: { thinkingLevel: 'low' } };
+  if (/2\.5-flash|flash-latest|flash-lite/.test(m)) return { thinkingConfig: { thinkingBudget: 0 } };
+  if (/2\.5-pro|pro-latest/.test(m)) return { thinkingConfig: { thinkingBudget: 128 } };
+  return {};
+}
+
+export function toGemini(body: any, model = '') {
   const msgs: ChatMessage[] = body.messages ?? [];
   const system = msgs.filter(m => m.role === 'system').map(m => (typeof m.content === 'string' ? m.content : parts(m.content).map(p => p.text ?? '').join('\n'))).join('\n\n');
   const names = new Map<string, string>(); // tool_call_id → araç adı
@@ -71,21 +83,24 @@ export function toGemini(body: any) {
     ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
     contents: contents.length ? contents : [{ role: 'user', parts: [{ text: '.' }] }],
     ...(decls.length ? { tools: [{ functionDeclarations: decls }], toolConfig: { functionCallingConfig: forced ? { mode: 'ANY', allowedFunctionNames: [forced] } : { mode: 'AUTO' } } } : {}),
-    generationConfig: { maxOutputTokens: body.max_tokens ?? 8192 },
+    generationConfig: { maxOutputTokens: body.max_tokens ?? 8192, ...thinkingFor(model) },
   };
 }
 
 /** Akışlı Gemini sohbeti; sonuç OpenAI akışıyla aynı biçimde */
-export async function geminiStream(key: string, model: string, body: any, onContent?: (d: string, full: string) => void, ad = 'Google Gemini'): Promise<StreamResult> {
+export async function geminiStream(key: string, model: string, body: any, onContent?: (d: string, full: string) => void, ad = 'Google Gemini', ctl?: StreamCtl): Promise<StreamResult> {
   const t0 = performance.now();
   const ac = new AbortController();
-  let idle = setTimeout(() => ac.abort(new Error('Gemini 35 sn içinde cevap vermedi')), 35_000);
-  const bump = () => { clearTimeout(idle); idle = setTimeout(() => ac.abort(new Error('Gemini 60 sn sessiz kaldı')), 60_000); };
+  linkAbort(ac, ctl?.signal);
+  let idle = setTimeout(() => ac.abort(new Error(`Gemini ${FIRST_TOKEN_MS / 1000} sn içinde cevap vermedi`)), FIRST_TOKEN_MS);
+  let gotFirst = false;
+  const bump = () => { clearTimeout(idle); idle = gotFirst ? setTimeout(() => ac.abort(new Error('Gemini 60 sn sessiz kaldı')), 60_000) : setTimeout(() => ac.abort(new Error(`Gemini ${FIRST_TOKEN_MS / 1000} sn içinde yazmaya başlamadı`)), FIRST_TOKEN_MS); };
+  const first = () => { if (!gotFirst) { gotFirst = true; bump(); ctl?.onFirst?.(); } };
   const m = model.replace(/^models\//, '');
   let res: Response;
   try {
     res = await fetch(`${BASE}/models/${m}:streamGenerateContent?alt=sse`, {
-      method: 'POST', headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' }, body: JSON.stringify(toGemini(body)), signal: ac.signal,
+      method: 'POST', headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' }, body: JSON.stringify(toGemini(body, m)), signal: ac.signal,
     });
   } catch (e) { clearTimeout(idle); throw ac.signal.aborted ? ac.signal.reason : e; }
   if (!res.ok || !res.body) { clearTimeout(idle); throw new RouteLLMError(res.status, await res.text(), ad); }
@@ -109,11 +124,13 @@ export async function geminiStream(key: string, model: string, body: any, onCont
           if (p.thought) continue; // düşünce özeti seslendirilmez
           if (typeof p.text === 'string' && p.text) {
             firstTokenMs ??= Math.round(performance.now() - t0);
+            first();
             content += p.text;
             onContent?.(p.text, content);
           }
           if (p.functionCall) {
             firstTokenMs ??= Math.round(performance.now() - t0);
+            first();
             const id = `gem_${randomUUID().slice(0, 12)}`;
             if (p.thoughtSignature) signatures.set(id, p.thoughtSignature);
             calls.push({ id, type: 'function', function: { name: p.functionCall.name, arguments: JSON.stringify(p.functionCall.args ?? {}) } });
