@@ -91,17 +91,6 @@ export async function routellm<T = any>(path: string, body?: unknown, method = b
   return JSON.parse(text) as T;
 }
 
-/** Yarışan istekler için: dışarıdan iptal ve ilk parça (metin ya da araç çağrısı) geldiğinde haber */
-export interface StreamCtl { signal?: AbortSignal; onFirst?: () => void }
-/** İlk parça gelmeden en çok bu kadar beklenir (sunucu bağlantıyı açıp "düşünürken" sessiz kalabiliyor) */
-export const FIRST_TOKEN_MS = 25_000;
-/** Dış iptal sinyalini iç AbortController'a bağlar */
-export function linkAbort(ac: AbortController, signal?: AbortSignal) {
-  if (!signal) return;
-  if (signal.aborted) ac.abort(signal.reason);
-  else signal.addEventListener('abort', () => ac.abort(signal.reason), { once: true });
-}
-
 export interface StreamResult {
   content: string;
   tool_calls: NonNullable<ChatMessage['tool_calls']>;
@@ -119,7 +108,6 @@ export async function routellmStream(
   body: object, onContent?: (delta: string, full: string) => void,
   /** Başka bir OpenAI uyumlu sağlayıcı (providers.ts); verilmezse RouteLLM */
   opts?: { base: string; key: string; extraHeaders?: Record<string, string>; ad?: string },
-  ctl?: StreamCtl,
 ): Promise<StreamResult> {
   // RouteLLM bozuksa (anahtar/kredi) aynı istek sırayla yedek sağlayıcılara gider
   if (!opts && routeLlmDown()) {
@@ -129,11 +117,8 @@ export async function routellmStream(
   const t0 = performance.now();
   // Takılan sağlayıcı sonsuza kadar bekletmesin: 35 sn içinde cevap başlığı, sonra 60 sn'den uzun sessizlik yok
   const ac = new AbortController();
-  linkAbort(ac, ctl?.signal);
-  let idle = setTimeout(() => ac.abort(new Error(`yapay zekâ ${FIRST_TOKEN_MS / 1000} sn içinde cevap vermedi`)), FIRST_TOKEN_MS);
-  // İlk parça gelene kadar FIRST_TOKEN_MS, sonra parçalar arasında en çok 60 sn sessizlik
-  let gotFirst = false;
-  const bump = () => { clearTimeout(idle); idle = gotFirst ? setTimeout(() => ac.abort(new Error('yapay zekâ 60 sn sessiz kaldı')), 60_000) : setTimeout(() => ac.abort(new Error(`yapay zekâ ${FIRST_TOKEN_MS / 1000} sn içinde yazmaya başlamadı`)), FIRST_TOKEN_MS); };
+  let idle = setTimeout(() => ac.abort(new Error('yapay zekâ 35 sn içinde cevap vermedi')), 35_000);
+  const bump = () => { clearTimeout(idle); idle = setTimeout(() => ac.abort(new Error('yapay zekâ 60 sn sessiz kaldı')), 60_000); };
   let res: Response;
   try {
     res = await fetch((opts?.base ?? BASE_URL) + '/chat/completions', {
@@ -176,7 +161,7 @@ export async function routellmStream(
       try { j = JSON.parse(data); } catch { continue; }
       model ??= j.model ?? null;
       const d = j.choices?.[0]?.delta ?? {};
-      if ((d.content || d.tool_calls) && firstTokenMs === null) { firstTokenMs = Math.round(performance.now() - t0); gotFirst = true; bump(); ctl?.onFirst?.(); }
+      if ((d.content || d.tool_calls) && firstTokenMs === null) firstTokenMs = Math.round(performance.now() - t0);
       for (const tc of d.tool_calls ?? []) {
         const i = tc.index ?? 0;
         calls[i] ??= { id: '', name: '', args: '' };
