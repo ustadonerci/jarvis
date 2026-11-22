@@ -332,10 +332,13 @@ const noteSpeed = (id: string, ms: number) => speed.set(id, speed.has(id) ? Math
 /** Sıralama puanı: seçili beyin yarı puanla öncelikli; çok yavaşsa (2 katından hızlı biri varsa) hızlı olan öne geçer */
 const score = (id: string) => (speed.get(id) ?? 9000) * (id === brain ? 0.5 : 1);
 const resting = (id: string) => (cooldown.get(id)?.until ?? 0) > Date.now();
+/** Kredi/fatura sorunu: bazı sağlayıcılar (Anthropic…) bunu 400 ile bildirir; 400'ü "istek uymadı" sanıp hep yeniden denemek gecikme yapıyordu */
+const BILLING = /credit balance|billing|insufficient|quota|exceeded your|payment required|kredi|bakiye|fatura/i;
 function rest(id: string, e: any) {
   const st = Number(e?.status ?? /\b(\d{3})\b/.exec(String(e?.message))?.[1] ?? 0);
+  const billing = BILLING.test(String(e?.body ?? e?.message ?? ''));
   // Anahtar/kredi sorunu uzun, geçici hata (ağ, 5xx) kısa süre
-  const ms = st === 401 || st === 402 || st === 403 ? 30 * 60_000 : st === 429 ? 10 * 60_000 : 2 * 60_000;
+  const ms = st === 401 || st === 402 || st === 403 || billing ? 30 * 60_000 : st === 429 ? 10 * 60_000 : 2 * 60_000;
   cooldown.set(id, { until: Date.now() + ms, why: String(e?.message || e).slice(0, 140) });
 }
 
@@ -410,7 +413,7 @@ export async function brainStream(body: any, onContent?: (d: string, full: strin
       }
       // 413: istek bu sağlayıcının ücretsiz sınırına göre çok büyük (Groq dakikalık sınır); bir saat atlanır
       if (e?.status === 413) cooldown.set(o.id, { until: Date.now() + 60 * 60_000, why: 'istek bu sağlayıcının ücretsiz sınırı için çok büyük (413)' });
-      if (e?.status !== 400 && e?.status !== 413) rest(o.id, e);
+      if (e?.status !== 400 && e?.status !== 413 || BILLING.test(String(e?.body ?? e?.message ?? ''))) rest(o.id, e);
       errs.push(`${o.ad}: ${String(e?.message || e).slice(0, 90)}`);
       console.warn(`[beyin] ${o.ad} hata verdi, sıradakine geçiliyor: ${String(e?.message || e).slice(0, 160)}`);
       throw e;
